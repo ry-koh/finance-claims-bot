@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: finance-claims-bot
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_PARENT_FOLDER_ID
+        sync: false
+      - key: ACADEMIC_YEAR
+        value: "2526"
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          type: web
+          name: finance-claims-bot
+          property: host
+    healthCheckPath: /health
+    autoDeploy: true
