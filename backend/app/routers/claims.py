@@ -1,8 +1,361 @@
-from fastapi import APIRouter
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from supabase import Client
+
+from app.auth import require_auth, require_director
+from app.config import settings
+from app.database import get_supabase
+from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-@router.get("/")
-async def list_claims():
-    return {"message": "not yet implemented"}
+STALE_TRIGGER_FIELDS = {
+    "claim_description",
+    "wbs_account",
+    "total_amount",
+    "claimer_id",
+    "transport_form_needed",
+}
+
+
+def _slug(text: str, max_chars: int = 10) -> str:
+    """Upper-case, replace spaces with hyphens, truncate to max_chars."""
+    return text.upper().replace(" ", "-")[:max_chars]
+
+
+def _get_claim_or_404(db: Client, claim_id: str) -> dict:
+    resp = (
+        db.table("claims")
+        .select("*")
+        .eq("id", claim_id)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    return resp.data[0]
+
+
+# ---------------------------------------------------------------------------
+# GET /claims
+# ---------------------------------------------------------------------------
+
+@router.get("")
+async def list_claims(
+    status: Optional[str] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    query = (
+        db.table("claims")
+        .select("*, claimer:claimers(id, name)", count="exact")
+        .is_("deleted_at", "null")
+        .order("created_at", desc=True)
+    )
+
+    if status:
+        query = query.eq("status", status)
+
+    offset = (page - 1) * page_size
+    query = query.range(offset, offset + page_size - 1)
+
+    resp = query.execute()
+    total = resp.count if resp.count is not None else len(resp.data)
+
+    return {
+        "items": resp.data,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /claims/{claim_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/{claim_id}")
+async def get_claim(
+    claim_id: str,
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    # Fetch claim (with claimer)
+    claim_resp = (
+        db.table("claims")
+        .select("*, claimer:claimers(*)")
+        .eq("id", claim_id)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    if not claim_resp.data:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    claim = claim_resp.data[0]
+
+    # Line items ordered by index
+    line_items_resp = (
+        db.table("claim_line_items")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .order("line_item_index")
+        .execute()
+    )
+
+    # Receipts ordered by created_at
+    receipts_resp = (
+        db.table("receipts")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .order("created_at")
+        .execute()
+    )
+
+    # Documents — only current
+    docs_resp = (
+        db.table("claim_documents")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .eq("is_current", True)
+        .execute()
+    )
+
+    claim["line_items"] = line_items_resp.data
+    claim["receipts"] = receipts_resp.data
+    claim["documents"] = docs_resp.data
+
+    return claim
+
+
+# ---------------------------------------------------------------------------
+# POST /claims
+# ---------------------------------------------------------------------------
+
+@router.post("", status_code=201)
+async def create_claim(
+    payload: ClaimCreate,
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    academic_year = settings.ACADEMIC_YEAR
+
+    # --- Atomically increment document counter ---
+    # Try to update existing row and get new counter
+    counter_resp = (
+        db.table("document_counters")
+        .select("id, counter")
+        .eq("academic_year", academic_year)
+        .execute()
+    )
+
+    if not counter_resp.data:
+        # No row yet — insert with counter=1
+        insert_resp = (
+            db.table("document_counters")
+            .insert({"academic_year": academic_year, "counter": 1})
+            .execute()
+        )
+        if not insert_resp.data:
+            raise HTTPException(status_code=500, detail="Failed to initialise document counter")
+        counter = 1
+    else:
+        row = counter_resp.data[0]
+        new_counter = row["counter"] + 1
+        update_resp = (
+            db.table("document_counters")
+            .update({"counter": new_counter})
+            .eq("id", row["id"])
+            .execute()
+        )
+        if not update_resp.data:
+            raise HTTPException(status_code=500, detail="Failed to increment document counter")
+        counter = new_counter
+
+    # --- Fetch claimer → CCA → portfolio ---
+    claimer_resp = (
+        db.table("claimers")
+        .select("*, cca:ccas(name, portfolio:portfolios(name))")
+        .eq("id", str(payload.claimer_id))
+        .execute()
+    )
+    if not claimer_resp.data:
+        raise HTTPException(status_code=404, detail="Claimer not found")
+    claimer = claimer_resp.data[0]
+
+    cca_name = claimer.get("cca", {}).get("name", "UNKNOWN")
+    portfolio_name = claimer.get("cca", {}).get("portfolio", {}).get("name", "UNKNOWN")
+
+    reference_code = (
+        f"{academic_year}"
+        f"-{_slug(portfolio_name)}"
+        f"-{_slug(cca_name)}"
+        f"-{counter:03d}"
+    )
+
+    # --- Insert claim ---
+    claim_data = {
+        "reference_code": reference_code,
+        "claim_number": counter,
+        "claimer_id": str(payload.claimer_id),
+        "claim_description": payload.claim_description,
+        "total_amount": str(payload.total_amount),
+        "date": payload.date.isoformat(),
+        "wbs_account": payload.wbs_account.value,
+        "transport_form_needed": payload.transport_form_needed,
+        "status": ClaimStatus.DRAFT.value,
+        "other_emails": payload.other_emails,
+    }
+    if payload.filled_by is not None:
+        claim_data["filled_by"] = str(payload.filled_by)
+    if payload.wbs_no is not None:
+        claim_data["wbs_no"] = payload.wbs_no
+    if payload.remarks is not None:
+        claim_data["remarks"] = payload.remarks
+
+    create_resp = db.table("claims").insert(claim_data).execute()
+    if not create_resp.data:
+        raise HTTPException(status_code=500, detail="Failed to create claim")
+
+    return create_resp.data[0]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /claims/{claim_id}
+# ---------------------------------------------------------------------------
+
+@router.patch("/{claim_id}")
+async def update_claim(
+    claim_id: str,
+    payload: ClaimUpdate,
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    _get_claim_or_404(db, claim_id)
+
+    # Build update dict from only provided fields, excluding immutable fields
+    immutable = {"reference_code", "claim_number", "created_at"}
+    update_data = {}
+    for field, value in payload.model_dump(exclude_none=True).items():
+        if field in immutable:
+            continue
+        if hasattr(value, "value"):
+            # Enum → string
+            update_data[field] = value.value
+        elif hasattr(value, "isoformat"):
+            update_data[field] = value.isoformat()
+        else:
+            update_data[field] = value
+
+    if not update_data:
+        raise HTTPException(status_code=422, detail="No updatable fields provided")
+
+    # Convert Decimal to string for JSON serialisation
+    for k, v in update_data.items():
+        from decimal import Decimal
+        if isinstance(v, Decimal):
+            update_data[k] = str(v)
+        if isinstance(v, list):
+            update_data[k] = v
+
+    # Detect whether stale-doc fields are being changed
+    stale_trigger = STALE_TRIGGER_FIELDS.intersection(update_data.keys())
+
+    stale_document_types = []
+    if stale_trigger:
+        # Find current documents for this claim
+        docs_resp = (
+            db.table("claim_documents")
+            .select("id, type")
+            .eq("claim_id", claim_id)
+            .eq("is_current", True)
+            .execute()
+        )
+        if docs_resp.data:
+            stale_document_types = [d["type"] for d in docs_resp.data]
+            stale_ids = [d["id"] for d in docs_resp.data]
+            # Mark them as stale
+            db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
+
+    # Perform the update
+    update_resp = (
+        db.table("claims")
+        .update(update_data)
+        .eq("id", claim_id)
+        .execute()
+    )
+    if not update_resp.data:
+        raise HTTPException(status_code=500, detail="Failed to update claim")
+
+    return {
+        "claim": update_resp.data[0],
+        "stale_documents": stale_document_types,
+    }
+
+
+# ---------------------------------------------------------------------------
+# DELETE /claims/{claim_id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/{claim_id}")
+async def delete_claim(
+    claim_id: str,
+    hard: bool = Query(default=False),
+    member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    if hard:
+        # Hard delete requires director role
+        if member.get("role") != "director":
+            raise HTTPException(status_code=403, detail="Access denied: director role required")
+
+        # Confirm the claim exists (including soft-deleted)
+        resp = db.table("claims").select("id").eq("id", claim_id).execute()
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Claim not found")
+
+        db.table("claims").delete().eq("id", claim_id).execute()
+    else:
+        # Soft delete
+        _get_claim_or_404(db, claim_id)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.table("claims").update({"deleted_at": now_iso}).eq("id", claim_id).execute()
+
+    return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/restore
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/restore")
+async def restore_claim(
+    claim_id: str,
+    _member: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    # Check claim exists (including soft-deleted)
+    resp = db.table("claims").select("id, deleted_at").eq("id", claim_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    claim = resp.data[0]
+    if not claim.get("deleted_at"):
+        raise HTTPException(status_code=409, detail="Claim is not deleted")
+
+    restore_resp = (
+        db.table("claims")
+        .update({"deleted_at": None})
+        .eq("id", claim_id)
+        .execute()
+    )
+    if not restore_resp.data:
+        raise HTTPException(status_code=500, detail="Failed to restore claim")
+
+    return restore_resp.data[0]
