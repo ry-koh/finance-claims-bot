@@ -22,12 +22,12 @@ class WBSAccount(str, Enum):
 class ClaimStatus(str, Enum):
     DRAFT = "draft"
     EMAIL_SENT = "email_sent"
-    PENDING_APPROVAL = "pending_approval"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    SCREENSHOT_PENDING = "screenshot_pending"
+    SCREENSHOT_UPLOADED = "screenshot_uploaded"
+    DOCS_GENERATED = "docs_generated"
+    COMPILED = "compiled"
+    SUBMITTED = "submitted"
+    REIMBURSED = "reimbursed"
     ERROR = "error"
 
 
