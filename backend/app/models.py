@@ -192,26 +192,37 @@ class Receipt(BaseModel):
 
 
 class ReceiptCreate(BaseModel):
-    claim_id: UUID
-    line_item_id: Optional[UUID] = None
+    claim_id: str
     receipt_no: Optional[str] = None
     description: str
     company: Optional[str] = None
-    date: Optional[date] = None
-    amount: Decimal
+    date: Optional[str] = None  # ISO format YYYY-MM-DD
+    amount: float
+    category: str
+    gst_code: str = "IE"  # IE, I9, or L9
+    dr_cr: str = "DR"
     receipt_image_drive_id: Optional[str] = None
     bank_screenshot_drive_id: Optional[str] = None
 
 
 class ReceiptUpdate(BaseModel):
-    line_item_id: Optional[UUID] = None
     receipt_no: Optional[str] = None
     description: Optional[str] = None
     company: Optional[str] = None
-    date: Optional[date] = None
-    amount: Optional[Decimal] = None
+    date: Optional[str] = None  # ISO format YYYY-MM-DD
+    amount: Optional[float] = None
+    category: Optional[str] = None
+    gst_code: Optional[str] = None
+    dr_cr: Optional[str] = None
     receipt_image_drive_id: Optional[str] = None
     bank_screenshot_drive_id: Optional[str] = None
+
+
+class SplitCheckResponse(BaseModel):
+    split_needed: bool
+    reason: Optional[str] = None  # 'max_categories' or None
+    receipt: Optional[dict] = None
+    line_item: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------

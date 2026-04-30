@@ -135,6 +135,65 @@ async def get_claim(
 
 
 # ---------------------------------------------------------------------------
+# GET /claims/{claim_id}/line-items — Get all line items with nested receipts
+# ---------------------------------------------------------------------------
+
+@router.get("/{claim_id}/line-items")
+async def get_claim_line_items(
+    claim_id: str,
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """
+    Return all line items for a claim ordered by line_item_index,
+    each with its receipts list nested inside.
+    """
+    # Verify claim exists
+    resp = (
+        db.table("claims")
+        .select("id")
+        .eq("id", claim_id)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    # Fetch line items ordered by index
+    line_items_resp = (
+        db.table("claim_line_items")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .order("line_item_index")
+        .execute()
+    )
+    line_items = line_items_resp.data
+
+    # Fetch all receipts for the claim in one query
+    receipts_resp = (
+        db.table("receipts")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .order("created_at")
+        .execute()
+    )
+
+    # Group receipts by line_item_id
+    receipts_by_line_item: dict = {}
+    for receipt in receipts_resp.data:
+        li_id = receipt.get("line_item_id")
+        if li_id not in receipts_by_line_item:
+            receipts_by_line_item[li_id] = []
+        receipts_by_line_item[li_id].append(receipt)
+
+    # Nest receipts into each line item
+    for li in line_items:
+        li["receipts"] = receipts_by_line_item.get(li["id"], [])
+
+    return line_items
+
+
+# ---------------------------------------------------------------------------
 # POST /claims
 # ---------------------------------------------------------------------------
 
