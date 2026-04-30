@@ -9,3 +9,89 @@ configured GOOGLE_DRIVE_PARENT_FOLDER_ID.  Responsibilities include:
 - Returning shareable Drive file IDs stored on the Claim / Receipt rows.
 - Deleting or moving files when a claim is cancelled or superseded.
 """
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+from app.config import settings
+import json
+import io
+import logging
+
+logger = logging.getLogger(__name__)
+
+SCOPES = ['https://www.googleapis.com/auth/drive']
+
+
+def get_drive_service():
+    """
+    Build and return an authenticated Google Drive v3 service using the
+    service account credentials stored in settings.
+    """
+    info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
+    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    return build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+
+def upload_file(file_bytes: bytes, filename: str, mime_type: str, parent_folder_id: str) -> str:
+    """
+    Upload file_bytes to Google Drive under parent_folder_id.
+    Returns the Drive file ID string.
+    """
+    drive = get_drive_service()
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime_type, resumable=False)
+    result = drive.files().create(
+        body={"name": filename, "parents": [parent_folder_id]},
+        media_body=media,
+        fields="id",
+    ).execute()
+    return result["id"]
+
+
+def get_or_create_folder(name: str, parent_folder_id: str) -> str:
+    """
+    Return the Drive folder ID for a folder named `name` directly under
+    `parent_folder_id`.  Creates the folder if it does not already exist.
+    """
+    drive = get_drive_service()
+
+    # Escape single quotes in the folder name to avoid query injection
+    safe_name = name.replace("'", "\\'")
+    query = (
+        f"name='{safe_name}' "
+        f"and '{parent_folder_id}' in parents "
+        f"and mimeType='application/vnd.google-apps.folder' "
+        f"and trashed=false"
+    )
+    result = drive.files().list(q=query, fields="files(id)").execute()
+    files = result.get("files", [])
+
+    if files:
+        return files[0]["id"]
+
+    # Create the folder
+    folder = drive.files().create(
+        body={
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_folder_id],
+        },
+        fields="id",
+    ).execute()
+    return folder["id"]
+
+
+def get_claim_folder_id(reference_code: str) -> str:
+    """
+    Return (creating if necessary) the Drive folder ID for the given claim
+    reference code under the top-level parent folder.
+    """
+    return get_or_create_folder(reference_code, settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
+
+
+def delete_file(file_id: str) -> None:
+    """
+    Move a Drive file to the trash (soft delete).
+    """
+    drive = get_drive_service()
+    drive.files().update(fileId=file_id, body={"trashed": True}).execute()
