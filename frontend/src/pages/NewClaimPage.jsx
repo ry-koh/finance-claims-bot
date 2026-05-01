@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useClaimers, useCreateClaimer } from '../api/claimers'
@@ -695,34 +695,64 @@ function Step3({ receipts, onAddReceipt, onRemoveReceipt }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+const DRAFT_KEY = 'new_claim_draft'
+
+const DEFAULT_STEP1 = { portfolioId: '', ccaId: '', claimerId: '' }
+const DEFAULT_STEP2 = {
+  claimDescription: '',
+  date: today(),
+  wbsAccount: '',
+  remarks: '',
+  transportFormNeeded: false,
+  otherEmails: [],
+}
+
 export default function NewClaimPage() {
   const navigate = useNavigate()
   const createClaim = useCreateClaim()
   const createReceipt = useCreateReceipt()
+  const savedSuccessfully = useRef(false)
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
   // Step 1 state
-  const [step1, setStep1] = useState({
-    portfolioId: '',
-    ccaId: '',
-    claimerId: '',
-  })
+  const [step1, setStep1] = useState(DEFAULT_STEP1)
 
   // Step 2 state
-  const [step2, setStep2] = useState({
-    claimDescription: '',
-    date: today(),
-    wbsAccount: '',
-    remarks: '',
-    transportFormNeeded: false,
-    otherEmails: [],
-  })
+  const [step2, setStep2] = useState(DEFAULT_STEP2)
 
   // Step 3 state
   const [receipts, setReceipts] = useState([])
+
+  // Restore draft from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(DRAFT_KEY)
+      if (saved) {
+        const { step: s, step1: s1, step2: s2, receipts: r } = JSON.parse(saved)
+        if (s1) setStep1(s1)
+        if (s2) setStep2(s2)
+        if (r) setReceipts(r)
+        if (s) setStep(s)
+      }
+    } catch {}
+  }, [])
+
+  // Persist draft to sessionStorage on every change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts }))
+    } catch {}
+  }, [step, step1, step2, receipts])
+
+  // Clear draft on unmount only if save succeeded
+  useEffect(() => {
+    return () => {
+      if (savedSuccessfully.current) sessionStorage.removeItem(DRAFT_KEY)
+    }
+  }, [])
 
   // ── Step validation ──────────────────────────────────────────────────────
 
@@ -787,6 +817,8 @@ export default function NewClaimPage() {
         })
       }
 
+      savedSuccessfully.current = true
+      sessionStorage.removeItem(DRAFT_KEY)
       navigate(`/claims/${claimId}`)
     } catch (err) {
       if (claimId) {
@@ -814,7 +846,7 @@ export default function NewClaimPage() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 px-4 py-4">
+      <div className="flex-1 px-4 py-4 pb-24">
         <StepIndicator current={step} />
 
         {step === 1 && <Step1 data={step1} onChange={updateStep1} />}

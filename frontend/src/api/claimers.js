@@ -33,7 +33,7 @@ export function useClaimers(params = {}) {
   return useQuery({
     queryKey: CLAIMER_KEYS.list(params),
     queryFn: () => fetchClaimers(params),
-    enabled: !!params?.cca_id,
+    enabled: 'cca_id' in params ? !!params.cca_id : true,
   })
 }
 
