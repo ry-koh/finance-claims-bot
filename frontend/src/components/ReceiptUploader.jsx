@@ -80,12 +80,17 @@ export default function ReceiptUploader({
   }
 
   function handleConfirm() {
+    if (uploadImageMutation.isPending) return
     const cropper = cropperRef.current?.cropper
     if (!cropper) return
 
     cropper.getCroppedCanvas().toBlob(
       (blob) => {
-        if (!blob) return
+        if (!blob) {
+          setProcessError('Could not read the cropped image. Please try again.')
+          setUiState(STATE_IDLE)
+          return
+        }
         const file = new File([blob], 'cropped.jpg', { type: 'image/jpeg' })
         uploadImageMutation.mutate(
           { file, claim_id: claimId, image_type: imageType },
@@ -131,7 +136,7 @@ export default function ReceiptUploader({
         <Cropper
           ref={cropperRef}
           src={processedImage}
-          aspectRatio={NaN}
+          aspectRatio={NaN} // intentional: NaN = free-form (no fixed aspect ratio)
           viewMode={1}
           autoCropArea={0.9}
           responsive

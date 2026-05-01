@@ -81,8 +81,12 @@ export function useProcessReceiptImage(options = {}) {
 }
 
 export function useUploadReceiptImage(options = {}) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: uploadReceiptImage,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: RECEIPT_KEYS.all })
+    },
     ...options,
   })
 }
