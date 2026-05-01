@@ -9,6 +9,11 @@ body {
   color: var(--tg-theme-text-color, #000000);
 }
 
+input, select, textarea {
+  color: #111827;
+  background-color: #ffffff;
+}
+
 .scrollbar-none {
   scrollbar-width: none;
 }
