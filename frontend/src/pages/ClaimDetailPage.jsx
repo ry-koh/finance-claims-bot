@@ -76,7 +76,8 @@ function ActionButton({ onClick, disabled, loading, children, variant = 'primary
 
 // Vertical stepper pipeline
 function StatusPipeline({ claim, onAction }) {
-  const currentIdx = statusIndex(claim.status)
+  const displayStatus = claim.status === 'error' ? 'screenshot_uploaded' : claim.status
+  const currentIdx = statusIndex(displayStatus)
 
   const steps = [
     {
@@ -95,7 +96,7 @@ function StatusPipeline({ claim, onAction }) {
               Resend
             </ActionButton>
           )}
-          {isCurrent && claim.status === 'draft' && (
+          {isCurrent && displayStatus === 'draft' && (
             <ActionButton
               onClick={() => onAction('send')}
               loading={onAction.loading?.send}
@@ -169,7 +170,7 @@ function StatusPipeline({ claim, onAction }) {
       {steps.map((step, idx) => {
         const doneIdx = statusIndex(step.doneAt)
         const isDone = currentIdx >= doneIdx && doneIdx !== -1
-        const isCurrent = step.activeAt.includes(claim.status)
+        const isCurrent = step.activeAt.includes(displayStatus)
         const isLocked = !isDone && !isCurrent
 
         return (
@@ -514,6 +515,15 @@ export default function ClaimDetailPage() {
               <p className="text-xs text-red-600 mt-0.5">
                 {claim.error_message || 'An error occurred with this claim.'}
               </p>
+              <div className="mt-2">
+                <ActionButton
+                  variant="danger"
+                  onClick={() => handleAction('generate')}
+                  loading={handleAction.loading?.generate}
+                >
+                  Retry: Generate Documents
+                </ActionButton>
+              </div>
             </div>
             <button
               onClick={() => setErrorDismissed(true)}
