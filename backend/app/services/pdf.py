@@ -441,3 +441,205 @@ def generate_summary(
             delete_drive_file(copied_id)
         except Exception as exc:
             logger.warning("Failed to trash temp summary copy %s: %s", copied_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# RFP generation
+# ---------------------------------------------------------------------------
+
+def generate_rfp(
+    claim: dict,
+    line_items: list,
+    finance_director: dict,
+    folder_id: str,
+) -> bytes:
+    """
+    Generate a Request for Payment (RFP) PDF from the Google Doc template.
+
+    Parameters
+    ----------
+    claim : dict
+        Keys: reference_code, wbs_no, total_amount
+    line_items : list[dict]
+        Up to 5 items.  Each has: dr_cr, category_code, total_amount, gst_code.
+    finance_director : dict
+        Keys: name, matric_no
+    folder_id : str
+        Drive folder ID where the temporary copy will be created.
+
+    Returns
+    -------
+    bytes
+        PDF bytes of the completed RFP.
+    """
+    copied_id = copy_template(
+        settings.RFP_TEMPLATE_ID,
+        f"RFP - {claim['reference_code']}",
+        folder_id,
+    )
+    try:
+        # Build placeholder replacements
+        replacements = {
+            "{{MATRIC}}": finance_director["matric_no"].upper(),
+            "{{NAME}}": finance_director["name"].upper(),
+            "{{TOTAL_AMOUNT}}": f"{claim['total_amount']:.2f}",
+            "{{REFERENCE_CODE}}": claim["reference_code"],
+        }
+
+        for i, item in enumerate(line_items[:5], start=1):
+            dollars = int(item["total_amount"])
+            cents = round((item["total_amount"] - dollars) * 100)
+            replacements.update({
+                f"{{{{DR_CR_{i}}}}}": item.get("dr_cr", "DR"),
+                f"{{{{GL_{i}}}}}": item.get("category_code", ""),
+                f"{{{{DOLLAR_{i}}}}}": str(dollars),
+                f"{{{{CENTS_{i}}}}}": f"{cents:02d}",
+                f"{{{{GST_{i}}}}}": item.get("gst_code", "IE"),
+                f"{{{{WBS_{i}}}}}": claim.get("wbs_no", ""),
+            })
+
+        # Clear unused line item slots (indices beyond actual line_items count)
+        for i in range(len(line_items) + 1, 6):
+            for field in ["DR_CR", "GL", "DOLLAR", "CENTS", "GST", "WBS"]:
+                replacements[f"{{{{{field}_{i}}}}}"] = ""
+
+        # Apply all replacements via Docs batchUpdate replaceAllText
+        docs_service = get_docs_service()
+        requests = [
+            {
+                "replaceAllText": {
+                    "containsText": {"text": placeholder, "matchCase": True},
+                    "replaceText": value,
+                }
+            }
+            for placeholder, value in replacements.items()
+        ]
+        docs_service.documents().batchUpdate(
+            documentId=copied_id,
+            body={"requests": requests},
+        ).execute()
+
+        return export_as_pdf(copied_id, mime_type="application/vnd.google-apps.document")
+
+    finally:
+        try:
+            delete_drive_file(copied_id)
+        except Exception as exc:
+            logger.warning("Failed to trash temp RFP copy %s: %s", copied_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# Transport Form generation
+# ---------------------------------------------------------------------------
+
+def generate_transport(
+    claim: dict,
+    transport_data: dict,
+    finance_director: dict,
+    folder_id: str,
+) -> bytes:
+    """
+    Generate a transport claim form PDF from the Google Sheets template.
+
+    Parameters
+    ----------
+    claim : dict
+        Keys: reference_code, wbs_no
+    transport_data : dict
+        Keys:
+          trips        - list of dicts with keys: from, to, purpose,
+                         distance_km (float | None), mode ("taxi" | "bus_mrt" |
+                         "mileage"), amount (float)
+          total_amount - float (used by the financial rows pre-filled in the
+                         template; finance team verifies)
+    finance_director : dict
+        Keys: name
+    folder_id : str
+        Drive folder ID where the temporary copy will be created.
+
+    Returns
+    -------
+    bytes
+        PDF bytes of the completed transport form.
+
+    Notes
+    -----
+    Trip rows are written into the trip table starting at row 2 (A2).
+    The financial table rows are pre-filled in the template; only the WBS
+    number is substituted using a Sheets findReplace request so that
+    any {{WBS_NO}} placeholder present in the template is replaced.
+    """
+    copied_id = copy_template(
+        settings.TRANSPORT_TEMPLATE_ID,
+        f"Transport - {claim['reference_code']}",
+        folder_id,
+    )
+    try:
+        sheets = get_sheets_service()
+
+        # Retrieve the first sheet name
+        spreadsheet = sheets.spreadsheets().get(
+            spreadsheetId=copied_id,
+            fields="sheets.properties.title",
+        ).execute()
+        sheet_name = spreadsheet["sheets"][0]["properties"]["title"]
+
+        # Build trip rows.
+        # Column layout (A–I): From | gap | To | gap | Purpose | gap | Distance | Taxi/Mileage | Bus/MRT
+        trips = transport_data.get("trips", [])
+        trip_rows = []
+        for trip in trips:
+            mode = trip.get("mode", "")
+            amount = trip.get("amount", "")
+
+            # Taxi and mileage (private car) amounts go in the Taxi column (col H).
+            # Bus/MRT amounts go in the Bus/MRT column (col I).
+            taxi_col = amount if mode in ("taxi", "mileage") else ""
+            bus_mrt_col = amount if mode == "bus_mrt" else ""
+
+            distance = trip.get("distance_km")
+            trip_rows.append([
+                trip.get("from", ""),   # A
+                "",                      # B (gap)
+                trip.get("to", ""),      # C
+                "",                      # D (gap)
+                trip.get("purpose", ""), # E
+                "",                      # F (gap)
+                distance if distance is not None else "",  # G
+                taxi_col,                # H
+                bus_mrt_col,             # I
+            ])
+
+        if trip_rows:
+            sheets.spreadsheets().values().update(
+                spreadsheetId=copied_id,
+                range=f"{sheet_name}!A2",
+                valueInputOption="USER_ENTERED",
+                body={"values": trip_rows},
+            ).execute()
+
+        # Substitute {{WBS_NO}} placeholder in the financial table (and anywhere
+        # else it appears) using Sheets findReplace.
+        wbs_no = claim.get("wbs_no", "")
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId=copied_id,
+            body={
+                "requests": [
+                    {
+                        "findReplace": {
+                            "find": "{{WBS_NO}}",
+                            "replacement": wbs_no,
+                            "allSheets": True,
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
+        return export_as_pdf(copied_id, mime_type="application/vnd.google-apps.spreadsheet")
+
+    finally:
+        try:
+            delete_drive_file(copied_id)
+        except Exception as exc:
+            logger.warning("Failed to trash temp transport copy %s: %s", copied_id, exc)
