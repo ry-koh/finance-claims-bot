@@ -4,8 +4,17 @@
 
 ### 1. Supabase
 1. Go to supabase.com and create a free project
-2. Go to SQL Editor and run all files in `supabase/migrations/` in order (001 → 005)
-3. Copy your Project URL and service role key from Settings → API
+2. Run the database migrations:
+   - In your Supabase project, go to **SQL Editor** (left sidebar)
+   - Click **New query**
+   - Open each file below, copy its full contents, paste into the editor, and click **Run**:
+     1. `supabase/migrations/001_schema.sql`
+     2. `supabase/migrations/002_indexes.sql`
+     3. `supabase/migrations/003_functions.sql`
+     4. `supabase/migrations/004_seed.sql`
+     5. `supabase/migrations/005_transport_data.sql`
+   - Run them in order — each one builds on the previous
+3. Copy your Project URL and service role key from **Settings → API**
 
 ### 2. Google Cloud
 1. Go to console.cloud.google.com and create a new project
