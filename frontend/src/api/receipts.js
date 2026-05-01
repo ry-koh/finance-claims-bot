@@ -24,11 +24,7 @@ export const uploadReceiptImage = ({ file, claim_id, image_type }) => {
   form.append('file', file)
   form.append('claim_id', String(claim_id))
   form.append('image_type', image_type)
-  return api
-    .post('/receipts/upload-image', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    .then((r) => r.data)
+  return api.post('/receipts/upload-image', form).then((r) => r.data)
 }
 
 export const createReceipt = (body) =>

@@ -63,13 +63,8 @@ export function useUpdateClaim(options = {}) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateClaim,
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
-      if (data?.claim?.id) {
-        queryClient.setQueryData(CLAIM_KEYS.detail(data.claim.id), data.claim)
-      } else if (data?.id) {
-        queryClient.setQueryData(CLAIM_KEYS.detail(data.id), data)
-      }
     },
     ...options,
   })

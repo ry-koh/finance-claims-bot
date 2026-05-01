@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
-import { WBS_ACCOUNTS } from '../constants/claimConstants'
+import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt } from '../api/receipts'
+import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -321,6 +322,10 @@ export default function ClaimDetailPage() {
   const compileDocsMut = useCompileDocuments()
   const updateClaimMut = useUpdateClaim()
   const deleteClaimMut = useDeleteClaim()
+  const createReceiptMut = useCreateReceipt()
+  const updateReceiptMut = useUpdateReceipt()
+  const deleteReceiptMut = useDeleteReceipt()
+  const [showAddReceipt, setShowAddReceipt] = useState(false)
 
   // UI state
   const [editMode, setEditMode] = useState(false)
@@ -436,6 +441,52 @@ export default function ClaimDetailPage() {
         },
       }
     )
+  }
+
+  // ─── Receipt helpers ─────────────────────────────────────────────────────────
+
+  function recalcAndUpdateTotal(updatedReceipts) {
+    const total = updatedReceipts.reduce((s, r) => s + Number(r.amount), 0)
+    updateClaimMut.mutate({ id, total_amount: total }, { onSuccess: invalidateClaim })
+  }
+
+  function handleAddReceipt(fields) {
+    createReceiptMut.mutate(
+      { claim_id: id, ...fields },
+      {
+        onSuccess: () => {
+          setShowAddReceipt(false)
+          const updated = [...(claim.receipts ?? []), fields]
+          recalcAndUpdateTotal(updated)
+        },
+        onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to add receipt.'),
+      }
+    )
+  }
+
+  function handleEditReceipt(receipt, fields) {
+    updateReceiptMut.mutate(
+      { id: receipt.id, confirm_category_change: true, ...fields },
+      {
+        onSuccess: () => {
+          const updated = (claim.receipts ?? []).map((r) =>
+            r.id === receipt.id ? { ...r, ...fields } : r
+          )
+          recalcAndUpdateTotal(updated)
+        },
+        onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to update receipt.'),
+      }
+    )
+  }
+
+  function handleDeleteReceipt(receipt) {
+    deleteReceiptMut.mutate(receipt.id, {
+      onSuccess: () => {
+        const updated = (claim.receipts ?? []).filter((r) => r.id !== receipt.id)
+        recalcAndUpdateTotal(updated)
+      },
+      onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to delete receipt.'),
+    })
   }
 
   // ─── Loading / error states ──────────────────────────────────────────────────
@@ -710,18 +761,42 @@ export default function ClaimDetailPage() {
         </div>
 
         {/* ── Receipts ── */}
-        {claim.receipts?.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              Receipts ({claim.receipts.length})
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">
+              Receipts ({claim.receipts?.length ?? 0})
             </h2>
-            <div className="flex flex-col gap-2">
-              {claim.receipts.map((r) => (
-                <ReceiptRow key={r.id} receipt={r} />
-              ))}
-            </div>
+            {!showAddReceipt && (
+              <button
+                onClick={() => setShowAddReceipt(true)}
+                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+              >
+                + Add
+              </button>
+            )}
           </div>
-        )}
+          <div className="flex flex-col">
+            {(claim.receipts ?? []).map((r) => (
+              <ReceiptRow
+                key={r.id}
+                receipt={r}
+                onEdit={(fields) => handleEditReceipt(r, fields)}
+                onDelete={() => handleDeleteReceipt(r)}
+                saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
+              />
+            ))}
+            {!claim.receipts?.length && !showAddReceipt && (
+              <p className="text-xs text-gray-400 text-center py-2">No receipts</p>
+            )}
+          </div>
+          {showAddReceipt && (
+            <ReceiptInlineForm
+              onSave={handleAddReceipt}
+              onCancel={() => setShowAddReceipt(false)}
+              saving={createReceiptMut.isPending}
+            />
+          )}
+        </div>
 
         {/* ── Documents ── */}
         {claim.documents?.length > 0 && (
@@ -781,39 +856,146 @@ function InfoRow({ label, value, bold }) {
   )
 }
 
-function ReceiptRow({ receipt }) {
+const EMPTY_RECEIPT_FIELDS = {
+  description: '', amount: '', category: '', gst_code: 'IE',
+  dr_cr: 'DR', receipt_no: '', company: '', date: '',
+}
+
+function ReceiptInlineForm({ initial, onSave, onCancel, saving }) {
+  const [f, setF] = useState({ ...EMPTY_RECEIPT_FIELDS, ...initial })
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
+  const [err, setErr] = useState({})
+
+  function handleSave() {
+    const e = {}
+    if (!f.description.trim()) e.description = 'Required'
+    if (!f.amount || isNaN(Number(f.amount)) || Number(f.amount) <= 0) e.amount = 'Enter valid amount'
+    if (!f.category) e.category = 'Required'
+    if (Object.keys(e).length) { setErr(e); return }
+    onSave({ ...f, amount: Number(f.amount) })
+  }
+
+  const inputCls = 'w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
   return (
-    <div className="flex items-start gap-2 py-2 border-b border-gray-50 last:border-0">
-      <div className="flex-1">
-        <p className="text-xs font-semibold text-gray-700">
-          #{receipt.receipt_no} — {receipt.description ?? 'Receipt'}
-        </p>
-        <p className="text-xs text-gray-500">
-          {receipt.category ?? '—'} · {formatAmount(receipt.amount)}
-        </p>
+    <div className="mt-2 pt-3 border-t border-gray-100 space-y-2">
+      <p className="text-xs font-semibold text-gray-600">{initial ? 'Edit Receipt' : 'New Receipt'}</p>
+      <div>
+        <input className={inputCls} placeholder="Description *" value={f.description} onChange={set('description')} />
+        {err.description && <p className="text-xs text-red-500 mt-0.5">{err.description}</p>}
       </div>
-      <div className="flex gap-2 shrink-0">
-        {receipt.receipt_image_drive_id && (
-          <a
-            href={driveUrl(receipt.receipt_image_drive_id)}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-blue-600 underline"
-          >
-            Receipt
-          </a>
-        )}
-        {receipt.bank_screenshot_drive_id && (
-          <a
-            href={driveUrl(receipt.bank_screenshot_drive_id)}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-blue-600 underline"
-          >
-            Bank
-          </a>
-        )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <input className={inputCls} type="number" placeholder="Amount *" value={f.amount} onChange={set('amount')} />
+          {err.amount && <p className="text-xs text-red-500 mt-0.5">{err.amount}</p>}
+        </div>
+        <div>
+          <select className={inputCls} value={f.category} onChange={set('category')}>
+            <option value="">Category *</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {err.category && <p className="text-xs text-red-500 mt-0.5">{err.category}</p>}
+        </div>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <select className={inputCls} value={f.gst_code} onChange={set('gst_code')}>
+          {GST_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className={inputCls} value={f.dr_cr} onChange={set('dr_cr')}>
+          {DR_CR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={inputCls} placeholder="Receipt No." value={f.receipt_no} onChange={set('receipt_no')} />
+        <input className={inputCls} placeholder="Company" value={f.company} onChange={set('company')} />
+      </div>
+      <input className={inputCls} type="date" value={f.date} onChange={set('date')} />
+      <div className="flex gap-2 pt-1">
+        <button onClick={handleSave} disabled={saving}
+          className="flex-1 bg-blue-600 text-white text-xs font-medium py-1.5 rounded disabled:opacity-50">
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={onCancel} disabled={saving}
+          className="flex-1 bg-gray-100 text-gray-700 text-xs font-medium py-1.5 rounded disabled:opacity-50">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ReceiptRow({ receipt, onEdit, onDelete, saving }) {
+  const [editing, setEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  if (editing) {
+    return (
+      <div className="py-2 border-b border-gray-50 last:border-0">
+        <ReceiptInlineForm
+          initial={{
+            description: receipt.description ?? '',
+            amount: String(receipt.amount ?? ''),
+            category: receipt.category ?? '',
+            gst_code: receipt.gst_code ?? 'IE',
+            dr_cr: receipt.dr_cr ?? 'DR',
+            receipt_no: receipt.receipt_no ?? '',
+            company: receipt.company ?? '',
+            date: receipt.date ?? '',
+          }}
+          onSave={(fields) => { onEdit(fields); setEditing(false) }}
+          onCancel={() => setEditing(false)}
+          saving={saving}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-700">
+            {receipt.receipt_no ? `#${receipt.receipt_no} — ` : ''}{receipt.description ?? 'Receipt'}
+          </p>
+          <p className="text-xs text-gray-500">
+            {receipt.category ?? '—'} · {formatAmount(receipt.amount)}
+            {receipt.company ? ` · ${receipt.company}` : ''}
+          </p>
+          <p className="text-xs text-gray-400">{receipt.gst_code} · {receipt.dr_cr}</p>
+        </div>
+        <div className="flex gap-1.5 shrink-0 items-center">
+          {receipt.receipt_image_drive_id && (
+            <a href={driveUrl(receipt.receipt_image_drive_id)} target="_blank" rel="noreferrer"
+              className="text-xs text-blue-600 underline">Receipt</a>
+          )}
+          {receipt.bank_screenshot_drive_id && (
+            <a href={driveUrl(receipt.bank_screenshot_drive_id)} target="_blank" rel="noreferrer"
+              className="text-xs text-blue-600 underline">Bank</a>
+          )}
+          <button onClick={() => setEditing(true)}
+            className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded hover:bg-blue-50">
+            Edit
+          </button>
+          <button onClick={() => setConfirmDelete(true)}
+            className="text-xs text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50">
+            Del
+          </button>
+        </div>
+      </div>
+      {confirmDelete && (
+        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
+          <p className="text-red-700 mb-2">Delete this receipt?</p>
+          <div className="flex gap-2">
+            <button onClick={() => { onDelete(); setConfirmDelete(false) }} disabled={saving}
+              className="flex-1 bg-red-600 text-white rounded py-1 font-medium disabled:opacity-50">
+              {saving ? '…' : 'Confirm'}
+            </button>
+            <button onClick={() => setConfirmDelete(false)}
+              className="flex-1 bg-gray-100 text-gray-700 rounded py-1 font-medium">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

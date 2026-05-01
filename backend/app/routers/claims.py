@@ -24,9 +24,9 @@ STALE_TRIGGER_FIELDS = {
 }
 
 
-def _slug(text: str, max_chars: int = 10) -> str:
-    """Upper-case, replace spaces with hyphens, truncate to max_chars."""
-    return text.upper().replace(" ", "-")[:max_chars]
+def _slug(text: str) -> str:
+    """Upper-case and replace spaces with hyphens."""
+    return text.upper().replace(" ", "-")
 
 
 def _get_claim_or_404(db: Client, claim_id: str) -> dict:
@@ -91,7 +91,7 @@ async def get_claim(
     # Fetch claim (with claimer)
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:claimers(*)")
+        .select("*, claimer:claimers(*, cca:ccas(*, portfolio:portfolios(*)))")
         .eq("id", claim_id)
         .is_("deleted_at", "null")
         .execute()

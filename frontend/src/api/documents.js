@@ -17,11 +17,7 @@ export const compileDocuments = (claimId) =>
 export const uploadScreenshot = ({ claimId, file }) => {
   const form = new FormData()
   form.append('file', file)
-  return api
-    .post(`/documents/upload-screenshot/${claimId}`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    .then((r) => r.data)
+  return api.post(`/documents/upload-screenshot/${claimId}`, form).then((r) => r.data)
 }
 
 export const submitTransportData = ({ claimId, trips }) =>

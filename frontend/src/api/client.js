@@ -3,6 +3,7 @@ import WebApp from '@twa-dev/sdk'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
+  timeout: 90000,
 })
 
 // Attach Telegram user ID to every request for auth

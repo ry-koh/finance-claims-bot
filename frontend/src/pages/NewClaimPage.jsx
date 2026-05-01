@@ -833,7 +833,7 @@ export default function NewClaimPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col min-h-full bg-gray-50">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center gap-3">
         <button
@@ -846,7 +846,7 @@ export default function NewClaimPage() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 px-4 py-4 pb-24">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
         <StepIndicator current={step} />
 
         {step === 1 && <Step1 data={step1} onChange={updateStep1} />}
@@ -867,7 +867,7 @@ export default function NewClaimPage() {
       </div>
 
       {/* Footer navigation */}
-      <div className="sticky bottom-16 bg-white border-t border-gray-100 px-4 py-3 flex gap-3">
+      <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3 flex gap-3">
         {step > 1 && (
           <button
             type="button"
