@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import bot, claimers, claims, documents, portfolios, receipts
+from app.routers import bot, claimers, claims, documents, email as email_router, portfolios, receipts
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ app.include_router(receipts.router)
 app.include_router(documents.router)
 app.include_router(portfolios.router)
 app.include_router(bot.router)
+app.include_router(email_router.router)
 
 
 # ---------------------------------------------------------------------------
