@@ -23,9 +23,7 @@ def _get_bot() -> Bot:
 
 
 def _mini_app_url() -> str:
-    """Return the Mini App URL, stripping the 'api.' prefix from the backend URL."""
-    base = settings.RENDER_EXTERNAL_URL or "https://example.com"
-    return base.replace("api.", "")
+    return settings.MINI_APP_URL or "https://example.com"
 
 
 async def _send_message(bot: Bot, chat_id: int, text: str, **kwargs) -> None:
@@ -79,6 +77,58 @@ async def _handle_start(bot: Bot, db, chat_id: int, telegram_id: int, name: str)
         bot,
         chat_id,
         f"Welcome, {member['name']}! Use the button below to open the Claims App.",
+        reply_markup=keyboard,
+    )
+
+
+async def _handle_register_director(
+    bot: Bot, db, chat_id: int, sender_id: int, args: list[str]
+) -> None:
+    """/register_director <name> <email> — bootstrap the first Finance Director.
+    Only works when the finance_team table is completely empty."""
+    existing = db.table("finance_team").select("id", count="exact").limit(1).execute()
+    if existing.count and existing.count > 0:
+        await _send_message(
+            bot,
+            chat_id,
+            "A Finance Director is already registered. "
+            "Ask them to use /confirm_member to add new members.",
+        )
+        return
+
+    if len(args) < 2:
+        await _send_message(
+            bot,
+            chat_id,
+            "Usage: /register_director <name> <email>\n"
+            "Example: /register_director Jane Doe jane@example.com",
+            parse_mode="HTML",
+        )
+        return
+
+    email = args[-1]
+    name = " ".join(args[:-1])
+
+    try:
+        db.table("finance_team").insert(
+            {"telegram_id": sender_id, "name": name, "email": email, "role": "director"}
+        ).execute()
+    except Exception as exc:
+        logger.error("Failed to register director: %s", exc)
+        await _send_message(bot, chat_id, f"Failed to register: {exc}")
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
+    )
+    await _send_message(
+        bot,
+        chat_id,
+        f"You are now registered as Finance Director, {name}!\n"
+        "Use the button below to open the Claims App.\n\n"
+        "To add team members:\n"
+        "1. Have them send /start to this bot.\n"
+        "2. Run /confirm_member with their Telegram ID.",
         reply_markup=keyboard,
     )
 
@@ -294,6 +344,9 @@ async def webhook(request: Request):
         if command == "/start":
             await _handle_start(bot, db, chat_id, sender_id, sender_name)
 
+        elif command == "/register_director":
+            await _handle_register_director(bot, db, chat_id, sender_id, args)
+
         elif command == "/addmember":
             await _handle_addmember(bot, db, chat_id, sender_id)
 
@@ -312,6 +365,7 @@ async def webhook(request: Request):
                 chat_id,
                 "Unknown command. Available commands:\n"
                 "/start — Open the Claims App\n"
+                "/register_director — First-time setup: register yourself as Finance Director\n"
                 "/addmember — Instructions to add a new member (director only)\n"
                 "/confirm_member — Register a new member (director only)\n"
                 "/listmembers — List all team members (director only)\n"

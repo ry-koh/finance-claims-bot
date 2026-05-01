@@ -4,7 +4,7 @@
 
 ### 1. Supabase
 1. Go to supabase.com and create a free project
-2. Go to SQL Editor and run all files in `supabase/migrations/` in order (001, 002, 003, 004)
+2. Go to SQL Editor and run all files in `supabase/migrations/` in order (001 → 005)
 3. Copy your Project URL and service role key from Settings → API
 
 ### 2. Google Cloud
@@ -39,15 +39,21 @@
    - Go to vercel.com → New Project → Connect your GitHub repo
    - Set root directory to `frontend/`
    - Add env var: `VITE_API_URL=https://your-render-app.onrender.com`
-4. **GitHub Actions:**
+   - Copy your Vercel URL (e.g. `https://finance-claims-bot.vercel.app`)
+4. **Set `MINI_APP_URL` on Render:**
+   - Go back to your Render service → Environment
+   - Add env var: `MINI_APP_URL=https://your-app.vercel.app`
+   - This is the URL the bot sends when users click "Open Claims App"
+5. **GitHub Actions:**
    - Go to your GitHub repo → Settings → Secrets → Actions
    - Add secret: `RENDER_URL` = your Render URL
 
 ### 5. Register yourself as Finance Director
-Send `/start` to your bot, then:
+This only works once (when the team table is empty). Send `/start` to your bot, then:
 ```
-/register_director YOUR_NAME YOUR_EMAIL
+/register_director Your Name your@email.com
 ```
+Example: `/register_director Jane Doe jane@example.com`
 
 ## If the bot stops responding
 1. Go to render.com
@@ -56,8 +62,9 @@ Send `/start` to your bot, then:
 4. Wait ~2 minutes
 
 ## Adding team members
-Send this to your bot:
+1. Have the new member send `/start` to the bot — they'll receive their Telegram ID in the reply
+2. Send this to your bot:
 ```
-/addmember @their_telegram_username
+/confirm_member <their_telegram_id> Their Name their@email.com member
 ```
-They need to send `/start` to the bot first.
+Example: `/confirm_member 123456789 John Lim john@example.com member`

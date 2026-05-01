@@ -22,6 +22,8 @@ services:
         sync: false
       - key: GOOGLE_DRIVE_PARENT_FOLDER_ID
         sync: false
+      - key: MINI_APP_URL
+        sync: false
       - key: ACADEMIC_YEAR
         value: "2526"
       - key: ALLOWED_ORIGINS
