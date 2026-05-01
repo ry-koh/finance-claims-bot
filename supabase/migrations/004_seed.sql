@@ -8,7 +8,8 @@ insert into portfolios (name) values
   ('RHMP'),
   ('Media'),
   ('HGS'),
-  ('VPE')
+  ('VPE'),
+  ('N/A')
 on conflict do nothing;
 
 -- Seed CCAs for Culture portfolio
@@ -146,6 +147,7 @@ with p as (select id from portfolios where name = 'HGS')
 insert into ccas (portfolio_id, name)
 select p.id, cca_name from p, (values
   ('HGS'),
+  ('JCRC'),
   ('Vacation Storage'),
   ('Auditor'),
   ('Finance'),
@@ -162,6 +164,14 @@ select p.id, cca_name from p, (values
   ('RHOC'),
   ('RHAG'),
   ('RFLAG')
+) as ccas(cca_name)
+on conflict do nothing;
+
+-- Seed CCAs for N/A portfolio
+with p as (select id from portfolios where name = 'N/A')
+insert into ccas (portfolio_id, name)
+select p.id, cca_name from p, (values
+  ('N/A')
 ) as ccas(cca_name)
 on conflict do nothing;
 
