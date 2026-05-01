@@ -203,6 +203,9 @@ class ReceiptCreate(BaseModel):
     dr_cr: str = "DR"
     receipt_image_drive_id: Optional[str] = None
     bank_screenshot_drive_id: Optional[str] = None
+    receipt_image_drive_ids: List[str] = []
+    bank_transaction_id: Optional[str] = None
+    bank_transaction_drive_ids: Optional[List[str]] = None  # creates new BT if set
 
 
 class ReceiptUpdate(BaseModel):
@@ -216,6 +219,10 @@ class ReceiptUpdate(BaseModel):
     dr_cr: Optional[str] = None
     receipt_image_drive_id: Optional[str] = None
     bank_screenshot_drive_id: Optional[str] = None
+    receipt_image_drive_ids: Optional[List[str]] = None  # replaces all images if set
+    bank_transaction_id: Optional[str] = None
+    bank_transaction_drive_ids: Optional[List[str]] = None  # creates new BT if set
+    clear_bank_transaction: Optional[bool] = None  # set True to explicitly unlink
 
 
 class SplitCheckResponse(BaseModel):
@@ -299,3 +306,22 @@ class ClaimDocumentCreate(BaseModel):
 class ClaimDocumentUpdate(BaseModel):
     drive_file_id: Optional[str] = None
     is_current: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Receipt images & bank transactions
+# ---------------------------------------------------------------------------
+
+class ReceiptImageCreate(BaseModel):
+    receipt_id: str
+    drive_file_id: str
+
+
+class BankTransactionCreate(BaseModel):
+    claim_id: str
+    drive_file_ids: List[str] = []  # images to attach immediately
+
+
+class BankTransactionImageCreate(BaseModel):
+    bank_transaction_id: str
+    drive_file_id: str

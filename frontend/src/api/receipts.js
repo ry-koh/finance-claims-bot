@@ -12,11 +12,7 @@ export const RECEIPT_KEYS = {
 export const processReceiptImage = (file) => {
   const form = new FormData()
   form.append('file', file)
-  return api
-    .post('/receipts/process-image', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    .then((r) => r.data)
+  return api.post('/receipts/process-image', form).then((r) => r.data)
 }
 
 export const uploadReceiptImage = ({ file, claim_id, image_type }) => {
@@ -130,5 +126,30 @@ export function useDeleteReceipt(options = {}) {
       queryClient.invalidateQueries({ queryKey: RECEIPT_KEYS.all })
     },
     ...options,
+  })
+}
+
+export const uploadReceiptImageById = ({ receiptId, file }) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/receipts/${receiptId}/images`, form).then((r) => r.data)
+}
+
+export const deleteReceiptImage = ({ receiptId, imageId }) =>
+  api.delete(`/receipts/${receiptId}/images/${imageId}`).then((r) => r.data)
+
+export function useUploadReceiptImageById(claimId) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: uploadReceiptImageById,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: RECEIPT_KEYS.all }),
+  })
+}
+
+export function useDeleteReceiptImage(claimId) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteReceiptImage,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: RECEIPT_KEYS.all }),
   })
 }

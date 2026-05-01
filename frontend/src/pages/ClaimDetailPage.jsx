@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
-import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt } from '../api/receipts'
+import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -674,7 +674,7 @@ export default function ClaimDetailPage() {
                   onChange={(e) =>
                     setEditFields((f) => ({ ...f, date: e.target.value }))
                   }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-auto border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
 
@@ -780,6 +780,8 @@ export default function ClaimDetailPage() {
               <ReceiptRow
                 key={r.id}
                 receipt={r}
+                claimId={id}
+                bankTransactions={claim.bank_transactions ?? []}
                 onEdit={(fields) => handleEditReceipt(r, fields)}
                 onDelete={() => handleDeleteReceipt(r)}
                 saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
@@ -794,6 +796,8 @@ export default function ClaimDetailPage() {
               onSave={handleAddReceipt}
               onCancel={() => setShowAddReceipt(false)}
               saving={createReceiptMut.isPending}
+              claimId={id}
+              bankTransactions={claim.bank_transactions ?? []}
             />
           )}
         </div>
@@ -808,6 +812,41 @@ export default function ClaimDetailPage() {
               {claim.documents.map((doc, idx) => (
                 <DocumentRow key={doc.id ?? idx} doc={doc} />
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Bank Transactions ── */}
+        {(claim.bank_transactions?.length ?? 0) > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">
+              Bank Transactions ({claim.bank_transactions.length})
+            </h2>
+            <div className="flex flex-col gap-3">
+              {claim.bank_transactions.map((bt, idx) => {
+                const linkedReceipts = (claim.receipts ?? []).filter(r => r.bank_transaction_id === bt.id)
+                return (
+                  <div key={bt.id} className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs font-semibold text-gray-700 mb-1">Bank Transaction {idx + 1}</p>
+                    {bt.images?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {bt.images.map((img, i) => (
+                          <a key={img.id} href={`https://drive.google.com/file/d/${img.drive_file_id}/view`}
+                            target="_blank" rel="noreferrer"
+                            className="text-xs text-blue-600 underline">
+                            Screenshot {i+1}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {linkedReceipts.length > 0 && (
+                      <p className="text-xs text-gray-500">
+                        Covers: {linkedReceipts.map(r => r.description).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -861,10 +900,46 @@ const EMPTY_RECEIPT_FIELDS = {
   dr_cr: 'DR', receipt_no: '', company: '', date: '',
 }
 
-function ReceiptInlineForm({ initial, onSave, onCancel, saving }) {
+function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTransactions = [] }) {
   const [f, setF] = useState({ ...EMPTY_RECEIPT_FIELDS, ...initial })
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
   const [err, setErr] = useState({})
+
+  const [receiptImageDriveIds, setReceiptImageDriveIds] = useState(initial?.receipt_image_drive_ids ?? [])
+  const [btMode, setBtMode] = useState(() => {
+    if (initial?.bank_transaction_id) return 'existing'
+    return 'none'
+  })
+  const [btDriveIds, setBtDriveIds] = useState([])
+  const [selectedBtId, setSelectedBtId] = useState(initial?.bank_transaction_id ?? null)
+  const [uploadingReceiptImg, setUploadingReceiptImg] = useState(false)
+  const [uploadingBtImg, setUploadingBtImg] = useState(false)
+
+  async function handleReceiptImageFile(file) {
+    if (!claimId) return
+    setUploadingReceiptImg(true)
+    try {
+      const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
+      setReceiptImageDriveIds(prev => [...prev, data.drive_file_id])
+    } catch(e) {
+      // silent fail — user can retry
+    } finally {
+      setUploadingReceiptImg(false)
+    }
+  }
+
+  async function handleBtImageFile(file) {
+    if (!claimId) return
+    setUploadingBtImg(true)
+    try {
+      const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'bank' })
+      setBtDriveIds(prev => [...prev, data.drive_file_id])
+    } catch(e) {
+      // silent fail
+    } finally {
+      setUploadingBtImg(false)
+    }
+  }
 
   function handleSave() {
     const e = {}
@@ -872,7 +947,13 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving }) {
     if (!f.amount || isNaN(Number(f.amount)) || Number(f.amount) <= 0) e.amount = 'Enter valid amount'
     if (!f.category) e.category = 'Required'
     if (Object.keys(e).length) { setErr(e); return }
-    onSave({ ...f, amount: Number(f.amount) })
+    onSave({
+      ...f,
+      amount: Number(f.amount),
+      receipt_image_drive_ids: receiptImageDriveIds,
+      bank_transaction_id: btMode === 'existing' ? selectedBtId : null,
+      bank_transaction_drive_ids: btMode === 'new' ? btDriveIds : null,
+    })
   }
 
   const inputCls = 'w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
@@ -908,7 +989,90 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving }) {
         <input className={inputCls} placeholder="Receipt No." value={f.receipt_no} onChange={set('receipt_no')} />
         <input className={inputCls} placeholder="Company" value={f.company} onChange={set('company')} />
       </div>
-      <input className={inputCls} type="date" value={f.date} onChange={set('date')} />
+      <div className="w-auto inline-block"><input className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-auto" type="date" value={f.date} onChange={set('date')} /></div>
+
+      {/* Receipt Images */}
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-1">Receipt Photos</p>
+        {receiptImageDriveIds.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1">
+            {receiptImageDriveIds.map((id, i) => (
+              <div key={id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
+                <a href={`https://drive.google.com/file/d/${id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
+                <button type="button" onClick={() => setReceiptImageDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
+            className="hidden"
+            disabled={uploadingReceiptImg || !claimId}
+            onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleReceiptImageFile(file) }}
+          />
+          {uploadingReceiptImg ? 'Uploading…' : '+ Add receipt photo'}
+        </label>
+      </div>
+
+      {/* Bank Transaction */}
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-1">Bank Transaction</p>
+        <div className="flex gap-3 mb-1">
+          {['none','new','existing'].map(mode => (
+            <label key={mode} className="flex items-center gap-1 text-xs cursor-pointer">
+              <input type="radio" name={`bt-mode-${claimId}`} value={mode} checked={btMode === mode} onChange={() => { setBtMode(mode); if(mode !== 'existing') setSelectedBtId(null) }} />
+              {mode === 'none' ? 'None' : mode === 'new' ? 'New' : 'Existing'}
+            </label>
+          ))}
+        </div>
+        {btMode === 'new' && (
+          <div>
+            {btDriveIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1">
+                {btDriveIds.map((id, i) => (
+                  <div key={id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
+                    <a href={`https://drive.google.com/file/d/${id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
+                    <button type="button" onClick={() => setBtDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
+                className="hidden"
+                disabled={uploadingBtImg || !claimId}
+                onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleBtImageFile(file) }}
+              />
+              {uploadingBtImg ? 'Uploading…' : '+ Add bank screenshot'}
+            </label>
+          </div>
+        )}
+        {btMode === 'existing' && (
+          <div>
+            {bankTransactions.length === 0 ? (
+              <p className="text-xs text-gray-400">No bank transactions yet — save one with 'New' first.</p>
+            ) : (
+              <select
+                className="border border-gray-300 rounded px-2 py-1 text-xs w-full bg-white"
+                value={selectedBtId ?? ''}
+                onChange={e => setSelectedBtId(e.target.value || null)}
+              >
+                <option value="">— Select —</option>
+                {bankTransactions.map((bt, i) => (
+                  <option key={bt.id} value={bt.id}>
+                    Bank Tx {i+1} ({bt.images?.length ?? 0} image{bt.images?.length !== 1 ? 's' : ''})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-2 pt-1">
         <button onClick={handleSave} disabled={saving}
           className="flex-1 bg-blue-600 text-white text-xs font-medium py-1.5 rounded disabled:opacity-50">
@@ -923,7 +1087,7 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving }) {
   )
 }
 
-function ReceiptRow({ receipt, onEdit, onDelete, saving }) {
+function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, bankTransactions = [] }) {
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -940,10 +1104,14 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving }) {
             receipt_no: receipt.receipt_no ?? '',
             company: receipt.company ?? '',
             date: receipt.date ?? '',
+            receipt_image_drive_ids: receipt.images?.map(img => img.drive_file_id) ?? [],
+            bank_transaction_id: receipt.bank_transaction_id ?? null,
           }}
           onSave={(fields) => { onEdit(fields); setEditing(false) }}
           onCancel={() => setEditing(false)}
           saving={saving}
+          claimId={claimId}
+          bankTransactions={bankTransactions}
         />
       </div>
     )
@@ -961,6 +1129,13 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving }) {
             {receipt.company ? ` · ${receipt.company}` : ''}
           </p>
           <p className="text-xs text-gray-400">{receipt.gst_code} · {receipt.dr_cr}</p>
+          {(receipt.images?.length > 0 || receipt.bank_transaction_id) && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              {receipt.images?.length > 0 && `${receipt.images.length} receipt photo${receipt.images.length !== 1 ? 's' : ''}`}
+              {receipt.images?.length > 0 && receipt.bank_transaction_id && ' · '}
+              {receipt.bank_transaction_id && 'Bank tx linked'}
+            </p>
+          )}
         </div>
         <div className="flex gap-1.5 shrink-0 items-center">
           {receipt.receipt_image_drive_id && (

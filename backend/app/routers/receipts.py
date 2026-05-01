@@ -221,6 +221,59 @@ async def upload_image(
 
 
 # ---------------------------------------------------------------------------
+# POST /receipts/{receipt_id}/images — Add image to a receipt
+# ---------------------------------------------------------------------------
+
+@router.post("/{receipt_id}/images", status_code=201)
+async def upload_receipt_image(
+    receipt_id: str,
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Upload an image for a specific receipt and persist Drive ID."""
+    receipt_resp = db.table("receipts").select("*, claim:claims(reference_code)").eq("id", receipt_id).execute()
+    if not receipt_resp.data:
+        raise HTTPException(404, "Receipt not found")
+    receipt = receipt_resp.data[0]
+    reference_code = receipt.get("claim", {}).get("reference_code", receipt["claim_id"])
+
+    raw_bytes = await file.read()
+    try:
+        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    claim_folder_id = drive.get_claim_folder_id(reference_code)
+    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
+    from datetime import datetime as _datetime
+    timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
+    drive_file_id = drive.upload_file(processed, f"receipt_{timestamp}.jpg", "image/jpeg", receipts_folder_id)
+
+    img_resp = db.table("receipt_images").insert({
+        "receipt_id": receipt_id,
+        "drive_file_id": drive_file_id,
+    }).execute()
+    if not img_resp.data:
+        raise HTTPException(500, "Failed to save receipt image")
+    return img_resp.data[0]
+
+
+@router.delete("/{receipt_id}/images/{image_id}")
+async def delete_receipt_image(
+    receipt_id: str,
+    image_id: str,
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    resp = db.table("receipt_images").select("*").eq("id", image_id).eq("receipt_id", receipt_id).execute()
+    if not resp.data:
+        raise HTTPException(404, "Image not found")
+    db.table("receipt_images").delete().eq("id", image_id).execute()
+    return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
 # POST /receipts — Create receipt with auto-grouping
 # ---------------------------------------------------------------------------
 
@@ -287,6 +340,23 @@ async def create_receipt(
         raise HTTPException(status_code=500, detail="Failed to create receipt")
 
     receipt = insert_resp.data[0]
+
+    # Insert receipt images
+    for drive_id in (payload.receipt_image_drive_ids or []):
+        db.table("receipt_images").insert({"receipt_id": receipt["id"], "drive_file_id": drive_id}).execute()
+
+    # Handle bank transaction
+    if payload.bank_transaction_drive_ids:
+        bt_resp = db.table("bank_transactions").insert({"claim_id": payload.claim_id}).execute()
+        if bt_resp.data:
+            bt_id = bt_resp.data[0]["id"]
+            for drive_id in payload.bank_transaction_drive_ids:
+                db.table("bank_transaction_images").insert({"bank_transaction_id": bt_id, "drive_file_id": drive_id}).execute()
+            db.table("receipts").update({"bank_transaction_id": bt_id}).eq("id", receipt["id"]).execute()
+            receipt["bank_transaction_id"] = bt_id
+    elif payload.bank_transaction_id:
+        db.table("receipts").update({"bank_transaction_id": payload.bank_transaction_id}).eq("id", receipt["id"]).execute()
+        receipt["bank_transaction_id"] = payload.bank_transaction_id
 
     return {
         "split_needed": False,
@@ -479,6 +549,25 @@ async def update_receipt(
     # Clean up old line item if it has no remaining receipts after the move
     if category_changing and old_line_item_id and old_line_item_id != update_data.get("line_item_id"):
         _delete_line_item_if_empty(db, old_line_item_id)
+
+    # Handle receipt images replacement
+    if payload.receipt_image_drive_ids is not None:
+        db.table("receipt_images").delete().eq("receipt_id", receipt_id).execute()
+        for drive_id in payload.receipt_image_drive_ids:
+            db.table("receipt_images").insert({"receipt_id": receipt_id, "drive_file_id": drive_id}).execute()
+
+    # Handle bank transaction changes
+    if payload.clear_bank_transaction:
+        db.table("receipts").update({"bank_transaction_id": None}).eq("id", receipt_id).execute()
+    elif payload.bank_transaction_drive_ids is not None:
+        bt_resp = db.table("bank_transactions").insert({"claim_id": receipt["claim_id"]}).execute()
+        if bt_resp.data:
+            bt_id = bt_resp.data[0]["id"]
+            for drive_id in payload.bank_transaction_drive_ids:
+                db.table("bank_transaction_images").insert({"bank_transaction_id": bt_id, "drive_file_id": drive_id}).execute()
+            db.table("receipts").update({"bank_transaction_id": bt_id}).eq("id", receipt_id).execute()
+    elif payload.bank_transaction_id is not None:
+        db.table("receipts").update({"bank_transaction_id": payload.bank_transaction_id}).eq("id", receipt_id).execute()
 
     return updated_receipt
 

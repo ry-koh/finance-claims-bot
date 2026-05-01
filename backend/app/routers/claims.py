@@ -109,14 +109,44 @@ async def get_claim(
         .execute()
     )
 
-    # Receipts ordered by created_at
+    # Receipts ordered by created_at, with category/gst_code/dr_cr from line_item
     receipts_resp = (
         db.table("receipts")
-        .select("*")
+        .select("*, line_item:claim_line_items(category, gst_code, dr_cr)")
         .eq("claim_id", claim_id)
         .order("created_at")
         .execute()
     )
+    for r in receipts_resp.data:
+        li = r.pop("line_item", None) or {}
+        r["category"] = li.get("category")
+        r["gst_code"] = li.get("gst_code")
+        r["dr_cr"] = li.get("dr_cr")
+
+    # Fetch receipt images
+    if receipts_resp.data:
+        receipt_ids = [r["id"] for r in receipts_resp.data]
+        ri_resp = db.table("receipt_images").select("*").in_("receipt_id", receipt_ids).order("created_at").execute()
+        images_by_receipt: dict = {}
+        for img in ri_resp.data:
+            images_by_receipt.setdefault(img["receipt_id"], []).append(img)
+        for r in receipts_resp.data:
+            r["images"] = images_by_receipt.get(r["id"], [])
+    else:
+        for r in receipts_resp.data:
+            r["images"] = []
+
+    # Fetch bank transactions with their images
+    bt_resp = db.table("bank_transactions").select("*").eq("claim_id", claim_id).order("created_at").execute()
+    bank_transactions = bt_resp.data
+    if bank_transactions:
+        bt_ids = [bt["id"] for bt in bank_transactions]
+        bti_resp = db.table("bank_transaction_images").select("*").in_("bank_transaction_id", bt_ids).order("created_at").execute()
+        images_by_bt: dict = {}
+        for img in bti_resp.data:
+            images_by_bt.setdefault(img["bank_transaction_id"], []).append(img)
+        for bt in bank_transactions:
+            bt["images"] = images_by_bt.get(bt["id"], [])
 
     # Documents — only current
     docs_resp = (
@@ -130,6 +160,7 @@ async def get_claim(
     claim["line_items"] = line_items_resp.data
     claim["receipts"] = receipts_resp.data
     claim["documents"] = docs_resp.data
+    claim["bank_transactions"] = bank_transactions
 
     return claim
 

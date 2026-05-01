@@ -195,7 +195,12 @@ async def upload_screenshot(
 ):
     """Upload an email screenshot, convert to PDF, and mark claim as screenshot_uploaded."""
     raw_bytes = await file.read()
-    processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    try:
+        processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
 
     claim = _get_full_claim(claim_id, db)
     folder_id = drive_service.get_claim_folder_id(claim["reference_code"])
