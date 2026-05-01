@@ -61,7 +61,7 @@ export function useReceipts(params = {}) {
   return useQuery({
     queryKey: RECEIPT_KEYS.list(params),
     queryFn: () => fetchReceipts(params),
-    enabled: params.claim_id !== undefined ? !!params.claim_id : true,
+    enabled: !!params.claim_id,
   })
 }
 

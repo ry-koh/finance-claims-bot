@@ -5,6 +5,7 @@ import api from './client'
 export const PORTFOLIO_KEYS = {
   all: ['portfolios'],
   ccas: (portfolioId) => ['portfolios', portfolioId, 'ccas'],
+  allCcas: ['portfolios', 'all-ccas'],
 }
 
 // Raw API calls
@@ -27,5 +28,24 @@ export function useCcasByPortfolio(portfolioId) {
     queryKey: PORTFOLIO_KEYS.ccas(portfolioId),
     queryFn: () => fetchCcasByPortfolio(portfolioId),
     enabled: !!portfolioId,
+  })
+}
+
+export function useAllCcas() {
+  const { data: portfolios } = usePortfolios()
+
+  return useQuery({
+    queryKey: [...PORTFOLIO_KEYS.allCcas, (portfolios || []).map((p) => p.id)],
+    queryFn: async () => {
+      const results = await Promise.all(
+        portfolios.map((p) =>
+          fetchCcasByPortfolio(p.id).then((ccas) =>
+            ccas.map((c) => ({ ...c, portfolio: p }))
+          )
+        )
+      )
+      return results.flat()
+    },
+    enabled: !!(portfolios?.length),
   })
 }

@@ -1,27 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useClaimers, useCreateClaimer, useUpdateClaimer, useDeleteClaimer } from '../api/claimers'
-import { usePortfolios } from '../api/portfolios'
-import api from '../api/client'
-import { useQuery } from '@tanstack/react-query'
-
-// Fetch all CCAs across all portfolios in one shot
-function useAllCcas(portfolios) {
-  return useQuery({
-    queryKey: ['all-ccas', (portfolios || []).map((p) => p.id)],
-    queryFn: async () => {
-      if (!portfolios?.length) return []
-      const results = await Promise.all(
-        portfolios.map((p) =>
-          api.get(`/portfolios/${p.id}/ccas`).then((r) =>
-            r.data.map((c) => ({ ...c, portfolio: p }))
-          )
-        )
-      )
-      return results.flat()
-    },
-    enabled: !!(portfolios?.length),
-  })
-}
+import { useAllCcas } from '../api/portfolios'
 
 // ── Inline edit / add form ────────────────────────────────────────────────────
 function ClaimerForm({ initial, ccas, onSave, onCancel, saving }) {
@@ -144,21 +123,17 @@ function ClaimerForm({ initial, ccas, onSave, onCancel, saving }) {
 }
 
 // ── Single claimer row ────────────────────────────────────────────────────────
-function ClaimerRow({ claimer, ccas, onEditSaved, onDeleted }) {
+function ClaimerRow({ claimer, ccas, updateMutation, deleteMutation }) {
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
-
-  const updateMutation = useUpdateClaimer()
-  const deleteMutation = useDeleteClaimer()
 
   const handleSave = (fields) => {
     updateMutation.mutate(
       { id: claimer.id, ...fields },
       {
-        onSuccess: (updated) => {
+        onSuccess: () => {
           setEditing(false)
-          onEditSaved?.(updated)
         },
       }
     )
@@ -169,7 +144,6 @@ function ClaimerRow({ claimer, ccas, onEditSaved, onDeleted }) {
     deleteMutation.mutate(claimer.id, {
       onSuccess: () => {
         setConfirmDelete(false)
-        onDeleted?.(claimer.id)
       },
       onError: (err) => {
         const status = err?.response?.status
@@ -264,9 +238,10 @@ export default function IdentifierDataPage() {
 
   const claimerParams = search ? { search } : {}
   const { data: claimers, isLoading, isError, error } = useClaimers(claimerParams)
-  const { data: portfolios } = usePortfolios()
-  const { data: allCcas } = useAllCcas(portfolios)
+  const { data: allCcas } = useAllCcas()
   const createMutation = useCreateClaimer()
+  const updateMutation = useUpdateClaimer()
+  const deleteMutation = useDeleteClaimer()
 
   const handleAdd = (fields) => {
     createMutation.mutate(fields, {
@@ -382,6 +357,8 @@ export default function IdentifierDataPage() {
                         key={claimer.id}
                         claimer={claimer}
                         ccas={allCcas}
+                        updateMutation={updateMutation}
+                        deleteMutation={deleteMutation}
                       />
                     ))}
                   </ul>
