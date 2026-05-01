@@ -158,9 +158,7 @@ function Step1({ data, onChange }) {
 
   const { data: portfolios = [], isLoading: portfoliosLoading } = usePortfolios()
   const { data: ccas = [], isLoading: ccasLoading } = useCcasByPortfolio(data.portfolioId)
-  const { data: claimers = [], isLoading: claimersLoading } = useClaimers(
-    data.ccaId ? { cca_id: data.ccaId } : {}
-  )
+  const { data: claimers = [], isLoading: claimersLoading } = useClaimers({ cca_id: data.ccaId })
   const createClaimer = useCreateClaimer()
 
   const portfolioOptions = portfolios.map((p) => ({ value: p.id, label: p.name }))
@@ -781,6 +779,8 @@ export default function NewClaimPage() {
     setSaving(true)
     setSaveError('')
 
+    let claimId = null
+
     try {
       const totalAmount = receipts.reduce((s, r) => s + r.amount, 0)
 
@@ -796,7 +796,7 @@ export default function NewClaimPage() {
         transport_form_needed: step2.transportFormNeeded,
       })
 
-      const claimId = claim?.id ?? claim?.claim?.id
+      claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
 
       // 2. Create receipts sequentially
@@ -816,8 +816,12 @@ export default function NewClaimPage() {
 
       navigate(`/claims/${claimId}`)
     } catch (err) {
-      setSaveError(err?.response?.data?.detail ?? err?.message ?? 'Failed to save claim. Please try again.')
-      setSaving(false)
+      if (claimId) {
+        navigate(`/claims/${claimId}`)
+      } else {
+        setSaveError(err?.response?.data?.detail || err?.message || 'Failed to save claim.')
+        setSaving(false)
+      }
     }
   }
 
