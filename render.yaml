@@ -25,6 +25,8 @@ services:
         sync: false
       - key: MINI_APP_URL
         sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.0"
       - key: ACADEMIC_YEAR
         value: "2526"
       - key: ALLOWED_ORIGINS
