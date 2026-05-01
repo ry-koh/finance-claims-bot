@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
+import { WBS_ACCOUNTS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -17,8 +18,6 @@ const STATUS_ORDER = [
   'submitted',
   'reimbursed',
 ]
-
-const WBS_OPTIONS = ['SA', 'SU', 'SC', 'SO', 'SV']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,7 +83,7 @@ function StatusPipeline({ claim, onAction }) {
       label: 'Email',
       description: 'Send email to treasurer',
       doneAt: 'email_sent',
-      activeAt: ['draft', 'email_sent'],
+      activeAt: ['draft'],
       render: ({ isDone, isCurrent }) => (
         <div className="flex items-center gap-2 flex-wrap">
           {isDone && (
@@ -497,7 +496,8 @@ export default function ClaimDetailPage() {
             ) : null}
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="text-xs font-medium text-red-600 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100"
+              disabled={editMode}
+              className="text-xs font-medium text-red-600 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100 disabled:opacity-40"
             >
               Delete
             </button>
@@ -627,7 +627,7 @@ export default function ClaimDetailPage() {
                   }
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
                 >
-                  {WBS_OPTIONS.map((opt) => (
+                  {WBS_ACCOUNTS.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
                     </option>

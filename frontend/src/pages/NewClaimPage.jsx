@@ -4,37 +4,10 @@ import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useClaimers, useCreateClaimer } from '../api/claimers'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt } from '../api/receipts'
+import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CATEGORIES = [
-  'Office Supplies',
-  'Consumables',
-  'Sports & Cultural Materials',
-  'Other fees (Others)',
-  'Professional fees',
-  'Bank Charges',
-  'Licensing/Subscription',
-  'Postage & Telecommunication Charges',
-  'Maintenance (Equipment)',
-  'Lease expense (premises)',
-  'Lease expense (rental of equipment)',
-  'Furniture',
-  'Equipment Purchase',
-  'Publications',
-  'Meals & Refreshments',
-  'Local Travel',
-  'Student awards/prizes',
-  'Donation/Sponsorship',
-  'Miscellaneous Expense',
-  'Other Services',
-  'Fund Transfer',
-  'N/A',
-]
-
-const WBS_ACCOUNTS = ['SA', 'MBH', 'MF']
-const GST_CODES = ['IE', 'I9', 'L9']
-const DR_CR_OPTIONS = ['DR', 'CR']
 const MAX_CATEGORIES = 5
 
 function today() {
