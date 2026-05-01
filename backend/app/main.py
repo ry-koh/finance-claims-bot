@@ -30,7 +30,7 @@ async def _register_webhook() -> None:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 api_url,
-                json={"url": webhook_url, "allowed_updates": ["message"]},
+                json={"url": webhook_url, "allowed_updates": ["message"], "drop_pending_updates": True},
             )
             data = resp.json()
             if data.get("ok"):
