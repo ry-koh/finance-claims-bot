@@ -35,7 +35,7 @@ export function useAllCcas() {
   const { data: portfolios } = usePortfolios()
 
   return useQuery({
-    queryKey: [...PORTFOLIO_KEYS.allCcas, (portfolios || []).map((p) => p.id)],
+    queryKey: [...PORTFOLIO_KEYS.allCcas, (portfolios || []).map((p) => p.id).sort().join(',')],
     queryFn: async () => {
       const results = await Promise.all(
         portfolios.map((p) =>

@@ -92,7 +92,7 @@ export default function HomePage() {
   const [activeStatus, setActiveStatus] = useState(null) // null = "All"
 
   // Single broad fetch for counts (always load, regardless of filter)
-  const { data: allData } = useClaims({ page_size: 100 })
+  const { data: allData, isLoading: allLoading } = useClaims({ page_size: 50 })
   const allItems = allData?.items ?? []
 
   // Counts per status derived from the broad fetch
@@ -119,7 +119,7 @@ export default function HomePage() {
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {STATUSES.map(({ label, value }) => {
             const count = value === null
-              ? allItems.length
+              ? (allData?.total ?? 0)
               : (counts[value] ?? 0)
             const isActive = activeStatus === value
             return (
@@ -136,7 +136,7 @@ export default function HomePage() {
                 <span className={`inline-flex items-center justify-center min-w-[1.1rem] h-4 rounded-full text-[10px] font-semibold px-1 ${
                   isActive ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
                 }`}>
-                  {count}
+                  {allLoading ? '—' : count}
                 </span>
               </button>
             )

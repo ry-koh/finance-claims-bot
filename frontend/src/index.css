@@ -8,3 +8,10 @@ body {
   background-color: var(--tg-theme-bg-color, #ffffff);
   color: var(--tg-theme-text-color, #000000);
 }
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
