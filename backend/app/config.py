@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     GMAIL_REFRESH_TOKEN: str
     GOOGLE_DRIVE_PARENT_FOLDER_ID: str
     DRIVE_REFRESH_TOKEN: str = ""  # OAuth refresh token with Drive+Sheets+Docs scopes
+    FD_NAME: str = ""        # Finance Director display name
+    FD_MATRIC_NO: str = ""   # Finance Director matric number
+    FD_PHONE: str = ""       # Finance Director phone number
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""
     R2_SECRET_ACCESS_KEY: str = ""

@@ -106,126 +106,59 @@ def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
 
 def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, reference_code_override: str = None) -> bytes:
     """
-    Generate a Letter of Authorisation (LOA) PDF for the given claim.
-
-    Page order:
-      Cover page → for each receipt: its receipt images, then (when the last
-      receipt linked to a bank transaction is reached) that BT's images once →
-      any BTs not linked to any receipt at the end.
+    Generate image pages for a claim in per-BT order:
+      For each BT: receipt images linked to that BT, then BT images.
+      Unlinked receipts (no BT) appended at the end.
 
     Parameters
     ----------
     claim : dict
-        Keys: reference_code, date, claim_description,
-              claimer (nested dict with name, matric_no)
-    receipts : list[dict]
-        Each dict has: description, amount,
-                       images (list of {drive_file_id}),
-                       bank_transaction_id (str | None)
-    bank_transactions : list[dict]
-        Each dict has: id, images (list of {drive_file_id})
+    receipts : list[dict]  — each has images list and bank_transaction_id
+    bank_transactions : list[dict]  — each has id and images list
     """
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(False)
 
     receipts = receipts or []
     bank_transactions = bank_transactions or []
-    bt_map = {bt["id"]: bt for bt in bank_transactions}
 
-    # For each BT, record the index of its last linked receipt
-    bt_last_pos: dict = {}
-    for i, r in enumerate(receipts):
+    # Group receipts by bank_transaction_id
+    receipts_by_bt: dict = {}
+    unlinked_receipts = []
+    for r in receipts:
         bt_id = r.get("bank_transaction_id")
         if bt_id:
-            bt_last_pos[bt_id] = i
+            receipts_by_bt.setdefault(bt_id, []).append(r)
+        else:
+            unlinked_receipts.append(r)
 
-    # ------------------------------------------------------------------
-    # Cover page
-    # ------------------------------------------------------------------
-    pdf.add_page()
-
-    claimer = claim.get("claimer", {}) or {}
-    claimer_name = claimer.get("name", "Unknown")
-    matric_no = claimer.get("matric_no", "")
-    claimer_line = claimer_name
-    if matric_no:
-        claimer_line = f"{claimer_name}  |  {matric_no}"
-
-    pdf.set_font("Helvetica", style="B", size=16)
-    pdf.set_xy(MARGIN, 40)
-    pdf.cell(CONTENT_W, 10, "LETTER OF AUTHORISATION", align="C", ln=True)
-
-    _ref_code = reference_code_override or claim.get("reference_code", "")
-    pdf.set_font("Helvetica", style="B", size=14)
-    pdf.set_xy(MARGIN, 60)
-    pdf.cell(CONTENT_W, 8, str(_ref_code), align="C", ln=True)
-
-    pdf.set_font("Helvetica", style="", size=11)
-    pdf.set_xy(MARGIN, 75)
-    pdf.cell(CONTENT_W, 7, str(claim.get("claim_description", "")), align="C", ln=True)
-
-    pdf.set_font("Helvetica", style="", size=11)
-    pdf.set_xy(MARGIN, 90)
-    pdf.cell(CONTENT_W, 7, claimer_line, align="C", ln=True)
-
-    pdf.set_font("Helvetica", style="", size=10)
-    pdf.set_xy(MARGIN, 105)
-    pdf.cell(CONTENT_W, 6, str(claim.get("date", "")), align="C", ln=True)
-
-    receipt_image_count = sum(len(r.get("images") or []) for r in receipts)
-    bt_image_count = sum(len(bt.get("images") or []) for bt in bank_transactions)
-    total_image_count = receipt_image_count + bt_image_count
-
-    if total_image_count > 0:
-        pdf.set_font("Helvetica", style="I", size=10)
-        pdf.set_xy(MARGIN, 125)
-        pdf.cell(CONTENT_W, 6, "The following receipt images are attached below:", align="C", ln=True)
-        pdf.set_font("Helvetica", style="", size=10)
-        pdf.set_xy(MARGIN, 135)
-        pdf.cell(CONTENT_W, 6, f"Total receipts: {len(receipts)}", align="C", ln=True)
-    else:
-        pdf.set_font("Helvetica", style="I", size=10)
-        pdf.set_xy(MARGIN, 125)
-        pdf.cell(CONTENT_W, 6, "No receipt images attached.", align="C", ln=True)
-
-    # ------------------------------------------------------------------
-    # Receipt image pages, with BT images inserted after their last receipt
-    # ------------------------------------------------------------------
-    for i, receipt in enumerate(receipts):
+    def _receipt_header(receipt: dict) -> str:
         desc = str(receipt.get("description") or "Receipt")
         amount_raw = receipt.get("amount")
-        amount_str = f"SGD {amount_raw}" if amount_raw is not None else ""
-        receipt_header = f"{desc}  {amount_str}".strip()
+        return f"{desc}  SGD {amount_raw}".strip() if amount_raw is not None else desc
 
-        for img in (receipt.get("images") or []):
-            drive_id = img.get("drive_file_id")
-            if drive_id:
-                _add_image_page(pdf, drive_id, receipt_header)
-
-        # After the last receipt linked to a BT, emit that BT's images once
-        bt_id = receipt.get("bank_transaction_id")
-        if bt_id and bt_last_pos.get(bt_id) == i:
-            bt = bt_map.get(bt_id)
-            if bt:
-                bt_receipt_descs = [
-                    r.get("description", "") for r in receipts
-                    if r.get("bank_transaction_id") == bt_id
-                ]
-                bt_header = f"[Bank Transaction]  {', '.join(bt_receipt_descs)}".strip()
-                for img in (bt.get("images") or []):
-                    drive_id = img.get("drive_file_id")
-                    if drive_id:
-                        _add_image_page(pdf, drive_id, bt_header)
-
-    # ------------------------------------------------------------------
-    # Bank transactions not linked to any receipt (orphaned)
-    # ------------------------------------------------------------------
+    # For each BT: linked receipt images first, then BT images
     for bt in bank_transactions:
-        if bt["id"] not in bt_last_pos:
-            for img in (bt.get("images") or []):
-                drive_id = img.get("drive_file_id")
-                if drive_id:
-                    _add_image_page(pdf, drive_id, "[Bank Transaction]")
+        for receipt in receipts_by_bt.get(bt["id"], []):
+            for img in (receipt.get("images") or []):
+                if img.get("drive_file_id"):
+                    _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
+        for img in (bt.get("images") or []):
+            if img.get("drive_file_id"):
+                _add_image_page(pdf, img["drive_file_id"], "[Bank Transaction]")
+
+    # Unlinked receipts at the end
+    for receipt in unlinked_receipts:
+        for img in (receipt.get("images") or []):
+            if img.get("drive_file_id"):
+                _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
+
+    # Ensure at least one page so pypdf can read the file
+    if pdf.page == 0:
+        pdf.add_page()
+        pdf.set_font("Helvetica", style="I", size=10)
+        pdf.set_xy(MARGIN, MARGIN + 30)
+        pdf.cell(CONTENT_W, 8, "No images attached.", align="C", ln=True)
 
     return bytes(pdf.output())
 
@@ -257,14 +190,8 @@ def get_docs_service():
     return build('docs', 'v1', credentials=_get_user_drive_credentials(), cache_discovery=False)
 
 
-def copy_template(template_id: str, new_name: str, parent_folder_id: str) -> str:
-    """
-    Copy a Drive template to the user's My Drive with *new_name*.
-
-    The copy is placed in the user's root (not a specific folder) since it is
-    temporary — it will be exported to PDF and trashed immediately after.
-    Returns the new file's Drive ID.
-    """
+def copy_template(template_id: str, new_name: str) -> str:
+    """Copy a Drive template to the user's My Drive root (temporary — trashed after export)."""
     drive = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     result = drive.files().copy(
         fileId=template_id,
@@ -307,7 +234,6 @@ def generate_summary(
     claim: dict,
     line_items: list,
     finance_director: dict,
-    folder_id: str,
     reference_code_override: str = None,
 ) -> bytes:
     """
@@ -332,11 +258,7 @@ def generate_summary(
         Raw PDF bytes of the filled summary sheet.
     """
     ref = reference_code_override or claim['reference_code']
-    copied_id = copy_template(
-        settings.SUMMARY_TEMPLATE_ID,
-        f"Summary - {ref}",
-        folder_id,
-    )
+    copied_id = copy_template(settings.SUMMARY_TEMPLATE_ID, f"Summary - {ref}")
 
     try:
         sheets = get_sheets_service()
@@ -457,39 +379,16 @@ def generate_rfp(
     claim: dict,
     line_items: list,
     finance_director: dict,
-    folder_id: str,
     reference_code_override: str = None,
 ) -> bytes:
-    """
-    Generate a Request for Payment (RFP) PDF from the Google Doc template.
-
-    Parameters
-    ----------
-    claim : dict
-        Keys: reference_code, wbs_no, total_amount
-    line_items : list[dict]
-        Up to 5 items.  Each has: dr_cr, category_code, total_amount, gst_code.
-    finance_director : dict
-        Keys: name, matric_no
-    folder_id : str
-        Drive folder ID where the temporary copy will be created.
-
-    Returns
-    -------
-    bytes
-        PDF bytes of the completed RFP.
-    """
+    """Generate a Request for Payment (RFP) PDF from the Google Doc template."""
     ref = reference_code_override or claim['reference_code']
-    copied_id = copy_template(
-        settings.RFP_TEMPLATE_ID,
-        f"RFP - {ref}",
-        folder_id,
-    )
+    copied_id = copy_template(settings.RFP_TEMPLATE_ID, f"RFP - {ref}")
     try:
         # Build placeholder replacements
         replacements = {
-            "{{MATRIC}}": finance_director["matric_no"].upper(),
-            "{{NAME}}": finance_director["name"].upper(),
+            "{{MATRIC}}": (finance_director.get("matric_no") or "").upper(),
+            "{{NAME}}": (finance_director.get("name") or "").upper(),
             "{{TOTAL_AMOUNT}}": f"{claim['total_amount']:.2f}",
             "{{REFERENCE_CODE}}": ref,
         }
@@ -544,44 +443,9 @@ def generate_transport(
     claim: dict,
     transport_data: dict,
     finance_director: dict,
-    folder_id: str,
 ) -> bytes:
-    """
-    Generate a transport claim form PDF from the Google Sheets template.
-
-    Parameters
-    ----------
-    claim : dict
-        Keys: reference_code, wbs_no
-    transport_data : dict
-        Keys:
-          trips        - list of dicts with keys: from, to, purpose,
-                         distance_km (float | None), mode ("taxi" | "bus_mrt" |
-                         "mileage"), amount (float)
-          total_amount - float (used by the financial rows pre-filled in the
-                         template; finance team verifies)
-    finance_director : dict
-        Keys: name
-    folder_id : str
-        Drive folder ID where the temporary copy will be created.
-
-    Returns
-    -------
-    bytes
-        PDF bytes of the completed transport form.
-
-    Notes
-    -----
-    Trip rows are written into the trip table starting at row 2 (A2).
-    The financial table rows are pre-filled in the template; only the WBS
-    number is substituted using a Sheets findReplace request so that
-    any {{WBS_NO}} placeholder present in the template is replaced.
-    """
-    copied_id = copy_template(
-        settings.TRANSPORT_TEMPLATE_ID,
-        f"Transport - {claim['reference_code']}",
-        folder_id,
-    )
+    """Generate a transport claim form PDF from the Google Sheets template."""
+    copied_id = copy_template(settings.TRANSPORT_TEMPLATE_ID, f"Transport - {claim['reference_code']}")
     try:
         sheets = get_sheets_service()
 

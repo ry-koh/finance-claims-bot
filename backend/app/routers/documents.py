@@ -5,7 +5,6 @@ from typing import Optional
 from app.database import get_supabase
 from app.auth import require_auth
 from app.services import pdf as pdf_service
-from app.services import drive as drive_service
 from app.services import image as image_service
 from app.services import r2 as r2_service
 from app.config import settings
@@ -48,9 +47,15 @@ def _get_full_claim(claim_id: str, db) -> dict:
 
 
 def _get_finance_director(db) -> dict:
+    if settings.FD_NAME:
+        return {
+            "name": settings.FD_NAME,
+            "matric_no": settings.FD_MATRIC_NO,
+            "phone": settings.FD_PHONE,
+        }
     result = db.table("finance_team").select("*").eq("role", "director").limit(1).execute()
     if not result.data:
-        raise HTTPException(500, "No Finance Director configured")
+        raise HTTPException(500, "No Finance Director configured — set FD_NAME/FD_MATRIC_NO/FD_PHONE env vars")
     return result.data[0]
 
 
@@ -67,6 +72,48 @@ def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str
     return object_name
 
 
+def _do_compile(claim_id: str, reference_code: str, db) -> dict:
+    """Merge all current documents into a compiled PDF. Returns page_count."""
+    from pypdf import PdfWriter, PdfReader
+
+    result = db.table("claim_documents").select("*").eq("claim_id", claim_id).eq("is_current", True).execute()
+    docs_by_type = {d["type"]: d for d in result.data}
+
+    def has_type_prefix(prefix):
+        return any(t == prefix or t.startswith(prefix + "_") for t in docs_by_type)
+
+    missing = [t for t in ["loa", "summary", "rfp", "email_screenshot"] if not has_type_prefix(t)]
+    if missing:
+        raise ValueError(f"Missing required documents: {missing}")
+
+    writer = PdfWriter()
+    total_pages = 0
+
+    ordered_types = (
+        ["rfp", "rfp_a", "rfp_b", "rfp_c"]
+        + ["loa", "loa_a", "loa_b", "loa_c"]
+        + ["transport"]
+        + ["email_screenshot"]
+        + ["summary", "summary_a", "summary_b", "summary_c"]
+    )
+    for doc_type in ordered_types:
+        if doc_type not in docs_by_type:
+            continue
+        file_bytes = r2_service.download_file(docs_by_type[doc_type]["drive_file_id"])
+        reader = PdfReader(io.BytesIO(file_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+            total_pages += 1
+
+    output = io.BytesIO()
+    writer.write(output)
+    compiled_bytes = output.getvalue()
+
+    _save_document(claim_id, "compiled", compiled_bytes, f"Compiled - {reference_code}.pdf", reference_code, db)
+    db.table("claims").update({"status": "compiled", "error_message": None}).eq("id", claim_id).execute()
+    return {"page_count": total_pages}
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -79,25 +126,10 @@ def _bt_in_half(bt: dict, all_receipts: list, receipts_in_half_ids: set, is_firs
     return any(r["id"] in receipts_in_half_ids for r in linked)
 
 
-@router.post("/generate/{claim_id}")
-async def generate_documents(
-    claim_id: str,
-    db=Depends(get_supabase),
-    _auth=Depends(require_auth),
-):
-    """Generate LOA, Summary, RFP (and optionally Transport) PDFs for a claim."""
+def _do_generate(claim_id: str, db) -> dict:
+    """Core document generation logic. Caller is responsible for status checks."""
     claim = _get_full_claim(claim_id, db)
     finance_director = _get_finance_director(db)
-
-    allowed_statuses = {"screenshot_uploaded", "docs_generated"}
-    if claim.get("status") not in allowed_statuses:
-        raise HTTPException(
-            400,
-            f"Cannot generate documents for claim with status '{claim.get('status')}'. "
-            f"Expected one of: {sorted(allowed_statuses)}",
-        )
-
-    folder_id = drive_service.get_claim_folder_id(claim["reference_code"])
     all_receipts = [r for item in claim.get("line_items", []) for r in item.get("receipts", [])]
 
     # Attach receipt images
@@ -130,8 +162,7 @@ async def generate_documents(
             bt["images"] = images_by_bt.get(bt["id"], [])
             bt["refunds"] = refunds_by_bt.get(bt["id"], [])
 
-    # Determine split halves
-    line_items = claim.get("line_items", [])  # ordered by line_item_index
+    line_items = claim.get("line_items", [])
     base_code = claim["reference_code"]
 
     if len(line_items) <= 5:
@@ -145,66 +176,41 @@ async def generate_documents(
 
     try:
         for half_idx, (half_items, suffix) in enumerate(halves):
-            ref_code = base_code + suffix  # e.g. "2526-VPE-HPB-003A" or "2526-VPE-HPB-003"
+            ref_code = base_code + suffix
             is_first_half = (half_idx == 0)
 
-            # Collect receipt IDs in this half
-            half_receipt_ids = {
-                r["id"]
-                for item in half_items
-                for r in item.get("receipts", [])
-            }
-
-            # Filter all_receipts to this half
+            half_receipt_ids = {r["id"] for item in half_items for r in item.get("receipts", [])}
             half_receipts = [r for r in all_receipts if r["id"] in half_receipt_ids]
+            half_bts = [bt for bt in bank_transactions if _bt_in_half(bt, all_receipts, half_receipt_ids, is_first_half)]
 
-            # BTs relevant to this half:
-            # - BTs with NO linked receipts: include only in the first half to avoid duplication
-            # - BTs with receipts: include if ANY linked receipt is in this half
-            half_bts = [
-                bt for bt in bank_transactions
-                if _bt_in_half(bt, all_receipts, half_receipt_ids, is_first_half)
-            ]
-
-            # Generate LOA
             loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code)
             doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db)
             generated.append(doc_key)
 
-            # Generate Summary
-            summary_bytes = pdf_service.generate_summary(claim, half_items, finance_director, folder_id, reference_code_override=ref_code)
+            summary_bytes = pdf_service.generate_summary(claim, half_items, finance_director, reference_code_override=ref_code)
             summary_key = f"summary{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", ref_code, db)
             generated.append(summary_key)
 
-            # Generate RFP
-            rfp_bytes = pdf_service.generate_rfp(claim, half_items, finance_director, folder_id, reference_code_override=ref_code)
+            rfp_bytes = pdf_service.generate_rfp(claim, half_items, finance_director, reference_code_override=ref_code)
             rfp_key = f"rfp{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", ref_code, db)
             generated.append(rfp_key)
 
-        # Transport (optional, only for single/no-split claims — always use full line_items)
         if claim.get("transport_form_needed") and claim.get("transport_data"):
-            transport_bytes = pdf_service.generate_transport(
-                claim, claim["transport_data"], finance_director, folder_id
-            )
-            _save_document(
-                claim_id, "transport", transport_bytes,
-                f"Transport - {claim['reference_code']}.pdf", claim["reference_code"], db
-            )
+            transport_bytes = pdf_service.generate_transport(claim, claim["transport_data"], finance_director)
+            _save_document(claim_id, "transport", transport_bytes, f"Transport - {claim['reference_code']}.pdf", claim["reference_code"], db)
             generated.append("transport")
 
-        # --- Auto-generate remarks ---
+        # Auto-generate remarks
         remarks_lines = []
-        n = 1  # running line number across all remark entries
+        n = 1
 
-        # Refund remarks — for each BT with refunds
         for bt in bank_transactions:
             if bt.get("refunds"):
                 refund_amounts = [float(r["amount"]) for r in bt["refunds"]]
-                total_refunded = sum(refund_amounts)
-                net = float(bt["amount"]) - total_refunded
+                net = float(bt["amount"]) - sum(refund_amounts)
                 for amt in refund_amounts:
                     remarks_lines.append(f"{n}. An item was refunded and the amount refunded is ${amt:.2f}")
                     n += 1
@@ -214,17 +220,9 @@ async def generate_documents(
                 remarks_lines.append(f"{n}. Total Amount is {formula} = ${net:.2f}")
                 n += 1
 
-        # Cross-split remarks — only when there are multiple halves
         if len(halves) > 1:
-            li_to_suffix = {}
-            for items, suf in halves:
-                for item in items:
-                    li_to_suffix[item["id"]] = suf
-
-            r_to_suffix = {}
-            for r in all_receipts:
-                if r.get("line_item_id") in li_to_suffix:
-                    r_to_suffix[r["id"]] = li_to_suffix[r["line_item_id"]]
+            li_to_suffix = {item["id"]: suf for items, suf in halves for item in items}
+            r_to_suffix = {r["id"]: li_to_suffix[r["line_item_id"]] for r in all_receipts if r.get("line_item_id") in li_to_suffix}
 
             for bt in bank_transactions:
                 linked = [r for r in all_receipts if r.get("bank_transaction_id") == bt["id"]]
@@ -236,33 +234,21 @@ async def generate_documents(
                     half_sums[s] = half_sums.get(s, 0.0) + float(r["amount"])
 
                 if len(half_sums) > 1:
-                    for suf, local_sum in half_sums.items():
+                    for suf, _ in half_sums.items():
                         other_parts = [(s, v) for s, v in half_sums.items() if s != suf]
-                        other_str = " and ".join(
-                            f"Claim ID {base_code}{s} value of ${v:.2f}" for s, v in other_parts
-                        )
-                        calc_str = " + ".join(
-                            f"${v:.2f} ({base_code}{s})" for s, v in sorted(half_sums.items())
-                        )
-                        remarks_lines.append(
-                            f"{n}. Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well"
-                        )
+                        other_str = " and ".join(f"Claim ID {base_code}{s} value of ${v:.2f}" for s, v in other_parts)
+                        calc_str = " + ".join(f"${v:.2f} ({base_code}{s})" for s, v in sorted(half_sums.items()))
+                        remarks_lines.append(f"{n}. Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well")
                         n += 1
-                        remarks_lines.append(
-                            f"{n}. {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)"
-                        )
+                        remarks_lines.append(f"{n}. {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)")
                         n += 1
 
-        # Persist remarks (replace AUTO block or append)
         if remarks_lines:
             auto_block = "\n".join(remarks_lines)
             existing = claim.get("remarks") or ""
             sentinel_re = re.compile(r"<!-- AUTO -->.*?<!-- /AUTO -->", re.DOTALL)
             new_block = f"<!-- AUTO -->\n{auto_block}\n<!-- /AUTO -->"
-            if sentinel_re.search(existing):
-                new_remarks = sentinel_re.sub(new_block, existing)
-            else:
-                new_remarks = (existing + "\n\n" + new_block).strip()
+            new_remarks = sentinel_re.sub(new_block, existing) if sentinel_re.search(existing) else (existing + "\n\n" + new_block).strip()
             db.table("claims").update({"remarks": new_remarks}).eq("id", claim_id).execute()
 
     except Exception as e:
@@ -271,7 +257,30 @@ async def generate_documents(
         raise HTTPException(500, f"Document generation failed: {e}")
 
     db.table("claims").update({"status": "docs_generated", "error_message": None}).eq("id", claim_id).execute()
-    return {"success": True, "documents": generated, "claim_status": "docs_generated"}
+
+    # Auto-compile (screenshot must already be present for this to succeed)
+    try:
+        compile_result = _do_compile(claim_id, claim["reference_code"], db)
+        return {"success": True, "documents": generated, "claim_status": "compiled", "page_count": compile_result["page_count"]}
+    except ValueError:
+        return {"success": True, "documents": generated, "claim_status": "docs_generated"}
+    except Exception as e:
+        logger.exception("Auto-compile failed for claim %s: %s", claim_id, e)
+        return {"success": True, "documents": generated, "claim_status": "docs_generated"}
+
+
+@router.post("/generate/{claim_id}")
+async def generate_documents(
+    claim_id: str,
+    db=Depends(get_supabase),
+    _auth=Depends(require_auth),
+):
+    """Generate LOA, Summary, RFP (and optionally Transport) PDFs for a claim."""
+    claim = _get_full_claim(claim_id, db)
+    blocked = {"draft"}
+    if claim.get("status") in blocked:
+        raise HTTPException(400, f"Cannot generate documents for a draft claim.")
+    return _do_generate(claim_id, db)
 
 
 @router.post("/compile/{claim_id}")
@@ -283,61 +292,22 @@ async def compile_documents(
     """Merge all current documents into a single compiled PDF."""
     claim = _get_full_claim(claim_id, db)
 
-    if claim.get("status") != "docs_generated":
+    if claim.get("status") not in ("docs_generated", "compiled"):
         raise HTTPException(
             400,
             f"Cannot compile claim with status '{claim.get('status')}'. Expected 'docs_generated'.",
         )
 
-    result = db.table("claim_documents").select("*").eq("claim_id", claim_id).eq("is_current", True).execute()
-    docs_by_type = {d["type"]: d for d in result.data}
-
-    # Check required types — supports both plain and split variants
-    def has_type_prefix(prefix):
-        return any(t == prefix or t.startswith(prefix + "_") for t in docs_by_type)
-
-    missing = [t for t in ["loa", "summary", "rfp", "email_screenshot"] if not has_type_prefix(t)]
-    if missing:
-        raise HTTPException(400, f"Missing required documents: {missing}")
-
     try:
-        from pypdf import PdfWriter, PdfReader
-
-        writer = PdfWriter()
-        total_pages = 0
-
-        # Merge order: rfp(s) → loa(s) → transport → email_screenshot → summary(s)
-        ordered_types = (
-            ["rfp", "rfp_a", "rfp_b", "rfp_c"]
-            + ["loa", "loa_a", "loa_b", "loa_c"]
-            + ["transport"]
-            + ["email_screenshot"]
-            + ["summary", "summary_a", "summary_b", "summary_c"]
-        )
-        for doc_type in ordered_types:
-            if doc_type not in docs_by_type:
-                continue
-            file_bytes = r2_service.download_file(docs_by_type[doc_type]["drive_file_id"])
-            reader = PdfReader(io.BytesIO(file_bytes))
-            for page in reader.pages:
-                writer.add_page(page)
-                total_pages += 1
-
-        output = io.BytesIO()
-        writer.write(output)
-        compiled_bytes = output.getvalue()
-
+        result = _do_compile(claim_id, claim["reference_code"], db)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.exception("PDF compilation failed for claim %s: %s", claim_id, e)
         db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
         raise HTTPException(500, f"PDF compilation failed: {e}")
 
-    _save_document(
-        claim_id, "compiled", compiled_bytes,
-        f"Compiled - {claim['reference_code']}.pdf", claim["reference_code"], db
-    )
-    db.table("claims").update({"status": "compiled", "error_message": None}).eq("id", claim_id).execute()
-    return {"success": True, "claim_status": "compiled", "page_count": total_pages}
+    return {"success": True, "claim_status": "compiled", "page_count": result["page_count"]}
 
 
 @router.post("/upload-screenshot/{claim_id}")
@@ -376,7 +346,16 @@ async def upload_screenshot(
         f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db
     )
     db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
-    return {"success": True, "claim_status": "screenshot_uploaded"}
+
+    # Auto-generate and compile documents now that the screenshot is available
+    try:
+        result = _do_generate(claim_id, db)
+        return {"success": True, "claim_status": result["claim_status"], "documents": result.get("documents", [])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Auto-generation failed after screenshot upload for claim %s: %s", claim_id, e)
+        return {"success": True, "claim_status": "screenshot_uploaded"}
 
 
 @router.post("/transport-data/{claim_id}")
