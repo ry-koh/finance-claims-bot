@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.auth import require_auth
 from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
-from app.services import drive, image
+from app.services import gcs, image
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -202,29 +202,19 @@ async def upload_image(
     if not reference_code:
         raise HTTPException(status_code=422, detail="Claim has no reference code yet")
 
-    # Resolve / create Drive folders and upload
+    # Upload to GCS
     try:
-        claim_folder_id = drive.get_claim_folder_id(reference_code)
-        receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
-
-        # Read file and generate filename
         file_bytes = await file.read()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{image_type}_{timestamp}.jpg"
-
-        drive_file_id = drive.upload_file(
-            file_bytes=file_bytes,
-            filename=filename,
-            mime_type="image/jpeg",
-            parent_folder_id=receipts_folder_id,
-        )
+        object_name = gcs.make_object_name(reference_code, image_type, timestamp)
+        gcs.upload_file(file_bytes, object_name)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Google Drive upload failed for claim %s: %s", claim_id, exc)
-        raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {str(exc)[:300]}")
+        logger.exception("GCS upload failed for claim %s: %s", claim_id, exc)
+        raise HTTPException(status_code=502, detail=f"GCS upload failed: {str(exc)[:300]}")
 
-    return {"drive_file_id": drive_file_id, "filename": filename}
+    return {"drive_file_id": object_name, "filename": f"{image_type}_{timestamp}.jpg"}
 
 
 # ---------------------------------------------------------------------------
@@ -251,11 +241,10 @@ async def upload_receipt_image(
     except ValueError as e:
         raise HTTPException(422, str(e))
 
-    claim_folder_id = drive.get_claim_folder_id(reference_code)
-    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
     from datetime import datetime as _datetime
     timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
-    drive_file_id = drive.upload_file(processed, f"receipt_{timestamp}.jpg", "image/jpeg", receipts_folder_id)
+    object_name = gcs.make_object_name(reference_code, "receipt", timestamp)
+    drive_file_id = gcs.upload_file(processed, object_name)
 
     img_resp = db.table("receipt_images").insert({
         "receipt_id": receipt_id,
@@ -604,13 +593,10 @@ async def delete_receipt(
     if line_item_id:
         _delete_line_item_if_empty(db, line_item_id)
 
-    # Delete Drive files (best-effort — don't fail if Drive is unavailable)
+    # Delete GCS files (best-effort — don't fail if GCS is unavailable)
     for drive_field in ("receipt_image_drive_id", "bank_screenshot_drive_id"):
-        file_id = receipt.get(drive_field)
-        if file_id:
-            try:
-                drive.delete_file(file_id)
-            except Exception:
-                pass  # Non-fatal: Drive cleanup failure should not block deletion
+        object_name = receipt.get(drive_field)
+        if object_name:
+            gcs.delete_file(object_name)
 
     return {"deleted": True}

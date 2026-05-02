@@ -108,6 +108,20 @@ def convert_to_jpeg(file_bytes: bytes, content_type: str) -> bytes:
     return buf.getvalue()
 
 
+_MAX_STORAGE_BYTES = 400 * 1024  # 400 KB target for stored images
+
+
+def _compress_to_target(img: Image.Image) -> bytes:
+    """Save img as JPEG, stepping down quality until ≤ 400 KB or quality floor reached."""
+    for quality in (85, 75, 65, 55):
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=quality, optimize=True)
+        data = buf.getvalue()
+        if len(data) <= _MAX_STORAGE_BYTES or quality == 55:
+            return data
+    return data
+
+
 def normalise_to_a4(jpeg_bytes: bytes) -> bytes:
     """
     Normalise JPEG bytes to fit within an A4 canvas at 150 DPI.
@@ -116,8 +130,7 @@ def normalise_to_a4(jpeg_bytes: bytes) -> bytes:
     - Image is scaled down to fit within A4_WIDTH_PX × A4_HEIGHT_PX while
       preserving aspect ratio (never upscaled).
     - Placed centred on a white A4 canvas.
-
-    Returns JPEG bytes at quality=85.
+    - Compressed adaptively to target ≤ 400 KB.
     """
     img = Image.open(io.BytesIO(jpeg_bytes))
 
@@ -147,9 +160,7 @@ def normalise_to_a4(jpeg_bytes: bytes) -> bytes:
     y_offset = (A4_HEIGHT_PX - img.height) // 2
     canvas.paste(img, (x_offset, y_offset))
 
-    buf = io.BytesIO()
-    canvas.save(buf, format='JPEG', quality=85)
-    return buf.getvalue()
+    return _compress_to_target(canvas)
 
 
 def process_receipt_image(file_bytes: bytes, content_type: str, filename: str) -> bytes:

@@ -59,6 +59,10 @@ function driveUrl(id) {
   return `https://drive.google.com/file/d/${id}/view`
 }
 
+function imageUrl(gcsPath) {
+  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(gcsPath)}`
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Spinner({ small }) {
@@ -451,7 +455,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
             <div className="flex flex-wrap gap-1 mb-1">
               {existingImages.map(img => (
                 <div key={img.id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                  <a href={`https://drive.google.com/file/d/${img.drive_file_id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                  <a href={imageUrl(img.drive_file_id)} target="_blank" rel="noreferrer" className="text-blue-600 underline">
                     Image
                   </a>
                   <button type="button" disabled={deleting} onClick={() => handleDeleteExistingImage(img.id)} className="text-red-400 ml-1 disabled:opacity-40">×</button>
@@ -505,7 +509,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
           </div>
           {existingRefunds.map(ref => (
             <div key={ref.id} className="flex items-center gap-2 text-xs bg-gray-50 rounded p-1.5 mb-1">
-              <a href={`https://drive.google.com/file/d/${ref.drive_file_id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+              <a href={imageUrl(ref.drive_file_id)} target="_blank" rel="noreferrer" className="text-blue-600 underline">
                 Refund ${Number(ref.amount).toFixed(2)}
               </a>
               <button type="button" disabled={deleting} onClick={() => handleDeleteExistingRefund(ref.id)} className="text-red-400 ml-auto disabled:opacity-40">×</button>
@@ -608,7 +612,7 @@ function BtCard({
               {bt.images.map((img, i) => (
                 <a
                   key={img.id}
-                  href={driveUrl(img.drive_file_id)}
+                  href={imageUrl(img.drive_file_id)}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs text-blue-600 underline"
@@ -626,7 +630,7 @@ function BtCard({
                 <span key={ref.id ?? i} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
                   Refund {i + 1}: {formatAmount(ref.amount)}
                   {ref.drive_file_id && (
-                    <a href={driveUrl(ref.drive_file_id)} target="_blank" rel="noreferrer"
+                    <a href={imageUrl(ref.drive_file_id)} target="_blank" rel="noreferrer"
                       className="ml-1 text-blue-600 underline">file</a>
                   )}
                 </span>
@@ -1403,7 +1407,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
           <div className="flex flex-wrap gap-1 mb-1">
             {receiptImageDriveIds.map((imgId, i) => (
               <div key={imgId} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                <a href={`https://drive.google.com/file/d/${imgId}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
+                <a href={imageUrl(imgId)} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
                 <button type="button" onClick={() => setReceiptImageDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
               </div>
             ))}
@@ -1522,7 +1526,7 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
         </div>
         <div className="flex gap-1.5 shrink-0 items-center">
           {receipt.receipt_image_drive_id && (
-            <a href={driveUrl(receipt.receipt_image_drive_id)} target="_blank" rel="noreferrer"
+            <a href={imageUrl(receipt.receipt_image_drive_id)} target="_blank" rel="noreferrer"
               className="text-xs text-blue-600 underline">Receipt</a>
           )}
           <button onClick={() => setEditing(true)}

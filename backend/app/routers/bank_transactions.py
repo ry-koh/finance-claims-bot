@@ -6,7 +6,7 @@ from datetime import datetime
 
 from app.auth import require_auth
 from app.database import get_supabase
-from app.services import drive, image
+from app.services import gcs, image
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bank-transactions", tags=["bank-transactions"])
@@ -29,17 +29,14 @@ async def _get_bt_and_upload_file(
         raise HTTPException(status_code=422, detail=str(e))
 
     try:
-        claim_folder_id = drive.get_claim_folder_id(reference_code)
-        receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        drive_file_id = drive.upload_file(
-            processed, f"{filename_prefix}_{timestamp}.jpg", "image/jpeg", receipts_folder_id
-        )
+        object_name = gcs.make_object_name(reference_code, filename_prefix, timestamp)
+        drive_file_id = gcs.upload_file(processed, object_name)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Google Drive upload failed for BT %s: %s", bt_id, exc)
-        raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {str(exc)[:300]}")
+        logger.exception("GCS upload failed for BT %s: %s", bt_id, exc)
+        raise HTTPException(status_code=502, detail=f"GCS upload failed: {str(exc)[:300]}")
     return bt, drive_file_id
 
 
@@ -90,10 +87,7 @@ async def delete_bank_transaction_image(
     row = resp.data[0]
     file_id = row.get("drive_file_id")
     if file_id:
-        try:
-            drive.delete_file(file_id)
-        except Exception:
-            pass
+        gcs.delete_file(file_id)
     db.table("bank_transaction_images").delete().eq("id", image_id).execute()
     return {"deleted": True}
 
@@ -126,17 +120,14 @@ async def delete_bt_refund(
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    """Delete a bank transaction refund record and remove the receipt file from Drive."""
+    """Delete a bank transaction refund record and remove the file from GCS."""
     resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Refund not found")
     row = resp.data[0]
     file_id = row.get("drive_file_id")
     if file_id:
-        try:
-            drive.delete_file(file_id)
-        except Exception:
-            pass
+        gcs.delete_file(file_id)
     db.table("bank_transaction_refunds").delete().eq("id", refund_id).execute()
     return {"deleted": True}
 

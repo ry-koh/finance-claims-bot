@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     GMAIL_CLIENT_SECRET: str
     GMAIL_REFRESH_TOKEN: str
     GOOGLE_DRIVE_PARENT_FOLDER_ID: str
+    GCS_BUCKET_NAME: str = ""
     ACADEMIC_YEAR: str = "2526"
     RENDER_EXTERNAL_URL: str = ""  # set by Render automatically
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
