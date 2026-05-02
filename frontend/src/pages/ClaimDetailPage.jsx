@@ -7,7 +7,8 @@ import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import {
   createBankTransaction, uploadBankTransactionImage, updateBankTransaction, createBtRefund,
-  useDeleteBankTransaction, useDeleteBtRefund,
+  deleteBankTransactionImage, deleteBtRefund,
+  useDeleteBankTransaction,
 } from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
@@ -311,11 +312,17 @@ function TagInput({ value = [], onChange }) {
 // ─── BtModal ──────────────────────────────────────────────────────────────────
 
 function BtModal({ claimId, initial, onClose, onSaved }) {
+  const queryClient = useQueryClient()
   const [amount, setAmount] = useState(initial ? String(initial.amount ?? '') : '')
   const [btImages, setBtImages] = useState([]) // queued File objects
   const [refunds, setRefunds] = useState([]) // [{ amount: '', file: null, uploading: false }]
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [err, setErr] = useState(null)
+  const [existingImages, setExistingImages] = useState(initial?.images ?? [])
+  const [existingRefunds, setExistingRefunds] = useState(initial?.refunds ?? [])
+
+  const busy = saving || deleting
 
   function addRefund() {
     setRefunds((prev) => [...prev, { amount: '', file: null, uploading: false }])
@@ -329,10 +336,45 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
     setRefunds((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
   }
 
+  async function handleDeleteExistingImage(imageId) {
+    setDeleting(true)
+    setErr(null)
+    try {
+      await deleteBankTransactionImage({ btId: initial.id, imageId })
+      setExistingImages(prev => prev.filter(img => img.id !== imageId))
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch(e) {
+      setErr('Failed to delete image. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleDeleteExistingRefund(refundId) {
+    setDeleting(true)
+    setErr(null)
+    try {
+      await deleteBtRefund({ btId: initial.id, refundId })
+      setExistingRefunds(prev => prev.filter(r => r.id !== refundId))
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch(e) {
+      setErr('Failed to delete refund. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   async function handleSave() {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       setErr('Enter a valid amount.')
       return
+    }
+    for (let i = 0; i < refunds.length; i++) {
+      const r = refunds[i]
+      if (r.amount && !r.file) {
+        setErr(`Refund #${i + 1} requires a file.`)
+        return
+      }
     }
     setSaving(true)
     setErr(null)
@@ -394,6 +436,18 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
         {/* BT Images */}
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-1">Bank Screenshots</p>
+          {existingImages.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {existingImages.map(img => (
+                <div key={img.id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
+                  <a href={`https://drive.google.com/file/d/${img.drive_file_id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                    Image
+                  </a>
+                  <button type="button" disabled={deleting} onClick={() => handleDeleteExistingImage(img.id)} className="text-red-400 ml-1 disabled:opacity-40">×</button>
+                </div>
+              ))}
+            </div>
+          )}
           {btImages.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-1">
               {btImages.map((file, i) => (
@@ -438,6 +492,14 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
               + Add Refund
             </button>
           </div>
+          {existingRefunds.map(ref => (
+            <div key={ref.id} className="flex items-center gap-2 text-xs bg-gray-50 rounded p-1.5 mb-1">
+              <a href={`https://drive.google.com/file/d/${ref.drive_file_id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                Refund ${Number(ref.amount).toFixed(2)}
+              </a>
+              <button type="button" disabled={deleting} onClick={() => handleDeleteExistingRefund(ref.id)} className="text-red-400 ml-auto disabled:opacity-40">×</button>
+            </div>
+          ))}
           {refunds.map((refund, idx) => (
             <div key={idx} className="flex items-center gap-2 mb-1.5">
               <input
@@ -475,7 +537,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
         <div className="flex gap-2 pt-1">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={busy}
             className="flex-1 bg-blue-600 text-white text-sm font-medium py-2 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving && <Spinner small />}
@@ -483,7 +545,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
           </button>
           <button
             onClick={onClose}
-            disabled={saving}
+            disabled={busy}
             className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-2 rounded-lg disabled:opacity-50"
           >
             Cancel
@@ -599,7 +661,8 @@ function BtCard({
               <button
                 type="button"
                 onClick={onAddReceipt}
-                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+                disabled={saving}
+                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50 disabled:opacity-40"
               >
                 + Add Receipt
               </button>
@@ -607,7 +670,8 @@ function BtCard({
             <button
               type="button"
               onClick={onEdit}
-              className="text-xs text-gray-600 font-medium px-2 py-1 rounded-lg bg-gray-100"
+              disabled={saving}
+              className="text-xs text-gray-600 font-medium px-2 py-1 rounded-lg bg-gray-100 disabled:opacity-40"
             >
               Edit
             </button>
@@ -796,7 +860,11 @@ export default function ClaimDetailPage() {
 
   function handleDeleteBt(btId) {
     deleteBtMut.mutate(btId, {
-      onSuccess: invalidateClaim,
+      onSuccess: () => {
+        setExpandedBtId((prev) => (prev === btId ? null : prev))
+        setAddingReceiptForBtId((prev) => (prev === btId ? null : prev))
+        invalidateClaim()
+      },
       onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to delete bank transaction.'),
     })
   }
@@ -812,8 +880,8 @@ export default function ClaimDetailPage() {
     createReceiptMut.mutate(
       { claim_id: id, ...fields },
       {
-        onSuccess: () => {
-          const updated = [...(claim.receipts ?? []), fields]
+        onSuccess: (created) => {
+          const updated = [...(claim.receipts ?? []), created]
           recalcAndUpdateTotal(updated)
         },
         onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to add receipt.'),
@@ -876,6 +944,7 @@ export default function ClaimDetailPage() {
   const cca = claimer.cca ?? {}
   const portfolio = cca.portfolio ?? {}
   const showErrorBanner = claim.status === 'error' && !errorDismissed
+  const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50 pb-6">
@@ -1165,50 +1234,45 @@ export default function ClaimDetailPage() {
         </div>
 
         {/* ── Unlinked Receipts ── */}
-        {(() => {
-          const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
-          return (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-700">
-                  Unlinked Receipts ({unlinked.length})
-                </h2>
-                {!showAddUnlinked && (
-                  <button
-                    onClick={() => setShowAddUnlinked(true)}
-                    className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
-                  >
-                    + Add
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-col">
-                {unlinked.map(r => (
-                  <ReceiptRow
-                    key={r.id}
-                    receipt={r}
-                    claimId={id}
-                    onEdit={(fields) => handleEditReceipt(r, fields)}
-                    onDelete={() => handleDeleteReceipt(r)}
-                    saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
-                  />
-                ))}
-                {!unlinked.length && !showAddUnlinked && (
-                  <p className="text-xs text-gray-400 text-center py-2">No unlinked receipts</p>
-                )}
-              </div>
-              {showAddUnlinked && (
-                <ReceiptInlineForm
-                  bankTransactionId={null}
-                  onSave={(fields) => { handleAddReceipt(fields); setShowAddUnlinked(false) }}
-                  onCancel={() => setShowAddUnlinked(false)}
-                  saving={createReceiptMut.isPending}
-                  claimId={id}
-                />
-              )}
-            </div>
-          )
-        })()}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">
+              Unlinked Receipts ({unlinked.length})
+            </h2>
+            {!showAddUnlinked && (
+              <button
+                onClick={() => setShowAddUnlinked(true)}
+                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+              >
+                + Add
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col">
+            {unlinked.map(r => (
+              <ReceiptRow
+                key={r.id}
+                receipt={r}
+                claimId={id}
+                onEdit={(fields) => handleEditReceipt(r, fields)}
+                onDelete={() => handleDeleteReceipt(r)}
+                saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
+              />
+            ))}
+            {!unlinked.length && !showAddUnlinked && (
+              <p className="text-xs text-gray-400 text-center py-2">No unlinked receipts</p>
+            )}
+          </div>
+          {showAddUnlinked && (
+            <ReceiptInlineForm
+              bankTransactionId={null}
+              onSave={(fields) => { handleAddReceipt(fields); setShowAddUnlinked(false) }}
+              onCancel={() => setShowAddUnlinked(false)}
+              saving={createReceiptMut.isPending}
+              claimId={id}
+            />
+          )}
+        </div>
 
         {/* ── Documents ── */}
         {claim.documents?.length > 0 && (
@@ -1290,15 +1354,17 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
 
   const [receiptImageDriveIds, setReceiptImageDriveIds] = useState(initial?.receipt_image_drive_ids ?? [])
   const [uploadingReceiptImg, setUploadingReceiptImg] = useState(false)
+  const [imgUploadErr, setImgUploadErr] = useState(null)
 
   async function handleReceiptImageFile(file) {
     if (!claimId) return
+    setImgUploadErr(null)
     setUploadingReceiptImg(true)
     try {
       const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
       setReceiptImageDriveIds(prev => [...prev, data.drive_file_id])
     } catch(e) {
-      // silent fail — user can retry
+      setImgUploadErr('Upload failed. Please try again.')
     } finally {
       setUploadingReceiptImg(false)
     }
@@ -1341,11 +1407,12 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
             type="file"
             accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
             className="hidden"
-            disabled={uploadingReceiptImg || !claimId}
+            disabled={uploadingReceiptImg || saving || !claimId}
             onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleReceiptImageFile(file) }}
           />
           {uploadingReceiptImg ? 'Uploading…' : '+ Add receipt photo'}
         </label>
+        {imgUploadErr && <p className="text-xs text-red-500 mt-0.5">{imgUploadErr}</p>}
       </div>
 
       {/* Description */}
