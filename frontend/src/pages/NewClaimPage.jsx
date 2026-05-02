@@ -110,7 +110,7 @@ function Input({ value, onChange, type = 'text', placeholder, disabled, classNam
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       disabled={disabled}
-      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400 ${className}`}
+      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400 ${type === 'date' ? 'max-w-[200px]' : ''} ${className}`}
     />
   )
 }
@@ -1080,7 +1080,11 @@ export default function NewClaimPage() {
         const created = await createBankTransaction({ claimId, amount: bt.amount })
         btIdMap[bt.localId] = created.id
         for (const file of (bt.files ?? [])) {
-          await uploadBankTransactionImage({ btId: created.id, file })
+          try {
+            await uploadBankTransactionImage({ btId: created.id, file })
+          } catch {
+            // Non-fatal: Drive unavailable, continue saving
+          }
         }
       }
 
@@ -1088,8 +1092,12 @@ export default function NewClaimPage() {
       for (const r of receipts) {
         const driveIds = []
         for (const file of (r.files ?? [])) {
-          const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
-          driveIds.push(data.drive_file_id)
+          try {
+            const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
+            driveIds.push(data.drive_file_id)
+          } catch {
+            // Non-fatal: Drive unavailable, continue saving
+          }
         }
         await createReceipt.mutateAsync({
           claim_id: claimId,

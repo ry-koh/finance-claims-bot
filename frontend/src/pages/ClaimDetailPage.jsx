@@ -826,7 +826,13 @@ export default function ClaimDetailPage() {
           setEditFields({})
           const stale = data?.stale_documents ?? []
           if (stale.length > 0) setStaleDocsWarning(true)
-          invalidateClaim()
+          // Merge the PATCH response directly into cache to avoid blank screen
+          // if the background refetch (triggered by useUpdateClaim.onSuccess) fails
+          if (data?.claim) {
+            queryClient.setQueryData(CLAIM_KEYS.detail(id), (old) =>
+              old ? { ...old, ...data.claim } : undefined
+            )
+          }
         },
         onError: (err) => {
           const msg =
@@ -926,7 +932,7 @@ export default function ClaimDetailPage() {
     )
   }
 
-  if (isError || !claim) {
+  if (!claim) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 px-4">
         <p className="text-gray-500 text-sm text-center">Failed to load claim.</p>
@@ -1102,7 +1108,7 @@ export default function ClaimDetailPage() {
                   onChange={(e) =>
                     setEditFields((f) => ({ ...f, date: e.target.value }))
                   }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full max-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
 
@@ -1448,7 +1454,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
         <input className={inputCls} placeholder="Company" value={f.company} onChange={set('company')} />
       </div>
       <input
-        className={inputCls}
+        className={`${inputCls} max-w-[200px]`}
         type="date"
         value={f.date}
         onChange={set('date')}
