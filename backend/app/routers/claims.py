@@ -148,6 +148,22 @@ async def get_claim(
         for bt in bank_transactions:
             bt["images"] = images_by_bt.get(bt["id"], [])
 
+    # Fetch refunds for each bank transaction
+    if bank_transactions:
+        btr_resp = db.table("bank_transaction_refunds").select("*").in_(
+            "bank_transaction_id", bt_ids
+        ).order("created_at").execute()
+        refunds_by_bt: dict = {}
+        for ref in btr_resp.data:
+            refunds_by_bt.setdefault(ref["bank_transaction_id"], []).append(ref)
+        for bt in bank_transactions:
+            bt["refunds"] = refunds_by_bt.get(bt["id"], [])
+            bt["net_amount"] = float(bt.get("amount") or 0) - sum(float(r["amount"]) for r in bt["refunds"])
+    else:
+        for bt in bank_transactions:
+            bt["refunds"] = []
+            bt["net_amount"] = float(bt.get("amount") or 0)
+
     # Documents — only current
     docs_resp = (
         db.table("claim_documents")
