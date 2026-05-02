@@ -205,14 +205,15 @@ async def generate_documents(
                 refund_amounts = [float(r["amount"]) for r in bt["refunds"]]
                 total_refunded = sum(refund_amounts)
                 net = float(bt["amount"]) - total_refunded
-                if len(refund_amounts) == 1:
-                    remarks_lines.append(f"1. An item was refunded and the amount refunded is ${refund_amounts[0]:.2f}")
-                else:
-                    amounts_str = " and ".join(f"${a:.2f}" for a in refund_amounts)
-                    remarks_lines.append(f"1. Items were refunded — {amounts_str}")
-                remarks_lines.append(f"2. Initial Bank Transaction is ${float(bt['amount']):.2f}")
+                # Number each refund line, then initial BT, then total
+                n = 1
+                for amt in refund_amounts:
+                    remarks_lines.append(f"{n}. An item was refunded and the amount refunded is ${amt:.2f}")
+                    n += 1
+                remarks_lines.append(f"{n}. Initial Bank Transaction is ${float(bt['amount']):.2f}")
+                n += 1
                 formula = " - ".join([f"${float(bt['amount']):.2f}"] + [f"${a:.2f}" for a in refund_amounts])
-                remarks_lines.append(f"3. Total Amount is {formula} = ${net:.2f}")
+                remarks_lines.append(f"{n}. Total Amount is {formula} = ${net:.2f}")
 
         # Cross-split remarks — only when there are multiple halves
         if len(halves) > 1:
