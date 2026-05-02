@@ -9,6 +9,7 @@ from app.services import image as image_service
 from app.services import r2 as r2_service
 from app.config import settings
 from fpdf import FPDF
+from telegram import Bot
 import io, tempfile, os, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -381,8 +382,6 @@ async def send_to_telegram(
     db=Depends(get_supabase),
 ):
     """Send compiled PDFs for the given claim IDs to the requesting user via Telegram."""
-    from telegram import Bot
-
     telegram_id = member.get("telegram_id")
     if not telegram_id:
         raise HTTPException(400, "Your account has no Telegram ID linked.")
@@ -393,37 +392,44 @@ async def send_to_telegram(
 
     try:
         for claim_id in payload.claim_ids:
-            doc_resp = (
-                db.table("claim_documents")
-                .select("*")
-                .eq("claim_id", claim_id)
-                .eq("type", "compiled")
-                .eq("is_current", True)
-                .execute()
-            )
-            docs = doc_resp.data
-            if not docs:
+            try:
+                doc_resp = (
+                    db.table("claim_documents")
+                    .select("*")
+                    .eq("claim_id", claim_id)
+                    .eq("type", "compiled")
+                    .eq("is_current", True)
+                    .execute()
+                )
+                docs = doc_resp.data
+                if not docs:
+                    skipped_ids.append(claim_id)
+                    continue
+
+                doc = docs[0]
+
+                claim_resp = (
+                    db.table("claims")
+                    .select("reference_code")
+                    .eq("id", claim_id)
+                    .single()
+                    .execute()
+                )
+                if not claim_resp.data:
+                    skipped_ids.append(claim_id)
+                    continue
+                reference_code = claim_resp.data["reference_code"]
+
+                file_bytes = r2_service.download_file(doc["drive_file_id"])
+                await bot.send_document(
+                    chat_id=int(telegram_id),
+                    document=io.BytesIO(file_bytes),
+                    filename=f"{reference_code}.pdf",
+                )
+                sent += 1
+            except Exception as e:
+                logger.warning("Failed to send Telegram document for claim %s: %s", claim_id, e)
                 skipped_ids.append(claim_id)
-                continue
-
-            doc = docs[0]
-
-            claim_resp = (
-                db.table("claims")
-                .select("reference_code")
-                .eq("id", claim_id)
-                .single()
-                .execute()
-            )
-            reference_code = claim_resp.data["reference_code"] if claim_resp.data else claim_id
-
-            file_bytes = r2_service.download_file(doc["drive_file_id"])
-            await bot.send_document(
-                chat_id=int(telegram_id),
-                document=io.BytesIO(file_bytes),
-                filename=f"{reference_code}.pdf",
-            )
-            sent += 1
     finally:
         await bot.close()
 
