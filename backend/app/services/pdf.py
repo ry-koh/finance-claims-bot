@@ -19,6 +19,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 from app.services.drive import get_drive_service
+from app.services import r2 as r2_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -50,9 +51,9 @@ def download_drive_file(file_id: str) -> bytes:
 
 
 def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
-    """Download a Drive image and embed it on a new PDF page with a header label."""
+    """Download an R2 image and embed it on a new PDF page with a header label."""
     try:
-        file_bytes = download_drive_file(drive_id)
+        file_bytes = r2_service.download_file(drive_id)
         img = Image.open(io.BytesIO(file_bytes))
 
         px_per_mm = 150 / 25.4
@@ -94,7 +95,7 @@ def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
                 pass
 
     except Exception as exc:
-        logger.warning("Failed to embed Drive image %s: %s", drive_id, exc)
+        logger.warning("Failed to embed R2 image %s: %s", drive_id, exc)
         pdf.add_page()
         pdf.set_font("Helvetica", style="I", size=10)
         pdf.set_text_color(180, 0, 0)

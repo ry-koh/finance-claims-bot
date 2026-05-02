@@ -202,6 +202,12 @@ async def upload_image(
     if not reference_code:
         raise HTTPException(status_code=422, detail="Claim has no reference code yet")
 
+    # Validate file type
+    try:
+        image.validate_mime_type(file.content_type or "", file.filename or "")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     # Upload to R2
     try:
         file_bytes = await file.read()

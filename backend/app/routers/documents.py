@@ -7,6 +7,7 @@ from app.auth import require_auth
 from app.services import pdf as pdf_service
 from app.services import drive as drive_service
 from app.services import image as image_service
+from app.services import r2 as r2_service
 from app.config import settings
 from fpdf import FPDF
 import io, tempfile, os, logging, re
@@ -53,19 +54,17 @@ def _get_finance_director(db) -> dict:
     return result.data[0]
 
 
-def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, folder_id: str, db) -> str:
-    # Upload to Google Drive
-    file_id = drive_service.upload_file(pdf_bytes, filename, "application/pdf", folder_id)
-    # Mark old current docs of this type as stale
+def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, reference_code: str, db) -> str:
+    object_name = r2_service.make_document_object_name(reference_code, filename)
+    r2_service.upload_file(pdf_bytes, object_name, content_type="application/pdf")
     db.table("claim_documents").update({"is_current": False}).eq("claim_id", claim_id).eq("type", doc_type).eq("is_current", True).execute()
-    # Insert new document record
     db.table("claim_documents").insert({
         "claim_id": claim_id,
         "type": doc_type,
-        "drive_file_id": file_id,
+        "drive_file_id": object_name,
         "is_current": True,
     }).execute()
-    return file_id
+    return object_name
 
 
 # ---------------------------------------------------------------------------
@@ -170,19 +169,19 @@ async def generate_documents(
             # Generate LOA
             loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code)
             doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
-            _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", folder_id, db)
+            _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db)
             generated.append(doc_key)
 
             # Generate Summary
             summary_bytes = pdf_service.generate_summary(claim, half_items, finance_director, folder_id, reference_code_override=ref_code)
             summary_key = f"summary{'_' + suffix.lower() if suffix else ''}"
-            _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", folder_id, db)
+            _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", ref_code, db)
             generated.append(summary_key)
 
             # Generate RFP
             rfp_bytes = pdf_service.generate_rfp(claim, half_items, finance_director, folder_id, reference_code_override=ref_code)
             rfp_key = f"rfp{'_' + suffix.lower() if suffix else ''}"
-            _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", folder_id, db)
+            _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", ref_code, db)
             generated.append(rfp_key)
 
         # Transport (optional, only for single/no-split claims — always use full line_items)
@@ -192,7 +191,7 @@ async def generate_documents(
             )
             _save_document(
                 claim_id, "transport", transport_bytes,
-                f"Transport - {claim['reference_code']}.pdf", folder_id, db
+                f"Transport - {claim['reference_code']}.pdf", claim["reference_code"], db
             )
             generated.append("transport")
 
@@ -301,8 +300,6 @@ async def compile_documents(
     if missing:
         raise HTTPException(400, f"Missing required documents: {missing}")
 
-    folder_id = drive_service.get_claim_folder_id(claim["reference_code"])
-
     try:
         from pypdf import PdfWriter, PdfReader
 
@@ -320,7 +317,7 @@ async def compile_documents(
         for doc_type in ordered_types:
             if doc_type not in docs_by_type:
                 continue
-            file_bytes = pdf_service.download_drive_file(docs_by_type[doc_type]["drive_file_id"])
+            file_bytes = r2_service.download_file(docs_by_type[doc_type]["drive_file_id"])
             reader = PdfReader(io.BytesIO(file_bytes))
             for page in reader.pages:
                 writer.add_page(page)
@@ -337,7 +334,7 @@ async def compile_documents(
 
     _save_document(
         claim_id, "compiled", compiled_bytes,
-        f"Compiled - {claim['reference_code']}.pdf", folder_id, db
+        f"Compiled - {claim['reference_code']}.pdf", claim["reference_code"], db
     )
     db.table("claims").update({"status": "compiled", "error_message": None}).eq("id", claim_id).execute()
     return {"success": True, "claim_status": "compiled", "page_count": total_pages}
@@ -360,7 +357,6 @@ async def upload_screenshot(
         raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
 
     claim = _get_full_claim(claim_id, db)
-    folder_id = drive_service.get_claim_folder_id(claim["reference_code"])
 
     # Convert processed JPEG to single-page A4 PDF
     pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -377,7 +373,7 @@ async def upload_screenshot(
 
     _save_document(
         claim_id, "email_screenshot", screenshot_pdf_bytes,
-        f"Screenshot - {claim['reference_code']}.pdf", folder_id, db
+        f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db
     )
     db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
     return {"success": True, "claim_status": "screenshot_uploaded"}

@@ -55,10 +55,6 @@ function statusIndex(status) {
   return idx === -1 ? -1 : idx
 }
 
-function driveUrl(id) {
-  return `https://drive.google.com/file/d/${id}/view`
-}
-
 function imageUrl(gcsPath) {
   return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(gcsPath)}`
 }
@@ -1568,7 +1564,7 @@ function DocumentRow({ doc }) {
       <span className="text-sm text-gray-700">{typeLabel}</span>
       {doc.drive_file_id && (
         <a
-          href={driveUrl(doc.drive_file_id)}
+          href={imageUrl(doc.drive_file_id)}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-blue-600 underline"
