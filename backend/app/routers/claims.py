@@ -351,8 +351,8 @@ async def bulk_update_status(
 ):
     if not payload.claim_ids:
         raise HTTPException(status_code=422, detail="claim_ids must not be empty")
-    db.table("claims").update({"status": payload.status.value}).in_("id", payload.claim_ids).execute()
-    return {"updated": len(payload.claim_ids)}
+    resp = db.table("claims").update({"status": payload.status.value}).in_("id", payload.claim_ids).execute()
+    return {"updated": len(resp.data) if resp.data else 0}
 
 
 # ---------------------------------------------------------------------------
