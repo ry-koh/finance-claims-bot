@@ -14,11 +14,11 @@ using fpdf2 and pypdf.  Responsibilities include:
 
 from fpdf import FPDF
 from PIL import Image
-import io, os, tempfile, logging, json, time
+import io, os, tempfile, logging, time
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2 import service_account
-from app.services.drive import get_drive_service
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from app.services import r2 as r2_service
 from app.config import settings
 
@@ -34,10 +34,10 @@ CONTENT_H = A4_H - 2 * MARGIN
 
 def download_drive_file(file_id: str) -> bytes:
     """
-    Download file bytes from Google Drive by file ID using the Drive API.
+    Download file bytes from Google Drive by file ID using user OAuth credentials.
     Raises ValueError if the file is not found or cannot be downloaded.
     """
-    drive_service = get_drive_service()
+    drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     try:
         request = drive_service.files().get_media(fileId=file_id)
         buffer = io.BytesIO()
@@ -231,59 +231,56 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
 
 
 # ---------------------------------------------------------------------------
-# Google Sheets / Docs service helpers
+# Google Sheets / Docs service helpers (user OAuth, not service account)
 # ---------------------------------------------------------------------------
 
-def get_sheets_service():
-    """Return an authenticated Google Sheets v4 service."""
-    info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
-    creds = service_account.Credentials.from_service_account_info(
-        info,
-        scopes=[
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive',
-        ],
+def _get_user_drive_credentials() -> Credentials:
+    """Return refreshed OAuth2 credentials for Drive/Sheets/Docs operations."""
+    creds = Credentials(
+        token=None,
+        refresh_token=settings.DRIVE_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.GMAIL_CLIENT_ID,
+        client_secret=settings.GMAIL_CLIENT_SECRET,
     )
-    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
+    creds.refresh(Request())
+    return creds
+
+
+def get_sheets_service():
+    """Return an authenticated Google Sheets v4 service using user OAuth."""
+    return build('sheets', 'v4', credentials=_get_user_drive_credentials(), cache_discovery=False)
 
 
 def get_docs_service():
-    """Return an authenticated Google Docs v1 service."""
-    info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
-    creds = service_account.Credentials.from_service_account_info(
-        info,
-        scopes=[
-            'https://www.googleapis.com/auth/documents',
-            'https://www.googleapis.com/auth/drive',
-        ],
-    )
-    return build('docs', 'v1', credentials=creds, cache_discovery=False)
+    """Return an authenticated Google Docs v1 service using user OAuth."""
+    return build('docs', 'v1', credentials=_get_user_drive_credentials(), cache_discovery=False)
 
 
 def copy_template(template_id: str, new_name: str, parent_folder_id: str) -> str:
     """
-    Copy a Drive file (template) to *parent_folder_id* with *new_name*.
+    Copy a Drive template to the user's My Drive with *new_name*.
 
+    The copy is placed in the user's root (not a specific folder) since it is
+    temporary — it will be exported to PDF and trashed immediately after.
     Returns the new file's Drive ID.
     """
-    drive = get_drive_service()
+    drive = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     result = drive.files().copy(
         fileId=template_id,
-        body={"name": new_name, "parents": [parent_folder_id]},
+        body={"name": new_name},
     ).execute()
     return result["id"]
 
 
 def export_as_pdf(file_id: str, mime_type: str = 'application/vnd.google-apps.spreadsheet') -> bytes:
     """
-    Export a Google Workspace file (Sheets/Docs) as a PDF.
+    Export a Google Workspace file (Sheets/Docs) as a PDF using user OAuth.
 
-    *mime_type* is unused at the call site but kept for API symmetry — the
-    Drive export endpoint always receives 'application/pdf'.
-
+    *mime_type* is unused but kept for API symmetry.
     Returns raw PDF bytes.
     """
-    drive_service = get_drive_service()
+    drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     request = drive_service.files().export_media(
         fileId=file_id,
         mimeType='application/pdf',
@@ -297,8 +294,8 @@ def export_as_pdf(file_id: str, mime_type: str = 'application/vnd.google-apps.sp
 
 
 def delete_drive_file(file_id: str) -> None:
-    """Trash a Drive file (soft delete)."""
-    drive_service = get_drive_service()
+    """Trash a Drive file (soft delete) using user OAuth."""
+    drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     drive_service.files().update(fileId=file_id, body={"trashed": True}).execute()
 
 

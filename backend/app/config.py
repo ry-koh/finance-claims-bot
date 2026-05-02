@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     GMAIL_CLIENT_SECRET: str
     GMAIL_REFRESH_TOKEN: str
     GOOGLE_DRIVE_PARENT_FOLDER_ID: str
+    DRIVE_REFRESH_TOKEN: str = ""  # OAuth refresh token with Drive+Sheets+Docs scopes
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""
     R2_SECRET_ACCESS_KEY: str = ""
