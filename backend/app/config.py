@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = ""
     R2_STORAGE_LIMIT_BYTES: int = 9_500_000_000  # 9.5 GB hard stop
-    ACADEMIC_YEAR: str = "2526"
+    ACADEMIC_YEAR: str
     RENDER_EXTERNAL_URL: str = ""  # set by Render automatically
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
     SUMMARY_TEMPLATE_ID: str = "1xPPlWy6T_tZqwFYHZlTSFYqciItF0Jm7Q25k1K-GHX4"
