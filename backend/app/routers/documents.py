@@ -9,7 +9,7 @@ from app.services import drive as drive_service
 from app.services import image as image_service
 from app.config import settings
 from fpdf import FPDF
-import io, tempfile, os, logging
+import io, tempfile, os, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
@@ -72,6 +72,14 @@ def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _bt_in_half(bt: dict, all_receipts: list, receipts_in_half_ids: set, is_first: bool) -> bool:
+    """Return True if this bank transaction belongs to the given half."""
+    linked = [r for r in all_receipts if r.get("bank_transaction_id") == bt["id"]]
+    if not linked:
+        return is_first
+    return any(r["id"] in receipts_in_half_ids for r in linked)
+
+
 @router.post("/generate/{claim_id}")
 async def generate_documents(
     claim_id: str,
@@ -106,7 +114,7 @@ async def generate_documents(
         for r in all_receipts:
             r["images"] = []
 
-    # Fetch bank transactions with their images
+    # Fetch bank transactions with their images and refunds
     bt_resp = db.table("bank_transactions").select("*").eq("claim_id", claim_id).order("created_at").execute()
     bank_transactions = bt_resp.data
     if bank_transactions:
@@ -115,28 +123,69 @@ async def generate_documents(
         images_by_bt: dict = {}
         for img in bti_resp.data:
             images_by_bt.setdefault(img["bank_transaction_id"], []).append(img)
+        btr_resp = db.table("bank_transaction_refunds").select("*").in_("bank_transaction_id", bt_ids).order("created_at").execute()
+        refunds_by_bt: dict = {}
+        for ref in btr_resp.data:
+            refunds_by_bt.setdefault(ref["bank_transaction_id"], []).append(ref)
         for bt in bank_transactions:
             bt["images"] = images_by_bt.get(bt["id"], [])
+            bt["refunds"] = refunds_by_bt.get(bt["id"], [])
+
+    # Determine split halves
+    line_items = claim.get("line_items", [])  # ordered by line_item_index
+    base_code = claim["reference_code"]
+
+    if len(line_items) <= 5:
+        halves = [(line_items, "")]
+    else:
+        chunks = [line_items[i:i + 5] for i in range(0, len(line_items), 5)]
+        suffixes = ["A", "B", "C"]
+        halves = [(chunk, suffixes[idx]) for idx, chunk in enumerate(chunks) if chunk]
 
     generated = []
 
     try:
-        # LOA
-        loa_bytes = pdf_service.generate_loa(claim, all_receipts, bank_transactions)
-        _save_document(claim_id, "loa", loa_bytes, f"LOA - {claim['reference_code']}.pdf", folder_id, db)
-        generated.append("loa")
+        for half_idx, (half_items, suffix) in enumerate(halves):
+            ref_code = base_code + suffix  # e.g. "2526-VPE-HPB-003A" or "2526-VPE-HPB-003"
+            is_first_half = (half_idx == 0)
 
-        # Summary
-        summary_bytes = pdf_service.generate_summary(claim, claim.get("line_items", []), finance_director, folder_id)
-        _save_document(claim_id, "summary", summary_bytes, f"Summary - {claim['reference_code']}.pdf", folder_id, db)
-        generated.append("summary")
+            # Collect receipt IDs in this half
+            half_receipt_ids = {
+                r["id"]
+                for item in half_items
+                for r in item.get("receipts", [])
+            }
 
-        # RFP
-        rfp_bytes = pdf_service.generate_rfp(claim, claim.get("line_items", []), finance_director, folder_id)
-        _save_document(claim_id, "rfp", rfp_bytes, f"RFP - {claim['reference_code']}.pdf", folder_id, db)
-        generated.append("rfp")
+            # Filter all_receipts to this half
+            half_receipts = [r for r in all_receipts if r["id"] in half_receipt_ids]
 
-        # Transport (optional)
+            # BTs relevant to this half:
+            # - BTs with NO linked receipts: include only in the first half to avoid duplication
+            # - BTs with receipts: include if ANY linked receipt is in this half
+            half_bts = [
+                bt for bt in bank_transactions
+                if _bt_in_half(bt, all_receipts, half_receipt_ids, is_first_half)
+            ]
+
+            # Generate LOA
+            loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code)
+            doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
+            _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", folder_id, db)
+            generated.append(doc_key)
+
+            # Generate Summary
+            summary_bytes = pdf_service.generate_summary(claim, half_items, finance_director, folder_id, reference_code_override=ref_code)
+            summary_key = f"summary{'_' + suffix.lower() if suffix else ''}"
+            _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", folder_id, db)
+            generated.append(summary_key)
+
+            # Generate RFP
+            rfp_bytes = pdf_service.generate_rfp(claim, half_items, finance_director, folder_id, reference_code_override=ref_code)
+            rfp_key = f"rfp{'_' + suffix.lower() if suffix else ''}"
+            _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", folder_id, db)
+            generated.append(rfp_key)
+
+        # Transport (optional, only for single/no-split claims — always use full line_items)
         if claim.get("transport_form_needed") and claim.get("transport_data"):
             transport_bytes = pdf_service.generate_transport(
                 claim, claim["transport_data"], finance_director, folder_id
@@ -146,6 +195,75 @@ async def generate_documents(
                 f"Transport - {claim['reference_code']}.pdf", folder_id, db
             )
             generated.append("transport")
+
+        # --- Auto-generate remarks ---
+        remarks_lines = []
+
+        # Refund remarks — for each BT with refunds
+        for bt in bank_transactions:
+            if bt.get("refunds"):
+                refund_amounts = [float(r["amount"]) for r in bt["refunds"]]
+                total_refunded = sum(refund_amounts)
+                net = float(bt["amount"]) - total_refunded
+                if len(refund_amounts) == 1:
+                    remarks_lines.append(f"1. An item was refunded and the amount refunded is ${refund_amounts[0]:.2f}")
+                else:
+                    amounts_str = " and ".join(f"${a:.2f}" for a in refund_amounts)
+                    remarks_lines.append(f"1. Items were refunded — {amounts_str}")
+                remarks_lines.append(f"2. Initial Bank Transaction is ${float(bt['amount']):.2f}")
+                formula = " - ".join([f"${float(bt['amount']):.2f}"] + [f"${a:.2f}" for a in refund_amounts])
+                remarks_lines.append(f"3. Total Amount is {formula} = ${net:.2f}")
+
+        # Cross-split remarks — only when there are multiple halves
+        if len(halves) > 1:
+            # Build map: line_item_id -> suffix
+            li_to_suffix = {}
+            for items, suf in halves:
+                for item in items:
+                    li_to_suffix[item["id"]] = suf
+
+            # Build map: receipt_id -> suffix
+            r_to_suffix = {}
+            for r in all_receipts:
+                if r.get("line_item_id") in li_to_suffix:
+                    r_to_suffix[r["id"]] = li_to_suffix[r["line_item_id"]]
+
+            for bt in bank_transactions:
+                linked = [r for r in all_receipts if r.get("bank_transaction_id") == bt["id"]]
+                if not linked:
+                    continue
+                half_sums: dict = {}
+                for r in linked:
+                    s = r_to_suffix.get(r["id"], halves[0][1])
+                    half_sums[s] = half_sums.get(s, 0.0) + float(r["amount"])
+
+                if len(half_sums) > 1:
+                    for suf, local_sum in half_sums.items():
+                        other_parts = [(s, v) for s, v in half_sums.items() if s != suf]
+                        other_str = " and ".join(
+                            f"Claim ID {base_code}{s} value of ${v:.2f}" for s, v in other_parts
+                        )
+                        calc_str = " + ".join(
+                            f"${v:.2f} ({base_code}{s})" for s, v in sorted(half_sums.items())
+                        )
+                        remarks_lines.append(
+                            f"1. Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well"
+                        )
+                        remarks_lines.append(
+                            f"2. {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)"
+                        )
+
+        # Persist remarks (replace AUTO block or append)
+        if remarks_lines:
+            auto_block = "\n".join(remarks_lines)
+            existing = claim.get("remarks") or ""
+            sentinel_re = re.compile(r"<!-- AUTO -->.*?<!-- /AUTO -->", re.DOTALL)
+            new_block = f"<!-- AUTO -->\n{auto_block}\n<!-- /AUTO -->"
+            if sentinel_re.search(existing):
+                new_remarks = sentinel_re.sub(new_block, existing)
+            else:
+                new_remarks = (existing + "\n\n" + new_block).strip()
+            db.table("claims").update({"remarks": new_remarks}).eq("id", claim_id).execute()
 
     except Exception as e:
         logger.exception("Document generation failed for claim %s: %s", claim_id, e)

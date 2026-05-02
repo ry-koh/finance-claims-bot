@@ -103,7 +103,7 @@ def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
         pdf.set_text_color(0, 0, 0)
 
 
-def generate_loa(claim: dict, receipts: list, bank_transactions: list = None) -> bytes:
+def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, reference_code_override: str = None) -> bytes:
     """
     Generate a Letter of Authorisation (LOA) PDF for the given claim.
 
@@ -154,9 +154,10 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None) ->
     pdf.set_xy(MARGIN, 40)
     pdf.cell(CONTENT_W, 10, "LETTER OF AUTHORISATION", align="C", ln=True)
 
+    _ref_code = reference_code_override or claim.get("reference_code", "")
     pdf.set_font("Helvetica", style="B", size=14)
     pdf.set_xy(MARGIN, 60)
-    pdf.cell(CONTENT_W, 8, str(claim.get("reference_code", "")), align="C", ln=True)
+    pdf.cell(CONTENT_W, 8, str(_ref_code), align="C", ln=True)
 
     pdf.set_font("Helvetica", style="", size=11)
     pdf.set_xy(MARGIN, 75)
@@ -309,6 +310,7 @@ def generate_summary(
     line_items: list,
     finance_director: dict,
     folder_id: str,
+    reference_code_override: str = None,
 ) -> bytes:
     """
     Fill the Summary Sheet template with claim data and return PDF bytes.
@@ -331,9 +333,10 @@ def generate_summary(
     bytes
         Raw PDF bytes of the filled summary sheet.
     """
+    ref = reference_code_override or claim['reference_code']
     copied_id = copy_template(
         settings.SUMMARY_TEMPLATE_ID,
-        f"Summary - {claim['reference_code']}",
+        f"Summary - {ref}",
         folder_id,
     )
 
@@ -365,7 +368,7 @@ def generate_summary(
         value_ranges = [
             {
                 "range": cell("B6"),
-                "values": [[claim.get('reference_code', '')]],
+                "values": [[ref]],
             },
             {
                 "range": cell("B8"),
@@ -457,6 +460,7 @@ def generate_rfp(
     line_items: list,
     finance_director: dict,
     folder_id: str,
+    reference_code_override: str = None,
 ) -> bytes:
     """
     Generate a Request for Payment (RFP) PDF from the Google Doc template.
@@ -477,9 +481,10 @@ def generate_rfp(
     bytes
         PDF bytes of the completed RFP.
     """
+    ref = reference_code_override or claim['reference_code']
     copied_id = copy_template(
         settings.RFP_TEMPLATE_ID,
-        f"RFP - {claim['reference_code']}",
+        f"RFP - {ref}",
         folder_id,
     )
     try:
@@ -488,7 +493,7 @@ def generate_rfp(
             "{{MATRIC}}": finance_director["matric_no"].upper(),
             "{{NAME}}": finance_director["name"].upper(),
             "{{TOTAL_AMOUNT}}": f"{claim['total_amount']:.2f}",
-            "{{REFERENCE_CODE}}": claim["reference_code"],
+            "{{REFERENCE_CODE}}": ref,
         }
 
         for i, item in enumerate(line_items[:5], start=1):
