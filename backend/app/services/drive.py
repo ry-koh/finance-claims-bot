@@ -37,6 +37,7 @@ def upload_file(file_bytes: bytes, filename: str, mime_type: str, parent_folder_
     """
     Upload file_bytes to Google Drive under parent_folder_id.
     Returns the Drive file ID string.
+    Supports both My Drive and Shared Drives (supportsAllDrives=True).
     """
     drive = get_drive_service()
     media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime_type, resumable=False)
@@ -44,6 +45,7 @@ def upload_file(file_bytes: bytes, filename: str, mime_type: str, parent_folder_
         body={"name": filename, "parents": [parent_folder_id]},
         media_body=media,
         fields="id",
+        supportsAllDrives=True,
     ).execute()
     return result["id"]
 
@@ -52,6 +54,7 @@ def get_or_create_folder(name: str, parent_folder_id: str) -> str:
     """
     Return the Drive folder ID for a folder named `name` directly under
     `parent_folder_id`.  Creates the folder if it does not already exist.
+    Supports both My Drive and Shared Drives.
     """
     drive = get_drive_service()
 
@@ -63,7 +66,12 @@ def get_or_create_folder(name: str, parent_folder_id: str) -> str:
         f"and mimeType='application/vnd.google-apps.folder' "
         f"and trashed=false"
     )
-    result = drive.files().list(q=query, fields="files(id)").execute()
+    result = drive.files().list(
+        q=query,
+        fields="files(id)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute()
     files = result.get("files", [])
 
     if files:
@@ -77,6 +85,7 @@ def get_or_create_folder(name: str, parent_folder_id: str) -> str:
             "parents": [parent_folder_id],
         },
         fields="id",
+        supportsAllDrives=True,
     ).execute()
     return folder["id"]
 
@@ -92,6 +101,7 @@ def get_claim_folder_id(reference_code: str) -> str:
 def delete_file(file_id: str) -> None:
     """
     Move a Drive file to the trash (soft delete).
+    Supports both My Drive and Shared Drives.
     """
     drive = get_drive_service()
-    drive.files().update(fileId=file_id, body={"trashed": True}).execute()
+    drive.files().update(fileId=file_id, body={"trashed": True}, supportsAllDrives=True).execute()
