@@ -91,12 +91,38 @@ async def generate_documents(
         )
 
     folder_id = drive_service.get_claim_folder_id(claim["reference_code"])
-    receipts = [r for item in claim.get("line_items", []) for r in item.get("receipts", [])]
+    all_receipts = [r for item in claim.get("line_items", []) for r in item.get("receipts", [])]
+
+    # Attach receipt images
+    if all_receipts:
+        receipt_ids = [r["id"] for r in all_receipts]
+        ri_resp = db.table("receipt_images").select("*").in_("receipt_id", receipt_ids).order("created_at").execute()
+        images_by_receipt: dict = {}
+        for img in ri_resp.data:
+            images_by_receipt.setdefault(img["receipt_id"], []).append(img)
+        for r in all_receipts:
+            r["images"] = images_by_receipt.get(r["id"], [])
+    else:
+        for r in all_receipts:
+            r["images"] = []
+
+    # Fetch bank transactions with their images
+    bt_resp = db.table("bank_transactions").select("*").eq("claim_id", claim_id).order("created_at").execute()
+    bank_transactions = bt_resp.data
+    if bank_transactions:
+        bt_ids = [bt["id"] for bt in bank_transactions]
+        bti_resp = db.table("bank_transaction_images").select("*").in_("bank_transaction_id", bt_ids).order("created_at").execute()
+        images_by_bt: dict = {}
+        for img in bti_resp.data:
+            images_by_bt.setdefault(img["bank_transaction_id"], []).append(img)
+        for bt in bank_transactions:
+            bt["images"] = images_by_bt.get(bt["id"], [])
+
     generated = []
 
     try:
         # LOA
-        loa_bytes = pdf_service.generate_loa(claim, receipts)
+        loa_bytes = pdf_service.generate_loa(claim, all_receipts, bank_transactions)
         _save_document(claim_id, "loa", loa_bytes, f"LOA - {claim['reference_code']}.pdf", folder_id, db)
         generated.append("loa")
 

@@ -49,9 +49,68 @@ def download_drive_file(file_id: str) -> bytes:
         raise ValueError(f"Could not download Drive file {file_id}: {exc}") from exc
 
 
-def generate_loa(claim: dict, receipts: list) -> bytes:
+def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
+    """Download a Drive image and embed it on a new PDF page with a header label."""
+    try:
+        file_bytes = download_drive_file(drive_id)
+        img = Image.open(io.BytesIO(file_bytes))
+
+        px_per_mm = 150 / 25.4
+        width_mm = img.width / px_per_mm
+        height_mm = img.height / px_per_mm
+
+        available_h = CONTENT_H - 8
+        scale = min(
+            CONTENT_W / width_mm if width_mm > 0 else 1,
+            available_h / height_mm if height_mm > 0 else 1,
+            1.0,
+        )
+        scaled_w = width_mm * scale
+        scaled_h = height_mm * scale
+
+        img_format = img.format or "PNG"
+        suffix = ".jpg" if img_format.upper() == "JPEG" else ".png"
+        if img_format.upper() not in ("JPEG", "PNG"):
+            img_format = "PNG"
+
+        pdf.add_page()
+        pdf.set_font("Helvetica", style="", size=8)
+        pdf.set_text_color(120, 120, 120)
+        pdf.set_xy(MARGIN, MARGIN)
+        pdf.cell(CONTENT_W, 6, header_label, align="L", ln=True)
+        pdf.set_text_color(0, 0, 0)
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            img.save(tmp_path, format=img_format)
+            x_pos = MARGIN + (CONTENT_W - scaled_w) / 2
+            y_pos = MARGIN + 8
+            pdf.image(tmp_path, x=x_pos, y=y_pos, w=scaled_w, h=scaled_h)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    except Exception as exc:
+        logger.warning("Failed to embed Drive image %s: %s", drive_id, exc)
+        pdf.add_page()
+        pdf.set_font("Helvetica", style="I", size=10)
+        pdf.set_text_color(180, 0, 0)
+        pdf.set_xy(MARGIN, MARGIN + 30)
+        pdf.cell(CONTENT_W, 8, f"[Image unavailable: {header_label}]", align="C", ln=True)
+        pdf.set_text_color(0, 0, 0)
+
+
+def generate_loa(claim: dict, receipts: list, bank_transactions: list = None) -> bytes:
     """
     Generate a Letter of Authorisation (LOA) PDF for the given claim.
+
+    Page order:
+      Cover page → for each receipt: its receipt images, then (when the last
+      receipt linked to a bank transaction is reached) that BT's images once →
+      any BTs not linked to any receipt at the end.
 
     Parameters
     ----------
@@ -59,16 +118,25 @@ def generate_loa(claim: dict, receipts: list) -> bytes:
         Keys: reference_code, date, claim_description,
               claimer (nested dict with name, matric_no)
     receipts : list[dict]
-        Each dict has: description, company, date, amount,
-                       receipt_image_drive_id, bank_screenshot_drive_id
-
-    Returns
-    -------
-    bytes
-        Raw PDF bytes ready for upload or streaming.
+        Each dict has: description, amount,
+                       images (list of {drive_file_id}),
+                       bank_transaction_id (str | None)
+    bank_transactions : list[dict]
+        Each dict has: id, images (list of {drive_file_id})
     """
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(False)
+
+    receipts = receipts or []
+    bank_transactions = bank_transactions or []
+    bt_map = {bt["id"]: bt for bt in bank_transactions}
+
+    # For each BT, record the index of its last linked receipt
+    bt_last_pos: dict = {}
+    for i, r in enumerate(receipts):
+        bt_id = r.get("bank_transaction_id")
+        if bt_id:
+            bt_last_pos[bt_id] = i
 
     # ------------------------------------------------------------------
     # Cover page
@@ -82,143 +150,80 @@ def generate_loa(claim: dict, receipts: list) -> bytes:
     if matric_no:
         claimer_line = f"{claimer_name}  |  {matric_no}"
 
-    # Title
     pdf.set_font("Helvetica", style="B", size=16)
     pdf.set_xy(MARGIN, 40)
     pdf.cell(CONTENT_W, 10, "LETTER OF AUTHORISATION", align="C", ln=True)
 
-    # Reference code
     pdf.set_font("Helvetica", style="B", size=14)
     pdf.set_xy(MARGIN, 60)
     pdf.cell(CONTENT_W, 8, str(claim.get("reference_code", "")), align="C", ln=True)
 
-    # Claim description
     pdf.set_font("Helvetica", style="", size=11)
     pdf.set_xy(MARGIN, 75)
     pdf.cell(CONTENT_W, 7, str(claim.get("claim_description", "")), align="C", ln=True)
 
-    # Claimer name + matric
     pdf.set_font("Helvetica", style="", size=11)
     pdf.set_xy(MARGIN, 90)
     pdf.cell(CONTENT_W, 7, claimer_line, align="C", ln=True)
 
-    # Date
     pdf.set_font("Helvetica", style="", size=10)
     pdf.set_xy(MARGIN, 105)
     pdf.cell(CONTENT_W, 6, str(claim.get("date", "")), align="C", ln=True)
 
-    # Count images that will actually be attached
-    image_count = 0
-    for receipt in (receipts or []):
-        if receipt.get("receipt_image_drive_id"):
-            image_count += 1
-        if receipt.get("bank_screenshot_drive_id"):
-            image_count += 1
+    receipt_image_count = sum(len(r.get("images") or []) for r in receipts)
+    bt_image_count = sum(len(bt.get("images") or []) for bt in bank_transactions)
+    total_image_count = receipt_image_count + bt_image_count
 
-    if image_count > 0:
-        # Intro line
+    if total_image_count > 0:
         pdf.set_font("Helvetica", style="I", size=10)
         pdf.set_xy(MARGIN, 125)
         pdf.cell(CONTENT_W, 6, "The following receipt images are attached below:", align="C", ln=True)
-
-        # Receipt count
         pdf.set_font("Helvetica", style="", size=10)
         pdf.set_xy(MARGIN, 135)
-        pdf.cell(CONTENT_W, 6, f"Total receipts: {len(receipts or [])}", align="C", ln=True)
+        pdf.cell(CONTENT_W, 6, f"Total receipts: {len(receipts)}", align="C", ln=True)
     else:
         pdf.set_font("Helvetica", style="I", size=10)
         pdf.set_xy(MARGIN, 125)
         pdf.cell(CONTENT_W, 6, "No receipt images attached.", align="C", ln=True)
 
     # ------------------------------------------------------------------
-    # Receipt image pages
+    # Receipt image pages, with BT images inserted after their last receipt
     # ------------------------------------------------------------------
-    for receipt in (receipts or []):
-        drive_ids = [
-            ("receipt", receipt.get("receipt_image_drive_id")),
-            ("bank",    receipt.get("bank_screenshot_drive_id")),
-        ]
-        for img_type, drive_id in drive_ids:
-            if not drive_id:
-                continue
+    for i, receipt in enumerate(receipts):
+        desc = str(receipt.get("description") or "Receipt")
+        amount_raw = receipt.get("amount")
+        amount_str = f"SGD {amount_raw}" if amount_raw is not None else ""
+        receipt_header = f"{desc}  {amount_str}".strip()
 
-            # Header label for this page
-            desc = str(receipt.get("description") or "Receipt")
-            amount_raw = receipt.get("amount")
-            amount_str = f"SGD {amount_raw}" if amount_raw is not None else ""
-            if img_type == "bank":
-                header_label = f"[Bank screenshot]  {desc}  {amount_str}".strip()
-            else:
-                header_label = f"{desc}  {amount_str}".strip()
+        for img in (receipt.get("images") or []):
+            drive_id = img.get("drive_file_id")
+            if drive_id:
+                _add_image_page(pdf, drive_id, receipt_header)
 
-            try:
-                file_bytes = download_drive_file(drive_id)
-                img = Image.open(io.BytesIO(file_bytes))
+        # After the last receipt linked to a BT, emit that BT's images once
+        bt_id = receipt.get("bank_transaction_id")
+        if bt_id and bt_last_pos.get(bt_id) == i:
+            bt = bt_map.get(bt_id)
+            if bt:
+                bt_receipt_descs = [
+                    r.get("description", "") for r in receipts
+                    if r.get("bank_transaction_id") == bt_id
+                ]
+                bt_header = f"[Bank Transaction]  {', '.join(bt_receipt_descs)}".strip()
+                for img in (bt.get("images") or []):
+                    drive_id = img.get("drive_file_id")
+                    if drive_id:
+                        _add_image_page(pdf, drive_id, bt_header)
 
-                # Convert pixels to mm at 150 DPI
-                px_per_mm = 150 / 25.4
-                width_mm = img.width / px_per_mm
-                height_mm = img.height / px_per_mm
-
-                # Scale to fit within CONTENT_W × (CONTENT_H - 8mm header)
-                available_h = CONTENT_H - 8  # reserve 8 mm for header
-                scale = min(
-                    CONTENT_W / width_mm if width_mm > 0 else 1,
-                    available_h / height_mm if height_mm > 0 else 1,
-                    1.0,  # never upscale
-                )
-                scaled_w = width_mm * scale
-                scaled_h = height_mm * scale
-
-                # Determine image format for saving to temp file
-                img_format = img.format or "PNG"
-                if img_format.upper() == "JPEG":
-                    suffix = ".jpg"
-                elif img_format.upper() == "PNG":
-                    suffix = ".png"
-                else:
-                    # Convert to PNG for safety
-                    img_format = "PNG"
-                    suffix = ".png"
-
-                pdf.add_page()
-
-                # Small grey header at top
-                pdf.set_font("Helvetica", style="", size=8)
-                pdf.set_text_color(120, 120, 120)
-                pdf.set_xy(MARGIN, MARGIN)
-                pdf.cell(CONTENT_W, 6, header_label, align="L", ln=True)
-                pdf.set_text_color(0, 0, 0)
-
-                # Save image to temp file and embed
-                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                    tmp_path = tmp.name
-                try:
-                    img.save(tmp_path, format=img_format)
-                    x_pos = MARGIN + (CONTENT_W - scaled_w) / 2
-                    y_pos = MARGIN + 8
-                    pdf.image(tmp_path, x=x_pos, y=y_pos, w=scaled_w, h=scaled_h)
-                finally:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-
-            except Exception as exc:
-                logger.warning(
-                    "Failed to embed image for drive_id=%s receipt=%s: %s",
-                    drive_id, desc, exc
-                )
-                pdf.add_page()
-                pdf.set_font("Helvetica", style="I", size=10)
-                pdf.set_text_color(180, 0, 0)
-                pdf.set_xy(MARGIN, MARGIN + 30)
-                pdf.cell(
-                    CONTENT_W, 8,
-                    f"[Image unavailable: {header_label}]",
-                    align="C", ln=True
-                )
-                pdf.set_text_color(0, 0, 0)
+    # ------------------------------------------------------------------
+    # Bank transactions not linked to any receipt (orphaned)
+    # ------------------------------------------------------------------
+    for bt in bank_transactions:
+        if bt["id"] not in bt_last_pos:
+            for img in (bt.get("images") or []):
+                drive_id = img.get("drive_file_id")
+                if drive_id:
+                    _add_image_page(pdf, drive_id, "[Bank Transaction]")
 
     return bytes(pdf.output())
 
