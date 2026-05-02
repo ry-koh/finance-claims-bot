@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel as PydanticBaseModel
 from supabase import Client
 
 from app.auth import require_auth, require_director
@@ -9,6 +10,11 @@ from app.config import settings
 from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
 from app.services import r2 as r2_service
+
+
+class BulkStatusUpdate(PydanticBaseModel):
+    claim_ids: list[str]
+    status: ClaimStatus
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
@@ -331,6 +337,22 @@ async def create_claim(
         raise HTTPException(status_code=500, detail="Failed to create claim")
 
     return create_resp.data[0]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /claims/bulk
+# ---------------------------------------------------------------------------
+
+@router.patch("/bulk")
+async def bulk_update_status(
+    payload: BulkStatusUpdate,
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    if not payload.claim_ids:
+        raise HTTPException(status_code=422, detail="claim_ids must not be empty")
+    db.table("claims").update({"status": payload.status.value}).in_("id", payload.claim_ids).execute()
+    return {"updated": len(payload.claim_ids)}
 
 
 # ---------------------------------------------------------------------------
