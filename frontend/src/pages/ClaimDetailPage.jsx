@@ -5,6 +5,10 @@ import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/cla
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
+import {
+  createBankTransaction, uploadBankTransactionImage, updateBankTransaction, createBtRefund,
+  useDeleteBankTransaction, useDeleteBtRefund,
+} from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -304,6 +308,344 @@ function TagInput({ value = [], onChange }) {
   )
 }
 
+// ─── BtModal ──────────────────────────────────────────────────────────────────
+
+function BtModal({ claimId, initial, onClose, onSaved }) {
+  const [amount, setAmount] = useState(initial ? String(initial.amount ?? '') : '')
+  const [btImages, setBtImages] = useState([]) // queued File objects
+  const [refunds, setRefunds] = useState([]) // [{ amount: '', file: null, uploading: false }]
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  function addRefund() {
+    setRefunds((prev) => [...prev, { amount: '', file: null, uploading: false }])
+  }
+
+  function removeRefund(idx) {
+    setRefunds((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function updateRefund(idx, patch) {
+    setRefunds((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
+  }
+
+  async function handleSave() {
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      setErr('Enter a valid amount.')
+      return
+    }
+    setSaving(true)
+    setErr(null)
+    try {
+      let btId
+      if (initial) {
+        await updateBankTransaction({ btId: initial.id, amount: Number(amount) })
+        btId = initial.id
+      } else {
+        const created = await createBankTransaction({ claimId, amount: Number(amount) })
+        btId = created.id
+      }
+
+      for (const file of btImages) {
+        await uploadBankTransactionImage({ btId, file })
+      }
+
+      for (const refund of refunds) {
+        if (!refund.amount || !refund.file) continue
+        await createBtRefund({ btId, amount: Number(refund.amount), file: refund.file })
+      }
+
+      onSaved()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Failed to save bank transaction.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40">
+      <div className="bg-white w-full max-w-lg rounded-t-2xl shadow-xl p-5 pb-8 flex flex-col gap-3 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-800">
+            {initial ? 'Edit Bank Transaction' : 'New Bank Transaction'}
+          </p>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        {err && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</p>
+        )}
+
+        {/* Amount */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Amount *</label>
+          <input
+            className={inputCls}
+            type="number"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+
+        {/* BT Images */}
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">Bank Screenshots</p>
+          {btImages.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {btImages.map((file, i) => (
+                <div key={i} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
+                  <span className="text-gray-700 truncate max-w-[120px]">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setBtImages((prev) => prev.filter((_, j) => j !== i))}
+                    className="text-red-400 ml-1"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+              className="hidden"
+              multiple
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? [])
+                e.target.value = ''
+                if (files.length) setBtImages((prev) => [...prev, ...files])
+              }}
+            />
+            + Add screenshot
+          </label>
+        </div>
+
+        {/* Refunds */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold text-gray-600">Refunds</p>
+            <button
+              type="button"
+              onClick={addRefund}
+              className="text-xs text-blue-600 font-medium"
+            >
+              + Add Refund
+            </button>
+          </div>
+          {refunds.map((refund, idx) => (
+            <div key={idx} className="flex items-center gap-2 mb-1.5">
+              <input
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-24"
+                type="number"
+                placeholder="Amount"
+                value={refund.amount}
+                onChange={(e) => updateRefund(idx, { amount: e.target.value })}
+              />
+              <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium flex-1 truncate">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) updateRefund(idx, { file })
+                  }}
+                />
+                {refund.uploading ? <Spinner small /> : (refund.file ? refund.file.name : '+ File')}
+              </label>
+              <button
+                type="button"
+                onClick={() => removeRefund(idx)}
+                className="text-red-400 text-sm"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 bg-blue-600 text-white text-sm font-medium py-2 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving && <Spinner small />}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-2 rounded-lg disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── BtCard ───────────────────────────────────────────────────────────────────
+
+function BtCard({
+  bt, btIndex, claimId, linkedReceipts, expanded, onToggle, onEdit, onDelete, onAddReceipt,
+  saving, addingReceipt, onReceiptSaved, onReceiptCancelled, onEditReceipt, onDeleteReceipt, receiptSaving,
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const netAmount = bt.net_amount != null ? bt.net_amount : bt.amount
+  const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
+  const tally = Math.abs((netAmount ?? 0) - receiptSum) < 0.005
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      {/* Collapsed header — always visible */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 text-left"
+      >
+        <span className="text-gray-400 text-xs">{expanded ? '▼' : '▶'}</span>
+        <span className="flex-1 text-xs font-semibold text-gray-700">
+          Bank Tx {btIndex}
+          {bt.amount != null && ` · ${formatAmount(bt.amount)}`}
+          {netAmount != null && bt.refunds?.length > 0 && ` · net ${formatAmount(netAmount)}`}
+          {` · ${bt.images?.length ?? 0} img`}
+        </span>
+        <span className={`text-xs font-semibold ${tally ? 'text-green-600' : 'text-amber-500'}`}>
+          {tally ? '✓' : '⚠'}
+        </span>
+      </button>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="px-3 py-2.5 flex flex-col gap-2">
+          {/* Images row */}
+          {bt.images?.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {bt.images.map((img, i) => (
+                <a
+                  key={img.id}
+                  href={driveUrl(img.drive_file_id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 underline"
+                >
+                  Screenshot {i + 1}
+                </a>
+              ))}
+            </div>
+          )}
+
+          {/* Refunds row */}
+          {bt.refunds?.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {bt.refunds.map((ref, i) => (
+                <span key={ref.id ?? i} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                  Refund {i + 1}: {formatAmount(ref.amount)}
+                  {ref.drive_file_id && (
+                    <a href={driveUrl(ref.drive_file_id)} target="_blank" rel="noreferrer"
+                      className="ml-1 text-blue-600 underline">file</a>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {(bt.images?.length > 0 || bt.refunds?.length > 0) && (
+            <div className="border-t border-gray-100" />
+          )}
+
+          {/* Linked receipts */}
+          <div className="flex flex-col">
+            {linkedReceipts.map((r) => (
+              <ReceiptRow
+                key={r.id}
+                receipt={r}
+                claimId={claimId}
+                onEdit={(fields) => onEditReceipt(r, fields)}
+                onDelete={() => onDeleteReceipt(r)}
+                saving={receiptSaving}
+              />
+            ))}
+            {!linkedReceipts.length && !addingReceipt && (
+              <p className="text-xs text-gray-400 py-1">No receipts linked</p>
+            )}
+          </div>
+
+          {/* Inline add receipt form */}
+          {addingReceipt && (
+            <ReceiptInlineForm
+              bankTransactionId={bt.id}
+              onSave={onReceiptSaved}
+              onCancel={onReceiptCancelled}
+              saving={receiptSaving}
+              claimId={claimId}
+            />
+          )}
+
+          {/* Footer actions */}
+          <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+            {!addingReceipt && (
+              <button
+                type="button"
+                onClick={onAddReceipt}
+                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+              >
+                + Add Receipt
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onEdit}
+              className="text-xs text-gray-600 font-medium px-2 py-1 rounded-lg bg-gray-100"
+            >
+              Edit
+            </button>
+            {!confirmDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="text-xs text-red-500 font-medium px-2 py-1 rounded-lg bg-red-50"
+              >
+                Delete
+              </button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => { onDelete(); setConfirmDelete(false) }}
+                  disabled={saving}
+                  className="text-xs bg-red-600 text-white font-medium px-2 py-1 rounded-lg disabled:opacity-50 flex items-center gap-1"
+                >
+                  {saving && <Spinner small />}
+                  Confirm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="text-xs bg-gray-100 text-gray-700 font-medium px-2 py-1 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ClaimDetailPage() {
@@ -325,7 +667,7 @@ export default function ClaimDetailPage() {
   const createReceiptMut = useCreateReceipt()
   const updateReceiptMut = useUpdateReceipt()
   const deleteReceiptMut = useDeleteReceipt()
-  const [showAddReceipt, setShowAddReceipt] = useState(false)
+  const deleteBtMut = useDeleteBankTransaction(id)
 
   // UI state
   const [editMode, setEditMode] = useState(false)
@@ -334,6 +676,13 @@ export default function ClaimDetailPage() {
   const [errorDismissed, setErrorDismissed] = useState(false)
   const [staleDocsWarning, setStaleDocsWarning] = useState(false)
   const [actionError, setActionError] = useState(null)
+
+  // BT + receipt UX state
+  const [expandedBtId, setExpandedBtId] = useState(null)
+  const [showBtModal, setShowBtModal] = useState(false)
+  const [editingBt, setEditingBt] = useState(null)
+  const [addingReceiptForBtId, setAddingReceiptForBtId] = useState(null)
+  const [showAddUnlinked, setShowAddUnlinked] = useState(false)
 
   // Loading map passed to pipeline
   const loadingMap = {
@@ -443,6 +792,15 @@ export default function ClaimDetailPage() {
     )
   }
 
+  // ─── BT handler ─────────────────────────────────────────────────────────────
+
+  function handleDeleteBt(btId) {
+    deleteBtMut.mutate(btId, {
+      onSuccess: invalidateClaim,
+      onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to delete bank transaction.'),
+    })
+  }
+
   // ─── Receipt helpers ─────────────────────────────────────────────────────────
 
   function recalcAndUpdateTotal(updatedReceipts) {
@@ -455,7 +813,6 @@ export default function ClaimDetailPage() {
       { claim_id: id, ...fields },
       {
         onSuccess: () => {
-          setShowAddReceipt(false)
           const updated = [...(claim.receipts ?? []), fields]
           recalcAndUpdateTotal(updated)
         },
@@ -760,47 +1117,98 @@ export default function ClaimDetailPage() {
           <StatusPipeline claim={claim} onAction={handleAction} />
         </div>
 
-        {/* ── Receipts ── */}
+        {/* ── Bank Transactions ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">
-              Receipts ({claim.receipts?.length ?? 0})
+              Bank Transactions ({claim.bank_transactions?.length ?? 0})
             </h2>
-            {!showAddReceipt && (
-              <button
-                onClick={() => setShowAddReceipt(true)}
-                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
-              >
-                + Add
-              </button>
+            <button
+              onClick={() => { setEditingBt(null); setShowBtModal(true) }}
+              className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+            >
+              + Add
+            </button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {(claim.bank_transactions ?? []).map((bt, idx) => {
+              const linked = (claim.receipts ?? []).filter(r => r.bank_transaction_id === bt.id)
+              return (
+                <BtCard
+                  key={bt.id}
+                  bt={bt}
+                  btIndex={idx + 1}
+                  claimId={id}
+                  linkedReceipts={linked}
+                  expanded={expandedBtId === bt.id}
+                  onToggle={() => setExpandedBtId(expandedBtId === bt.id ? null : bt.id)}
+                  onEdit={() => { setEditingBt(bt); setShowBtModal(true) }}
+                  onDelete={() => handleDeleteBt(bt.id)}
+                  onAddReceipt={() => setAddingReceiptForBtId(bt.id)}
+                  saving={deleteBtMut.isPending}
+                  addingReceipt={addingReceiptForBtId === bt.id}
+                  onReceiptSaved={(fields) => {
+                    handleAddReceipt({ ...fields, bank_transaction_id: bt.id })
+                    setAddingReceiptForBtId(null)
+                  }}
+                  onReceiptCancelled={() => setAddingReceiptForBtId(null)}
+                  onEditReceipt={handleEditReceipt}
+                  onDeleteReceipt={handleDeleteReceipt}
+                  receiptSaving={createReceiptMut.isPending || updateReceiptMut.isPending || deleteReceiptMut.isPending}
+                />
+              )
+            })}
+            {!(claim.bank_transactions?.length) && (
+              <p className="text-xs text-gray-400 text-center py-2">No bank transactions</p>
             )}
           </div>
-          <div className="flex flex-col">
-            {(claim.receipts ?? []).map((r) => (
-              <ReceiptRow
-                key={r.id}
-                receipt={r}
-                claimId={id}
-                bankTransactions={claim.bank_transactions ?? []}
-                onEdit={(fields) => handleEditReceipt(r, fields)}
-                onDelete={() => handleDeleteReceipt(r)}
-                saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
-              />
-            ))}
-            {!claim.receipts?.length && !showAddReceipt && (
-              <p className="text-xs text-gray-400 text-center py-2">No receipts</p>
-            )}
-          </div>
-          {showAddReceipt && (
-            <ReceiptInlineForm
-              onSave={handleAddReceipt}
-              onCancel={() => setShowAddReceipt(false)}
-              saving={createReceiptMut.isPending}
-              claimId={id}
-              bankTransactions={claim.bank_transactions ?? []}
-            />
-          )}
         </div>
+
+        {/* ── Unlinked Receipts ── */}
+        {(() => {
+          const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
+          return (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-700">
+                  Unlinked Receipts ({unlinked.length})
+                </h2>
+                {!showAddUnlinked && (
+                  <button
+                    onClick={() => setShowAddUnlinked(true)}
+                    className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+                  >
+                    + Add
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-col">
+                {unlinked.map(r => (
+                  <ReceiptRow
+                    key={r.id}
+                    receipt={r}
+                    claimId={id}
+                    onEdit={(fields) => handleEditReceipt(r, fields)}
+                    onDelete={() => handleDeleteReceipt(r)}
+                    saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
+                  />
+                ))}
+                {!unlinked.length && !showAddUnlinked && (
+                  <p className="text-xs text-gray-400 text-center py-2">No unlinked receipts</p>
+                )}
+              </div>
+              {showAddUnlinked && (
+                <ReceiptInlineForm
+                  bankTransactionId={null}
+                  onSave={(fields) => { handleAddReceipt(fields); setShowAddUnlinked(false) }}
+                  onCancel={() => setShowAddUnlinked(false)}
+                  saving={createReceiptMut.isPending}
+                  claimId={id}
+                />
+              )}
+            </div>
+          )
+        })()}
 
         {/* ── Documents ── */}
         {claim.documents?.length > 0 && (
@@ -815,42 +1223,17 @@ export default function ClaimDetailPage() {
             </div>
           </div>
         )}
-
-        {/* ── Bank Transactions ── */}
-        {(claim.bank_transactions?.length ?? 0) > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              Bank Transactions ({claim.bank_transactions.length})
-            </h2>
-            <div className="flex flex-col gap-3">
-              {claim.bank_transactions.map((bt, idx) => {
-                const linkedReceipts = (claim.receipts ?? []).filter(r => r.bank_transaction_id === bt.id)
-                return (
-                  <div key={bt.id} className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs font-semibold text-gray-700 mb-1">Bank Transaction {idx + 1}</p>
-                    {bt.images?.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        {bt.images.map((img, i) => (
-                          <a key={img.id} href={`https://drive.google.com/file/d/${img.drive_file_id}/view`}
-                            target="_blank" rel="noreferrer"
-                            className="text-xs text-blue-600 underline">
-                            Screenshot {i+1}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                    {linkedReceipts.length > 0 && (
-                      <p className="text-xs text-gray-500">
-                        Covers: {linkedReceipts.map(r => r.description).join(', ')}
-                      </p>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ── BT Modal ── */}
+      {showBtModal && (
+        <BtModal
+          claimId={id}
+          initial={editingBt}
+          onClose={() => { setShowBtModal(false); setEditingBt(null) }}
+          onSaved={() => { setShowBtModal(false); setEditingBt(null); invalidateClaim() }}
+        />
+      )}
 
       {/* ── Delete confirmation dialog ── */}
       {showDeleteConfirm && (
@@ -900,20 +1283,13 @@ const EMPTY_RECEIPT_FIELDS = {
   dr_cr: 'DR', receipt_no: '', company: '', date: '',
 }
 
-function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTransactions = [] }) {
+function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId }) {
   const [f, setF] = useState({ ...EMPTY_RECEIPT_FIELDS, ...initial })
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
   const [err, setErr] = useState({})
 
   const [receiptImageDriveIds, setReceiptImageDriveIds] = useState(initial?.receipt_image_drive_ids ?? [])
-  const [btMode, setBtMode] = useState(() => {
-    if (initial?.bank_transaction_id) return 'existing'
-    return 'none'
-  })
-  const [btDriveIds, setBtDriveIds] = useState([])
-  const [selectedBtId, setSelectedBtId] = useState(initial?.bank_transaction_id ?? null)
   const [uploadingReceiptImg, setUploadingReceiptImg] = useState(false)
-  const [uploadingBtImg, setUploadingBtImg] = useState(false)
 
   async function handleReceiptImageFile(file) {
     if (!claimId) return
@@ -928,19 +1304,6 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTra
     }
   }
 
-  async function handleBtImageFile(file) {
-    if (!claimId) return
-    setUploadingBtImg(true)
-    try {
-      const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'bank' })
-      setBtDriveIds(prev => [...prev, data.drive_file_id])
-    } catch(e) {
-      // silent fail
-    } finally {
-      setUploadingBtImg(false)
-    }
-  }
-
   function handleSave() {
     const e = {}
     if (!f.description.trim()) e.description = 'Required'
@@ -951,8 +1314,7 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTra
       ...f,
       amount: Number(f.amount),
       receipt_image_drive_ids: receiptImageDriveIds,
-      bank_transaction_id: btMode === 'existing' ? selectedBtId : null,
-      bank_transaction_drive_ids: btMode === 'new' ? btDriveIds : null,
+      bank_transaction_id: bankTransactionId,
     })
   }
 
@@ -960,6 +1322,33 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTra
   return (
     <div className="mt-2 pt-3 border-t border-gray-100 space-y-2">
       <p className="text-xs font-semibold text-gray-600">{initial ? 'Edit Receipt' : 'New Receipt'}</p>
+
+      {/* Receipt Images — at the TOP */}
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-1">Receipt Photos</p>
+        {receiptImageDriveIds.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1">
+            {receiptImageDriveIds.map((imgId, i) => (
+              <div key={imgId} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
+                <a href={`https://drive.google.com/file/d/${imgId}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
+                <button type="button" onClick={() => setReceiptImageDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+            className="hidden"
+            disabled={uploadingReceiptImg || !claimId}
+            onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleReceiptImageFile(file) }}
+          />
+          {uploadingReceiptImg ? 'Uploading…' : '+ Add receipt photo'}
+        </label>
+      </div>
+
+      {/* Description */}
       <div>
         <input className={inputCls} placeholder="Description *" value={f.description} onChange={set('description')} />
         {err.description && <p className="text-xs text-red-500 mt-0.5">{err.description}</p>}
@@ -989,88 +1378,13 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTra
         <input className={inputCls} placeholder="Receipt No." value={f.receipt_no} onChange={set('receipt_no')} />
         <input className={inputCls} placeholder="Company" value={f.company} onChange={set('company')} />
       </div>
-      <div className="w-auto inline-block"><input className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-auto" type="date" value={f.date} onChange={set('date')} /></div>
-
-      {/* Receipt Images */}
-      <div>
-        <p className="text-xs font-semibold text-gray-600 mb-1">Receipt Photos</p>
-        {receiptImageDriveIds.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1">
-            {receiptImageDriveIds.map((id, i) => (
-              <div key={id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                <a href={`https://drive.google.com/file/d/${id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
-                <button type="button" onClick={() => setReceiptImageDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
-              </div>
-            ))}
-          </div>
-        )}
-        <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
-            className="hidden"
-            disabled={uploadingReceiptImg || !claimId}
-            onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleReceiptImageFile(file) }}
-          />
-          {uploadingReceiptImg ? 'Uploading…' : '+ Add receipt photo'}
-        </label>
-      </div>
-
-      {/* Bank Transaction */}
-      <div>
-        <p className="text-xs font-semibold text-gray-600 mb-1">Bank Transaction</p>
-        <div className="flex gap-3 mb-1">
-          {['none','new','existing'].map(mode => (
-            <label key={mode} className="flex items-center gap-1 text-xs cursor-pointer">
-              <input type="radio" name={`bt-mode-${claimId}`} value={mode} checked={btMode === mode} onChange={() => { setBtMode(mode); if(mode !== 'existing') setSelectedBtId(null) }} />
-              {mode === 'none' ? 'None' : mode === 'new' ? 'New' : 'Existing'}
-            </label>
-          ))}
-        </div>
-        {btMode === 'new' && (
-          <div>
-            {btDriveIds.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-1">
-                {btDriveIds.map((id, i) => (
-                  <div key={id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                    <a href={`https://drive.google.com/file/d/${id}/view`} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
-                    <button type="button" onClick={() => setBtDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
-                className="hidden"
-                disabled={uploadingBtImg || !claimId}
-                onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleBtImageFile(file) }}
-              />
-              {uploadingBtImg ? 'Uploading…' : '+ Add bank screenshot'}
-            </label>
-          </div>
-        )}
-        {btMode === 'existing' && (
-          <div>
-            {bankTransactions.length === 0 ? (
-              <p className="text-xs text-gray-400">No bank transactions yet — save one with 'New' first.</p>
-            ) : (
-              <select
-                className="border border-gray-300 rounded px-2 py-1 text-xs w-full bg-white"
-                value={selectedBtId ?? ''}
-                onChange={e => setSelectedBtId(e.target.value || null)}
-              >
-                <option value="">— Select —</option>
-                {bankTransactions.map((bt, i) => (
-                  <option key={bt.id} value={bt.id}>
-                    Bank Tx {i+1} ({bt.images?.length ?? 0} image{bt.images?.length !== 1 ? 's' : ''})
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
+      <div className="w-auto inline-block">
+        <input
+          className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-auto"
+          type="date"
+          value={f.date}
+          onChange={set('date')}
+        />
       </div>
 
       <div className="flex gap-2 pt-1">
@@ -1087,7 +1401,7 @@ function ReceiptInlineForm({ initial, onSave, onCancel, saving, claimId, bankTra
   )
 }
 
-function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, bankTransactions = [] }) {
+function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -1105,13 +1419,12 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, bankTransactio
             company: receipt.company ?? '',
             date: receipt.date ?? '',
             receipt_image_drive_ids: receipt.images?.map(img => img.drive_file_id) ?? [],
-            bank_transaction_id: receipt.bank_transaction_id ?? null,
           }}
+          bankTransactionId={receipt.bank_transaction_id ?? null}
           onSave={(fields) => { onEdit(fields); setEditing(false) }}
           onCancel={() => setEditing(false)}
           saving={saving}
           claimId={claimId}
-          bankTransactions={bankTransactions}
         />
       </div>
     )
@@ -1129,11 +1442,9 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, bankTransactio
             {receipt.company ? ` · ${receipt.company}` : ''}
           </p>
           <p className="text-xs text-gray-400">{receipt.gst_code} · {receipt.dr_cr}</p>
-          {(receipt.images?.length > 0 || receipt.bank_transaction_id) && (
+          {receipt.images?.length > 0 && (
             <p className="text-xs text-gray-400 mt-0.5">
-              {receipt.images?.length > 0 && `${receipt.images.length} receipt photo${receipt.images.length !== 1 ? 's' : ''}`}
-              {receipt.images?.length > 0 && receipt.bank_transaction_id && ' · '}
-              {receipt.bank_transaction_id && 'Bank tx linked'}
+              {receipt.images.length} receipt photo{receipt.images.length !== 1 ? 's' : ''}
             </p>
           )}
         </div>
@@ -1141,10 +1452,6 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, bankTransactio
           {receipt.receipt_image_drive_id && (
             <a href={driveUrl(receipt.receipt_image_drive_id)} target="_blank" rel="noreferrer"
               className="text-xs text-blue-600 underline">Receipt</a>
-          )}
-          {receipt.bank_screenshot_drive_id && (
-            <a href={driveUrl(receipt.bank_screenshot_drive_id)} target="_blank" rel="noreferrer"
-              className="text-xs text-blue-600 underline">Bank</a>
           )}
           <button onClick={() => setEditing(true)}
             className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded hover:bg-blue-50">
