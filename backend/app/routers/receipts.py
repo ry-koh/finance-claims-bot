@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.auth import require_auth
 from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
-from app.services import gcs, image
+from app.services import r2, image
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -202,17 +202,17 @@ async def upload_image(
     if not reference_code:
         raise HTTPException(status_code=422, detail="Claim has no reference code yet")
 
-    # Upload to GCS
+    # Upload to R2
     try:
         file_bytes = await file.read()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        object_name = gcs.make_object_name(reference_code, image_type, timestamp)
-        gcs.upload_file(file_bytes, object_name)
+        object_name = r2.make_object_name(reference_code, image_type, timestamp)
+        r2.upload_file(file_bytes, object_name)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("GCS upload failed for claim %s: %s", claim_id, exc)
-        raise HTTPException(status_code=502, detail=f"GCS upload failed: {str(exc)[:300]}")
+        logger.exception("R2 upload failed for claim %s: %s", claim_id, exc)
+        raise HTTPException(status_code=502, detail=f"R2 upload failed: {str(exc)[:300]}")
 
     return {"drive_file_id": object_name, "filename": f"{image_type}_{timestamp}.jpg"}
 
@@ -243,8 +243,8 @@ async def upload_receipt_image(
 
     from datetime import datetime as _datetime
     timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
-    object_name = gcs.make_object_name(reference_code, "receipt", timestamp)
-    drive_file_id = gcs.upload_file(processed, object_name)
+    object_name = r2.make_object_name(reference_code, "receipt", timestamp)
+    drive_file_id = r2.upload_file(processed, object_name)
 
     img_resp = db.table("receipt_images").insert({
         "receipt_id": receipt_id,
@@ -597,6 +597,6 @@ async def delete_receipt(
     for drive_field in ("receipt_image_drive_id", "bank_screenshot_drive_id"):
         object_name = receipt.get(drive_field)
         if object_name:
-            gcs.delete_file(object_name)
+            r2.delete_file(object_name)
 
     return {"deleted": True}

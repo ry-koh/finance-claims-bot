@@ -6,7 +6,7 @@ from datetime import datetime
 
 from app.auth import require_auth
 from app.database import get_supabase
-from app.services import gcs, image
+from app.services import r2, image
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bank-transactions", tags=["bank-transactions"])
@@ -30,13 +30,13 @@ async def _get_bt_and_upload_file(
 
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        object_name = gcs.make_object_name(reference_code, filename_prefix, timestamp)
-        drive_file_id = gcs.upload_file(processed, object_name)
+        object_name = r2.make_object_name(reference_code, filename_prefix, timestamp)
+        drive_file_id = r2.upload_file(processed, object_name)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("GCS upload failed for BT %s: %s", bt_id, exc)
-        raise HTTPException(status_code=502, detail=f"GCS upload failed: {str(exc)[:300]}")
+        logger.exception("R2 upload failed for BT %s: %s", bt_id, exc)
+        raise HTTPException(status_code=502, detail=f"R2 upload failed: {str(exc)[:300]}")
     return bt, drive_file_id
 
 
@@ -87,7 +87,7 @@ async def delete_bank_transaction_image(
     row = resp.data[0]
     file_id = row.get("drive_file_id")
     if file_id:
-        gcs.delete_file(file_id)
+        r2.delete_file(file_id)
     db.table("bank_transaction_images").delete().eq("id", image_id).execute()
     return {"deleted": True}
 
@@ -127,7 +127,7 @@ async def delete_bt_refund(
     row = resp.data[0]
     file_id = row.get("drive_file_id")
     if file_id:
-        gcs.delete_file(file_id)
+        r2.delete_file(file_id)
     db.table("bank_transaction_refunds").delete().eq("id", refund_id).execute()
     return {"deleted": True}
 

@@ -11,7 +11,11 @@ class Settings(BaseSettings):
     GMAIL_CLIENT_SECRET: str
     GMAIL_REFRESH_TOKEN: str
     GOOGLE_DRIVE_PARENT_FOLDER_ID: str
-    GCS_BUCKET_NAME: str = ""
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    R2_STORAGE_LIMIT_BYTES: int = 9_500_000_000  # 9.5 GB hard stop
     ACADEMIC_YEAR: str = "2526"
     RENDER_EXTERNAL_URL: str = ""  # set by Render automatically
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
