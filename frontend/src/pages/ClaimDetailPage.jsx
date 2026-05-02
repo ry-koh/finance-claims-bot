@@ -846,8 +846,10 @@ export default function ClaimDetailPage() {
         onSuccess: () => navigate('/'),
         onError: (err) => {
           setShowDeleteConfirm(false)
+          const data = err?.response?.data
           const msg =
-            err?.response?.data?.detail ||
+            (typeof data?.detail === 'string' ? data.detail : null) ||
+            data?.error ||
             err?.message ||
             'Failed to delete claim.'
           setActionError(msg)
@@ -1100,7 +1102,7 @@ export default function ClaimDetailPage() {
                   onChange={(e) =>
                     setEditFields((f) => ({ ...f, date: e.target.value }))
                   }
-                  className="w-auto border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
 
@@ -1445,14 +1447,12 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
         <input className={inputCls} placeholder="Receipt No." value={f.receipt_no} onChange={set('receipt_no')} />
         <input className={inputCls} placeholder="Company" value={f.company} onChange={set('company')} />
       </div>
-      <div className="w-auto inline-block">
-        <input
-          className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-auto"
-          type="date"
-          value={f.date}
-          onChange={set('date')}
-        />
-      </div>
+      <input
+        className={inputCls}
+        type="date"
+        value={f.date}
+        onChange={set('date')}
+      />
 
       <div className="flex gap-2 pt-1">
         <button onClick={handleSave} disabled={saving}

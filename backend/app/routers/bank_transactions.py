@@ -25,12 +25,17 @@ async def _get_bt_and_upload_file(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    claim_folder_id = drive.get_claim_folder_id(reference_code)
-    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    drive_file_id = drive.upload_file(
-        processed, f"{filename_prefix}_{timestamp}.jpg", "image/jpeg", receipts_folder_id
-    )
+    try:
+        claim_folder_id = drive.get_claim_folder_id(reference_code)
+        receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        drive_file_id = drive.upload_file(
+            processed, f"{filename_prefix}_{timestamp}.jpg", "image/jpeg", receipts_folder_id
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {str(exc)[:300]}")
     return bt, drive_file_id
 
 

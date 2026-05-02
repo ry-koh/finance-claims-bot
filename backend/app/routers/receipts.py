@@ -200,22 +200,26 @@ async def upload_image(
     if not reference_code:
         raise HTTPException(status_code=422, detail="Claim has no reference code yet")
 
-    # Resolve / create Drive folders
-    claim_folder_id = drive.get_claim_folder_id(reference_code)
-    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
+    # Resolve / create Drive folders and upload
+    try:
+        claim_folder_id = drive.get_claim_folder_id(reference_code)
+        receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
 
-    # Read file and generate filename
-    file_bytes = await file.read()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{image_type}_{timestamp}.jpg"
+        # Read file and generate filename
+        file_bytes = await file.read()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{image_type}_{timestamp}.jpg"
 
-    # Upload to Drive
-    drive_file_id = drive.upload_file(
-        file_bytes=file_bytes,
-        filename=filename,
-        mime_type="image/jpeg",
-        parent_folder_id=receipts_folder_id,
-    )
+        drive_file_id = drive.upload_file(
+            file_bytes=file_bytes,
+            filename=filename,
+            mime_type="image/jpeg",
+            parent_folder_id=receipts_folder_id,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {str(exc)[:300]}")
 
     return {"drive_file_id": drive_file_id, "filename": filename}
 

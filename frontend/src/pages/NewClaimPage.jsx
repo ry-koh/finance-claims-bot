@@ -4,6 +4,7 @@ import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useClaimers, useCreateClaimer } from '../api/claimers'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt } from '../api/receipts'
+import { createBankTransaction } from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -14,10 +15,14 @@ function today() {
   return new Date().toISOString().split('T')[0]
 }
 
+function generateId() {
+  return `${Date.now()}-${Math.floor(Math.random() * 1e9)}`
+}
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 function StepIndicator({ current }) {
-  const steps = ['Who', 'What', 'Receipts']
+  const steps = ['Who', 'What', 'Bank Txns']
   return (
     <div className="flex items-center justify-center gap-2 mb-6">
       {steps.map((label, i) => {
@@ -422,7 +427,7 @@ function Step2({ data, onChange }) {
   )
 }
 
-// ─── Receipt Form (sub-component of Step 3) ───────────────────────────────────
+// ─── Receipt Form (shared sub-component) ─────────────────────────────────────
 
 const EMPTY_RECEIPT = {
   description: '',
@@ -460,17 +465,13 @@ function ReceiptForm({ onAdd, existingCategories }) {
       return
     }
 
-    // Check category limit
     const uniqueAfter = new Set([...existingCategories, form.category])
     if (uniqueAfter.size > MAX_CATEGORIES) {
       setErrors({ category: `Max ${MAX_CATEGORIES} categories per claim. Please split into a separate claim.` })
       return
     }
 
-    onAdd({
-      ...form,
-      amount: Number(form.amount),
-    })
+    onAdd({ ...form, amount: Number(form.amount) })
     setForm(EMPTY_RECEIPT)
     setErrors({})
   }
@@ -570,124 +571,232 @@ function ReceiptForm({ onAdd, existingCategories }) {
   )
 }
 
-// ─── Step 3: Receipts ─────────────────────────────────────────────────────────
+// ─── BtDraftCard ──────────────────────────────────────────────────────────────
 
-function Step3({ receipts, onAddReceipt, onRemoveReceipt }) {
-  const [showForm, setShowForm] = useState(receipts.length === 0)
+function BtDraftCard({
+  bt, btIndex, linkedReceipts, expanded, onToggle, onRemove,
+  onAddReceipt, onRemoveReceipt, existingCategories,
+}) {
+  const [showReceiptForm, setShowReceiptForm] = useState(false)
+  const receiptSum = linkedReceipts.reduce((s, r) => s + r.amount, 0)
 
-  // Grouping summary
-  const groups = useMemo(() => {
-    const map = {}
-    for (const r of receipts) {
-      if (!map[r.category]) map[r.category] = { count: 0, total: 0 }
-      map[r.category].count += 1
-      map[r.category].total += r.amount
-    }
-    return Object.entries(map).map(([category, { count, total }]) => ({ category, count, total }))
-  }, [receipts])
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-1 px-3 py-2.5 bg-gray-50">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex-1 flex items-center gap-2 text-left"
+        >
+          <span className="text-gray-400 text-xs">{expanded ? '▼' : '▶'}</span>
+          <span className="flex-1 text-xs font-semibold text-gray-700">
+            Bank Tx {btIndex} · ${bt.amount.toFixed(2)}
+            {linkedReceipts.length > 0 && (
+              <span className="font-normal text-gray-500">
+                {' '}· {linkedReceipts.length} receipt{linkedReceipts.length !== 1 ? 's' : ''} · ${receiptSum.toFixed(2)}
+              </span>
+            )}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-gray-400 hover:text-red-500 text-sm px-1 leading-none"
+        >
+          ✕
+        </button>
+      </div>
 
-  const existingCategories = useMemo(
-    () => receipts.map((r) => r.category),
-    [receipts]
+      {expanded && (
+        <div className="px-3 py-2.5 space-y-2">
+          {linkedReceipts.length > 0 && (
+            <div className="space-y-1">
+              {linkedReceipts.map((r) => (
+                <div
+                  key={r.localId}
+                  className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-800 truncate">{r.description}</p>
+                    <p className="text-xs text-gray-500">
+                      {r.category}{r.company ? ` · ${r.company}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2 shrink-0">
+                    <span className="text-xs font-bold text-gray-900">${r.amount.toFixed(2)}</span>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveReceipt(r.localId)}
+                      className="text-gray-400 hover:text-red-500 text-sm leading-none"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!showReceiptForm ? (
+            <button
+              type="button"
+              onClick={() => setShowReceiptForm(true)}
+              className="w-full border border-dashed border-blue-200 text-blue-600 text-xs font-medium py-2 rounded-lg"
+            >
+              + Add Receipt
+            </button>
+          ) : (
+            <div>
+              <ReceiptForm
+                onAdd={(r) => { onAddReceipt(r); setShowReceiptForm(false) }}
+                existingCategories={existingCategories}
+              />
+              <button
+                type="button"
+                onClick={() => setShowReceiptForm(false)}
+                className="w-full mt-2 text-xs text-gray-500 py-1"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
+}
 
-  function handleAdd(receipt) {
-    onAddReceipt(receipt)
-    setShowForm(false)
+// ─── Step 3: Bank Transactions & Receipts ─────────────────────────────────────
+
+function Step3({
+  bankTransactions, onAddBt, onRemoveBt,
+  receipts, onAddReceipt, onRemoveReceipt,
+  expandedBtId, onSetExpandedBtId,
+}) {
+  const [showAddBt, setShowAddBt] = useState(false)
+  const [newBtAmount, setNewBtAmount] = useState('')
+  const [btAmountError, setBtAmountError] = useState('')
+
+  const allCategories = useMemo(() => receipts.map((r) => r.category), [receipts])
+  const total = receipts.reduce((s, r) => s + r.amount, 0)
+
+  function handleAddBt() {
+    const val = Number(newBtAmount)
+    if (!newBtAmount || isNaN(val) || val <= 0) {
+      setBtAmountError('Enter a valid amount')
+      return
+    }
+    onAddBt({ localId: generateId(), amount: val })
+    setNewBtAmount('')
+    setBtAmountError('')
+    setShowAddBt(false)
   }
 
   return (
     <div className="space-y-4">
-      {/* Receipt list */}
-      {receipts.length > 0 && (
+      {/* BT list */}
+      {bankTransactions.length > 0 && (
         <div className="space-y-2">
-          {receipts.map((r, i) => (
-            <div
-              key={i}
-              className="flex items-start justify-between bg-white border border-gray-200 rounded-xl px-3 py-2"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{r.description}</p>
-                <p className="text-xs text-gray-500">
-                  {r.category}
-                  {r.company ? ` · ${r.company}` : ''}
-                  {r.date ? ` · ${r.date}` : ''}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {r.gst_code} · {r.dr_cr}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 ml-2 shrink-0">
-                <span className="text-sm font-bold text-gray-900">
-                  ${Number(r.amount).toFixed(2)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveReceipt(i)}
-                  className="text-gray-400 hover:text-red-500 text-base leading-none"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
+          {bankTransactions.map((bt, i) => {
+            const linked = receipts.filter((r) => r.btLocalId === bt.localId)
+            return (
+              <BtDraftCard
+                key={bt.localId}
+                bt={bt}
+                btIndex={i + 1}
+                linkedReceipts={linked}
+                expanded={expandedBtId === bt.localId}
+                onToggle={() => onSetExpandedBtId(expandedBtId === bt.localId ? null : bt.localId)}
+                onRemove={() => onRemoveBt(bt.localId)}
+                onAddReceipt={(r) => onAddReceipt({ ...r, btLocalId: bt.localId })}
+                onRemoveReceipt={onRemoveReceipt}
+                existingCategories={allCategories}
+              />
+            )
+          })}
         </div>
       )}
 
-      {/* Add receipt button / form */}
-      {!showForm ? (
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="w-full border-2 border-dashed border-blue-300 text-blue-600 text-sm font-medium py-3 rounded-xl"
-        >
-          + Add Receipt
-        </button>
-      ) : (
-        <div>
-          <ReceiptForm onAdd={handleAdd} existingCategories={existingCategories} />
-          {receipts.length > 0 && (
+      {/* Add BT form / button */}
+      {showAddBt ? (
+        <div className="border border-gray-200 rounded-xl bg-gray-50 p-3 space-y-2">
+          <p className="text-xs font-semibold text-gray-700">New Bank Transaction</p>
+          <div>
+            <Label required>Amount ($)</Label>
+            <Input
+              type="number"
+              value={newBtAmount}
+              onChange={(v) => { setNewBtAmount(v); if (btAmountError) setBtAmountError('') }}
+              placeholder="0.00"
+            />
+            {btAmountError && <p className="text-xs text-red-500 mt-0.5">{btAmountError}</p>}
+          </div>
+          <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setShowForm(false)}
-              className="w-full mt-2 text-sm text-gray-500 py-1"
+              onClick={handleAddBt}
+              className="flex-1 bg-blue-600 text-white text-sm font-medium py-1.5 rounded-lg"
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAddBt(false); setNewBtAmount(''); setBtAmountError('') }}
+              className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-1.5 rounded-lg"
             >
               Cancel
             </button>
-          )}
+          </div>
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowAddBt(true)}
+          className="w-full border-2 border-dashed border-blue-300 text-blue-600 text-sm font-medium py-3 rounded-xl"
+        >
+          + Add Bank Transaction
+        </button>
       )}
 
-      {/* Live grouping summary */}
-      {groups.length > 0 && (
+      {/* Summary */}
+      {receipts.length > 0 && (
         <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 bg-gray-50 border-b border-gray-100">
-            Summary by Category
+            Summary
           </p>
           <div className="divide-y divide-gray-100">
-            {groups.map((g) => (
-              <div key={g.category} className="flex items-center justify-between px-3 py-2">
-                <div>
-                  <span className="text-sm text-gray-800">{g.category}</span>
-                  <span className="text-xs text-gray-400 ml-2">{g.count} receipt{g.count !== 1 ? 's' : ''}</span>
+            {bankTransactions.map((bt, i) => {
+              const linked = receipts.filter((r) => r.btLocalId === bt.localId)
+              const sum = linked.reduce((s, r) => s + r.amount, 0)
+              return (
+                <div key={bt.localId} className="flex items-center justify-between px-3 py-2">
+                  <div>
+                    <span className="text-sm text-gray-800">Bank Tx {i + 1}</span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {linked.length} receipt{linked.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">${sum.toFixed(2)}</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-900">
-                  ${g.total.toFixed(2)}
-                </span>
-              </div>
-            ))}
+              )
+            })}
             <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
               <span className="text-sm font-bold text-gray-700">Total</span>
-              <span className="text-sm font-bold text-gray-900">
-                ${receipts.reduce((s, r) => s + r.amount, 0).toFixed(2)}
-              </span>
+              <span className="text-sm font-bold text-gray-900">${total.toFixed(2)}</span>
             </div>
           </div>
         </div>
       )}
 
-      {receipts.length === 0 && !showForm && (
-        <p className="text-xs text-gray-400 text-center">No receipts added yet</p>
+      {bankTransactions.length === 0 && (
+        <p className="text-xs text-gray-400 text-center py-2">
+          Add a bank transaction to get started
+        </p>
+      )}
+      {bankTransactions.length > 0 && receipts.length === 0 && (
+        <p className="text-xs text-gray-400 text-center py-1">
+          Expand a bank transaction to add receipts
+        </p>
       )}
     </div>
   )
@@ -724,17 +833,21 @@ export default function NewClaimPage() {
   const [step2, setStep2] = useState(DEFAULT_STEP2)
 
   // Step 3 state
+  const [bankTransactions, setBankTransactions] = useState([])
   const [receipts, setReceipts] = useState([])
+  const [expandedBtId, setExpandedBtId] = useState(null)
 
   // Restore draft from sessionStorage on mount
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(DRAFT_KEY)
       if (saved) {
-        const { step: s, step1: s1, step2: s2, receipts: r } = JSON.parse(saved)
+        const { step: s, step1: s1, step2: s2, receipts: r, bankTransactions: bt, expandedBtId: eid } = JSON.parse(saved)
         if (s1) setStep1(s1)
         if (s2) setStep2(s2)
         if (r) setReceipts(r)
+        if (bt) setBankTransactions(bt)
+        if (eid) setExpandedBtId(eid)
         if (s) setStep(s)
       }
     } catch {}
@@ -743,9 +856,9 @@ export default function NewClaimPage() {
   // Persist draft to sessionStorage on every change
   useEffect(() => {
     try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts }))
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts, bankTransactions, expandedBtId }))
     } catch {}
-  }, [step, step1, step2, receipts])
+  }, [step, step1, step2, receipts, bankTransactions, expandedBtId])
 
   // Clear draft on unmount only if save succeeded
   useEffect(() => {
@@ -769,12 +882,23 @@ export default function NewClaimPage() {
     setStep2((prev) => ({ ...prev, ...patch }))
   }
 
-  function addReceipt(receipt) {
-    setReceipts((prev) => [...prev, receipt])
+  function addBt(bt) {
+    setBankTransactions((prev) => [...prev, bt])
+    setExpandedBtId(bt.localId)
   }
 
-  function removeReceipt(index) {
-    setReceipts((prev) => prev.filter((_, i) => i !== index))
+  function removeBt(btLocalId) {
+    setBankTransactions((prev) => prev.filter((bt) => bt.localId !== btLocalId))
+    setReceipts((prev) => prev.filter((r) => r.btLocalId !== btLocalId))
+    if (expandedBtId === btLocalId) setExpandedBtId(null)
+  }
+
+  function addReceipt(receipt) {
+    setReceipts((prev) => [...prev, { ...receipt, localId: generateId() }])
+  }
+
+  function removeReceipt(localId) {
+    setReceipts((prev) => prev.filter((r) => r.localId !== localId))
   }
 
   async function handleSave() {
@@ -802,10 +926,18 @@ export default function NewClaimPage() {
       claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
 
-      // 2. Create receipts sequentially
+      // 2. Create bank transactions and build local → real ID map
+      const btIdMap = {}
+      for (const bt of bankTransactions) {
+        const created = await createBankTransaction({ claimId, amount: bt.amount })
+        btIdMap[bt.localId] = created.id
+      }
+
+      // 3. Create receipts sequentially
       for (const r of receipts) {
         await createReceipt.mutateAsync({
           claim_id: claimId,
+          bank_transaction_id: r.btLocalId ? btIdMap[r.btLocalId] : undefined,
           receipt_no: r.receipt_no || undefined,
           description: r.description,
           company: r.company || undefined,
@@ -853,9 +985,14 @@ export default function NewClaimPage() {
         {step === 2 && <Step2 data={step2} onChange={updateStep2} />}
         {step === 3 && (
           <Step3
+            bankTransactions={bankTransactions}
+            onAddBt={addBt}
+            onRemoveBt={removeBt}
             receipts={receipts}
             onAddReceipt={addReceipt}
             onRemoveReceipt={removeReceipt}
+            expandedBtId={expandedBtId}
+            onSetExpandedBtId={setExpandedBtId}
           />
         )}
 
