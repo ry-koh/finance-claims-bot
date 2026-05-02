@@ -12,6 +12,17 @@ import {
 } from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
+// ─── Error helper ────────────────────────────────────────────────────────────
+
+function extractError(err, fallback = 'An error occurred.') {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail.map((d) => (typeof d === 'string' ? d : d?.msg || JSON.stringify(d))).join('; ')
+  }
+  return err?.message || fallback
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_ORDER = [
@@ -766,13 +777,7 @@ export default function ClaimDetailPage() {
   function handleAction(type, payload) {
     setActionError(null)
 
-    const errHandler = (err) => {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.message ||
-        'Action failed. Please try again.'
-      setActionError(msg)
-    }
+    const errHandler = (err) => setActionError(extractError(err, 'Action failed. Please try again.'))
 
     if (type === 'send') {
       sendEmailMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
@@ -818,8 +823,14 @@ export default function ClaimDetailPage() {
   }
 
   function handleSave() {
+    // Strip empty strings for enum/date fields to avoid Pydantic 422 errors
+    const { date, wbs_account, ...rest } = editFields
+    const payload = { id, ...rest }
+    if (date) payload.date = date
+    if (wbs_account) payload.wbs_account = wbs_account
+
     updateClaimMut.mutate(
-      { id, ...editFields },
+      payload,
       {
         onSuccess: (data) => {
           setEditMode(false)
@@ -834,13 +845,7 @@ export default function ClaimDetailPage() {
             )
           }
         },
-        onError: (err) => {
-          const msg =
-            err?.response?.data?.detail ||
-            err?.message ||
-            'Failed to save changes.'
-          setActionError(msg)
-        },
+        onError: (err) => setActionError(extractError(err, 'Failed to save changes.')),
       }
     )
   }
@@ -852,13 +857,7 @@ export default function ClaimDetailPage() {
         onSuccess: () => navigate('/'),
         onError: (err) => {
           setShowDeleteConfirm(false)
-          const data = err?.response?.data
-          const msg =
-            (typeof data?.detail === 'string' ? data.detail : null) ||
-            data?.error ||
-            err?.message ||
-            'Failed to delete claim.'
-          setActionError(msg)
+          setActionError(extractError(err, 'Failed to delete claim.'))
         },
       }
     )
@@ -873,7 +872,7 @@ export default function ClaimDetailPage() {
         setAddingReceiptForBtId((prev) => (prev === btId ? null : prev))
         invalidateClaim()
       },
-      onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to delete bank transaction.'),
+      onError: (err) => setActionError(extractError(err, 'Failed to delete bank transaction.')),
     })
   }
 
@@ -892,7 +891,7 @@ export default function ClaimDetailPage() {
           const updated = [...(claim.receipts ?? []), created]
           recalcAndUpdateTotal(updated)
         },
-        onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to add receipt.'),
+        onError: (err) => setActionError(extractError(err, 'Failed to add receipt.')),
       }
     )
   }
@@ -907,7 +906,7 @@ export default function ClaimDetailPage() {
           )
           recalcAndUpdateTotal(updated)
         },
-        onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to update receipt.'),
+        onError: (err) => setActionError(extractError(err, 'Failed to update receipt.')),
       }
     )
   }
@@ -918,7 +917,7 @@ export default function ClaimDetailPage() {
         const updated = (claim.receipts ?? []).filter((r) => r.id !== receipt.id)
         recalcAndUpdateTotal(updated)
       },
-      onError: (err) => setActionError(err?.response?.data?.detail || 'Failed to delete receipt.'),
+      onError: (err) => setActionError(extractError(err, 'Failed to delete receipt.')),
     })
   }
 

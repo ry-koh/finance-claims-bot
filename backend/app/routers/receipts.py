@@ -1,4 +1,5 @@
 import base64
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -13,6 +14,7 @@ from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
 from app.services import drive, image
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
 # ---------------------------------------------------------------------------
@@ -219,6 +221,7 @@ async def upload_image(
     except HTTPException:
         raise
     except Exception as exc:
+        logger.exception("Google Drive upload failed for claim %s: %s", claim_id, exc)
         raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {str(exc)[:300]}")
 
     return {"drive_file_id": drive_file_id, "filename": filename}

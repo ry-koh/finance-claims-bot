@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from supabase import Client
 from datetime import datetime
@@ -6,6 +8,7 @@ from app.auth import require_auth
 from app.database import get_supabase
 from app.services import drive, image
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bank-transactions", tags=["bank-transactions"])
 
 
@@ -35,6 +38,7 @@ async def _get_bt_and_upload_file(
     except HTTPException:
         raise
     except Exception as exc:
+        logger.exception("Google Drive upload failed for BT %s: %s", bt_id, exc)
         raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {str(exc)[:300]}")
     return bt, drive_file_id
 
