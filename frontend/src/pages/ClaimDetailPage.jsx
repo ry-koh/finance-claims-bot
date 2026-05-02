@@ -1287,6 +1287,20 @@ export default function ClaimDetailPage() {
             <h2 className="text-sm font-semibold text-gray-700 mb-3">
               Documents ({claim.documents.length})
             </h2>
+            {(() => {
+              const compiled = (claim.documents ?? []).find(d => d.type === 'compiled')
+              if (!compiled) return null
+              return (
+                <a
+                  href={imageUrl(compiled.drive_file_id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 w-full justify-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl mb-3"
+                >
+                  Download Compiled PDF
+                </a>
+              )
+            })()}
             <div className="flex flex-col gap-2">
               {claim.documents.map((doc, idx) => (
                 <DocumentRow key={doc.id ?? idx} doc={doc} />
