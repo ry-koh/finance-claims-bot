@@ -91,3 +91,17 @@ export function useRestoreClaim(options = {}) {
     ...options,
   })
 }
+
+export const bulkUpdateStatus = ({ claim_ids, status }) =>
+  api.patch('/claims/bulk', { claim_ids, status }).then((r) => r.data)
+
+export function useBulkUpdateStatus(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkUpdateStatus,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
+    },
+    ...options,
+  })
+}

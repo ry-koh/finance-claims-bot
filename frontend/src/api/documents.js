@@ -74,3 +74,13 @@ export function useSubmitTransportData(options = {}) {
     ...options,
   })
 }
+
+export const sendToTelegram = ({ claim_ids }) =>
+  api.post('/documents/send-telegram', { claim_ids }).then((r) => r.data)
+
+export function useSendToTelegram(options = {}) {
+  return useMutation({
+    mutationFn: sendToTelegram,
+    ...options,
+  })
+}
