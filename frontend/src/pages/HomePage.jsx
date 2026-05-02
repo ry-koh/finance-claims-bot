@@ -163,13 +163,14 @@ export default function HomePage() {
   const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()) }
 
   const handleConfirm = async () => {
+    const action = confirmAction  // capture before clearing
     const ids = [...selectedIds]
     setConfirmAction(null)
     try {
-      if (confirmAction === 'send') {
+      if (action === 'send') {
         const result = await sendMutation.mutateAsync({ claim_ids: ids })
         setActionResult(`Sent ${result.sent} PDF${result.sent !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
-      } else if (confirmAction === 'submit') {
+      } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
         setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted`)
       }
