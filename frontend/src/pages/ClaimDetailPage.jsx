@@ -1312,7 +1312,7 @@ export default function ClaimDetailPage() {
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900 mb-2">Delete Claim?</h3>
             <p className="text-sm text-gray-500 mb-5">
-              This will soft-delete the claim. It can be restored later.
+              This will permanently delete the claim and all associated files. This cannot be undone.
             </p>
             <div className="flex gap-3">
               <button
@@ -1371,7 +1371,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
       const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
       setReceiptImageDriveIds(prev => [...prev, data.drive_file_id])
     } catch(e) {
-      setImgUploadErr(e?.response?.data?.detail || e?.message || 'Upload failed. Please try again.')
+      setImgUploadErr(extractError(e, 'Upload failed. Please try again.'))
     } finally {
       setUploadingReceiptImg(false)
     }

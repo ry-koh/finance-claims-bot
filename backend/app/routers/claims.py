@@ -8,6 +8,7 @@ from app.auth import require_auth, require_director
 from app.config import settings
 from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
+from app.services import r2 as r2_service
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
@@ -412,56 +413,44 @@ async def update_claim(
 @router.delete("/{claim_id}")
 async def delete_claim(
     claim_id: str,
-    hard: bool = Query(default=False),
-    member: dict = Depends(require_auth),
+    _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    if hard:
-        # Hard delete requires director role
-        if member.get("role") != "director":
-            raise HTTPException(status_code=403, detail="Access denied: director role required")
-
-        # Confirm the claim exists (including soft-deleted)
-        resp = db.table("claims").select("id").eq("id", claim_id).execute()
-        if not resp.data:
-            raise HTTPException(status_code=404, detail="Claim not found")
-
-        db.table("claims").delete().eq("id", claim_id).execute()
-    else:
-        # Soft delete
-        _get_claim_or_404(db, claim_id)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        db.table("claims").update({"deleted_at": now_iso}).eq("id", claim_id).execute()
-
-    return {"deleted": True}
-
-
-# ---------------------------------------------------------------------------
-# POST /claims/{claim_id}/restore
-# ---------------------------------------------------------------------------
-
-@router.post("/{claim_id}/restore")
-async def restore_claim(
-    claim_id: str,
-    _member: dict = Depends(require_director),
-    db: Client = Depends(get_supabase),
-):
-    # Check claim exists (including soft-deleted)
-    resp = db.table("claims").select("id, deleted_at").eq("id", claim_id).execute()
+    """Permanently delete a claim and all associated R2 files."""
+    resp = db.table("claims").select("id").eq("id", claim_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
 
-    claim = resp.data[0]
-    if not claim.get("deleted_at"):
-        raise HTTPException(status_code=409, detail="Claim is not deleted")
+    # Collect all R2 object names across image and document tables
+    r2_paths = []
 
-    restore_resp = (
-        db.table("claims")
-        .update({"deleted_at": None})
-        .eq("id", claim_id)
-        .execute()
+    ri = db.table("receipt_images").select("drive_file_id").eq(
+        "receipt_id",
+        db.table("receipts").select("id").eq("claim_id", claim_id)
     )
-    if not restore_resp.data:
-        raise HTTPException(status_code=500, detail="Failed to restore claim")
+    # Gather via joined queries
+    receipts_resp = db.table("receipts").select("id").eq("claim_id", claim_id).execute()
+    receipt_ids = [r["id"] for r in (receipts_resp.data or [])]
+    if receipt_ids:
+        ri_resp = db.table("receipt_images").select("drive_file_id").in_("receipt_id", receipt_ids).execute()
+        r2_paths += [r["drive_file_id"] for r in (ri_resp.data or []) if r.get("drive_file_id")]
 
-    return restore_resp.data[0]
+    bt_resp = db.table("bank_transactions").select("id").eq("claim_id", claim_id).execute()
+    bt_ids = [b["id"] for b in (bt_resp.data or [])]
+    if bt_ids:
+        bti_resp = db.table("bank_transaction_images").select("drive_file_id").in_("bank_transaction_id", bt_ids).execute()
+        r2_paths += [r["drive_file_id"] for r in (bti_resp.data or []) if r.get("drive_file_id")]
+        btr_resp = db.table("bank_transaction_refunds").select("drive_file_id").in_("bank_transaction_id", bt_ids).execute()
+        r2_paths += [r["drive_file_id"] for r in (btr_resp.data or []) if r.get("drive_file_id")]
+
+    docs_resp = db.table("claim_documents").select("drive_file_id").eq("claim_id", claim_id).execute()
+    r2_paths += [d["drive_file_id"] for d in (docs_resp.data or []) if d.get("drive_file_id")]
+
+    # Delete R2 files (best-effort)
+    for path in r2_paths:
+        r2_service.delete_file(path)
+
+    # Hard delete the claim (cascades to all child rows via DB FK constraints)
+    db.table("claims").delete().eq("id", claim_id).execute()
+
+    return {"deleted": True}
