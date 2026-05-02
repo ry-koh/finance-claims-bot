@@ -9,13 +9,19 @@ export const CLAIM_KEYS = {
 }
 
 // Raw API calls
-export const fetchClaims = ({ status, page, page_size } = {}) => {
+export const fetchClaims = ({ status, page, page_size, search, date_from, date_to } = {}) => {
   const params = {}
   if (status) params.status = status
   if (page !== undefined) params.page = page
   if (page_size !== undefined) params.page_size = page_size
+  if (search) params.search = search
+  if (date_from) params.date_from = date_from
+  if (date_to) params.date_to = date_to
   return api.get('/claims', { params }).then((r) => r.data)
 }
+
+export const fetchClaimCounts = () =>
+  api.get('/claims/counts').then((r) => r.data)
 
 export const fetchClaim = (id) =>
   api.get(`/claims/${id}`).then((r) => r.data)
@@ -37,6 +43,13 @@ export function useClaims(params = {}) {
   return useQuery({
     queryKey: CLAIM_KEYS.list(params),
     queryFn: () => fetchClaims(params),
+  })
+}
+
+export function useClaimCounts() {
+  return useQuery({
+    queryKey: [...CLAIM_KEYS.all, 'counts'],
+    queryFn: fetchClaimCounts,
   })
 }
 

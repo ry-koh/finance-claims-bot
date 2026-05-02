@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useClaims, useBulkUpdateStatus } from '../api/claims'
+import { useClaims, useClaimCounts, useBulkUpdateStatus } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
 
 // Status definitions: [tabLabel, backendValue, tailwind colour classes for badge]
@@ -16,7 +16,6 @@ const STATUSES = [
   { label: 'Reimbursed',           value: 'reimbursed',          badge: 'bg-teal-100 text-teal-800' },
 ]
 
-// Map backend status value → badge classes (includes fallback for 'error')
 const STATUS_BADGE = Object.fromEntries(
   STATUSES.filter(s => s.value).map(s => [s.value, s.badge])
 )
@@ -36,6 +35,15 @@ function formatDate(dateStr) {
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function useDebounce(value, delay) {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const h = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(h)
+  }, [value, delay])
+  return debounced
 }
 
 // Skeleton placeholder for a single claim card
@@ -102,58 +110,46 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const [activeStatus, setActiveStatus] = useState(null) // null = "All"
+  const [activeStatus, setActiveStatus] = useState(null)
 
   const [search, setSearch] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
   const [actionResult, setActionResult] = useState(null)
 
+  const debouncedSearch = useDebounce(search, 300)
+
+  // Reset to page 1 whenever any filter changes
+  useEffect(() => { setPage(1) }, [activeStatus, debouncedSearch, dateFrom, dateTo, pageSize])
+
   const sendMutation = useSendToTelegram()
   const bulkStatusMutation = useBulkUpdateStatus()
 
-  // Single broad fetch for counts (always load, regardless of filter)
-  const { data: allData, isLoading: allLoading } = useClaims({ page_size: 500 })
-  const allItems = allData?.items ?? []
+  // Global per-status counts (not filtered by search/date)
+  const { data: countsData } = useClaimCounts()
 
-  // Counts per status derived from the broad fetch
-  const counts = useMemo(() => {
-    const map = {}
-    for (const item of allItems) {
-      map[item.status] = (map[item.status] ?? 0) + 1
-    }
-    return map
-  }, [allItems])
-
-  // Filtered fetch — re-runs when activeStatus changes
-  const params = activeStatus ? { status: activeStatus, page_size: 500 } : { page_size: 500 }
-  const { data, isLoading, isError, refetch } = useClaims(params)
+  // Paginated, server-side filtered fetch
+  const queryParams = {
+    page,
+    page_size: pageSize,
+    ...(activeStatus && { status: activeStatus }),
+    ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
+    ...(dateFrom && { date_from: dateFrom }),
+    ...(dateTo && { date_to: dateTo }),
+  }
+  const { data, isLoading, isError, refetch } = useClaims(queryParams)
   const claims = data?.items ?? []
-
-  const filteredClaims = useMemo(() => {
-    let result = claims
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      result = result.filter(c =>
-        (c.reference_code ?? '').toLowerCase().includes(q) ||
-        (c.claimer?.cca?.name ?? '').toLowerCase().includes(q) ||
-        (c.claimer?.cca?.portfolio?.name ?? '').toLowerCase().includes(q)
-      )
-    }
-    if (dateFrom) {
-      result = result.filter(c => c.created_at >= dateFrom)
-    }
-    if (dateTo) {
-      const to = new Date(dateTo)
-      to.setDate(to.getDate() + 1)
-      result = result.filter(c => new Date(c.created_at) < to)
-    }
-    return result
-  }, [claims, search, dateFrom, dateTo])
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const pageStart = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const pageEnd = Math.min(page * pageSize, total)
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const next = new Set(prev)
@@ -174,7 +170,7 @@ export default function HomePage() {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
         setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted`)
       }
-    } catch (e) {
+    } catch {
       setActionResult('Action failed. Please try again.')
     }
     exitSelectMode()
@@ -186,6 +182,8 @@ export default function HomePage() {
     return () => clearTimeout(t)
   }, [actionResult])
 
+  const allCount = Object.values(countsData ?? {}).reduce((a, b) => a + b, 0)
+
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
       {/* Header */}
@@ -195,7 +193,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">{selectedIds.size} selected</span>
             <div className="flex gap-3">
-              <button onClick={() => setSelectedIds(new Set(filteredClaims.map(c => c.id)))}
+              <button onClick={() => setSelectedIds(new Set(claims.map(c => c.id)))}
                 className="text-xs text-blue-600 font-medium">Select All</button>
               <button onClick={exitSelectMode}
                 className="text-xs text-gray-500 font-medium">Cancel</button>
@@ -243,13 +241,11 @@ export default function HomePage() {
           </>
         )}
 
-        {/* Summary count chips */}
+        {/* Status count chips */}
         {!selectMode && (
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none mt-2">
             {STATUSES.map(({ label, value }) => {
-              const count = value === null
-                ? (allData?.total ?? 0)
-                : (counts[value] ?? 0)
+              const count = value === null ? allCount : (countsData?.[value] ?? 0)
               const isActive = activeStatus === value
               return (
                 <button
@@ -265,7 +261,7 @@ export default function HomePage() {
                   <span className={`inline-flex items-center justify-center min-w-[1.1rem] h-4 rounded-full text-[10px] font-semibold px-1 ${
                     isActive ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
                   }`}>
-                    {allLoading ? '—' : count}
+                    {countsData ? count : '—'}
                   </span>
                 </button>
               )
@@ -297,14 +293,14 @@ export default function HomePage() {
           </div>
         )}
 
-        {!isLoading && !isError && filteredClaims.length === 0 && (
+        {!isLoading && !isError && claims.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-gray-400 text-sm">
-              {activeStatus
-                ? 'No claims with this status'
+              {debouncedSearch.trim() || dateFrom || dateTo || activeStatus
+                ? 'No claims match your filters'
                 : 'No claims yet'}
             </p>
-            {!activeStatus && (
+            {!activeStatus && !debouncedSearch.trim() && !dateFrom && !dateTo && (
               <button
                 onClick={() => navigate('/claims/new')}
                 className="mt-3 text-sm text-blue-600 font-medium"
@@ -315,7 +311,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {!isLoading && !isError && filteredClaims.map(claim => (
+        {!isLoading && !isError && claims.map(claim => (
           <ClaimCard
             key={claim.id}
             claim={claim}
@@ -326,6 +322,51 @@ export default function HomePage() {
           />
         ))}
       </div>
+
+      {/* Pagination footer */}
+      {!selectMode && !isLoading && !isError && (
+        <div className="bg-white border-t border-gray-100 px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500">
+              {total === 0 ? 'No results' : `${pageStart}–${pageEnd} of ${total}`}
+            </span>
+            <div className="flex gap-1">
+              {[20, 50, 100].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setPageSize(n)}
+                  className={`text-xs px-2 py-1 rounded border transition-colors ${
+                    pageSize === n
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-200 text-gray-600'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                className="text-sm text-blue-600 disabled:text-gray-300 font-medium px-3 py-1.5 rounded-lg border border-gray-200 disabled:border-gray-100"
+              >
+                ← Prev
+              </button>
+              <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage(p => p + 1)}
+                className="text-sm text-blue-600 disabled:text-gray-300 font-medium px-3 py-1.5 rounded-lg border border-gray-200 disabled:border-gray-100"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Floating action bar */}
       {selectMode && (

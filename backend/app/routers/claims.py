@@ -56,8 +56,11 @@ def _get_claim_or_404(db: Client, claim_id: str) -> dict:
 @router.get("")
 async def list_claims(
     status: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=20, ge=1, le=500),
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
@@ -71,6 +74,35 @@ async def list_claims(
     if status:
         query = query.eq("status", status)
 
+    if search and search.strip():
+        s = search.strip()
+        # Find claimer IDs whose CCA or portfolio name matches
+        claimer_resp = (
+            db.table("claimers")
+            .select("id, cca:ccas(name, portfolio:portfolios(name))")
+            .execute()
+        )
+        q = s.lower()
+        matching_ids = [
+            c["id"] for c in (claimer_resp.data or [])
+            if q in ((c.get("cca") or {}).get("name") or "").lower()
+            or q in (((c.get("cca") or {}).get("portfolio") or {}).get("name") or "").lower()
+        ]
+        or_parts = [f"reference_code.ilike.%{s}%"]
+        if matching_ids:
+            or_parts.append(f"claimer_id.in.({','.join(matching_ids)})")
+        query = query.or_(",".join(or_parts))
+
+    if date_from:
+        query = query.gte("created_at", date_from)
+    if date_to:
+        from datetime import date as _date, timedelta
+        try:
+            exclusive_end = (_date.fromisoformat(date_to) + timedelta(days=1)).isoformat()
+            query = query.lt("created_at", exclusive_end)
+        except ValueError:
+            pass
+
     offset = (page - 1) * page_size
     query = query.range(offset, offset + page_size - 1)
 
@@ -83,6 +115,28 @@ async def list_claims(
         "page": page,
         "page_size": page_size,
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /claims/counts  — must be before /{claim_id} to avoid path conflict
+# ---------------------------------------------------------------------------
+
+@router.get("/counts")
+async def get_claim_counts(
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    resp = (
+        db.table("claims")
+        .select("status")
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    counts: dict = {}
+    for item in (resp.data or []):
+        s = item["status"]
+        counts[s] = counts.get(s, 0) + 1
+    return counts
 
 
 # ---------------------------------------------------------------------------
