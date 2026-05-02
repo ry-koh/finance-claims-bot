@@ -32,6 +32,10 @@ class TransportData(BaseModel):
     trips: list[TransportTrip]
 
 
+class SendTelegramPayload(BaseModel):
+    claim_ids: list[str]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -368,6 +372,62 @@ async def save_transport_data(
     """Save transport trip data to the claim record."""
     db.table("claims").update({"transport_data": data.model_dump()}).eq("id", claim_id).execute()
     return {"success": True}
+
+
+@router.post("/send-telegram")
+async def send_to_telegram(
+    payload: SendTelegramPayload,
+    member: dict = Depends(require_auth),
+    db=Depends(get_supabase),
+):
+    """Send compiled PDFs for the given claim IDs to the requesting user via Telegram."""
+    from telegram import Bot
+
+    telegram_id = member.get("telegram_id")
+    if not telegram_id:
+        raise HTTPException(400, "Your account has no Telegram ID linked.")
+
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+    sent = 0
+    skipped_ids: list[str] = []
+
+    try:
+        for claim_id in payload.claim_ids:
+            doc_resp = (
+                db.table("claim_documents")
+                .select("*")
+                .eq("claim_id", claim_id)
+                .eq("type", "compiled")
+                .eq("is_current", True)
+                .execute()
+            )
+            docs = doc_resp.data
+            if not docs:
+                skipped_ids.append(claim_id)
+                continue
+
+            doc = docs[0]
+
+            claim_resp = (
+                db.table("claims")
+                .select("reference_code")
+                .eq("id", claim_id)
+                .single()
+                .execute()
+            )
+            reference_code = claim_resp.data["reference_code"] if claim_resp.data else claim_id
+
+            file_bytes = r2_service.download_file(doc["drive_file_id"])
+            await bot.send_document(
+                chat_id=int(telegram_id),
+                document=io.BytesIO(file_bytes),
+                filename=f"{reference_code}.pdf",
+            )
+            sent += 1
+    finally:
+        await bot.close()
+
+    return {"sent": sent, "skipped": len(skipped_ids), "skipped_ids": skipped_ids}
 
 
 @router.get("/{claim_id}")
