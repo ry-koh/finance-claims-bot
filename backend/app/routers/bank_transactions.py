@@ -9,6 +9,31 @@ from app.services import drive, image
 router = APIRouter(prefix="/bank-transactions", tags=["bank-transactions"])
 
 
+async def _get_bt_and_upload_file(
+    bt_id: str, file: UploadFile, db: Client, filename_prefix: str
+) -> tuple[dict, str]:
+    """Verify BT exists, process image, upload to Drive. Returns (bt_row, drive_file_id)."""
+    bt_resp = db.table("bank_transactions").select("*, claim:claims(reference_code)").eq("id", bt_id).execute()
+    if not bt_resp.data:
+        raise HTTPException(status_code=404, detail="Bank transaction not found")
+    bt = bt_resp.data[0]
+    reference_code = bt.get("claim", {}).get("reference_code", bt["claim_id"])
+
+    raw_bytes = await file.read()
+    try:
+        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    claim_folder_id = drive.get_claim_folder_id(reference_code)
+    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    drive_file_id = drive.upload_file(
+        processed, f"{filename_prefix}_{timestamp}.jpg", "image/jpeg", receipts_folder_id
+    )
+    return bt, drive_file_id
+
+
 @router.post("", status_code=201)
 async def create_bank_transaction(
     claim_id: str = Form(...),
@@ -19,7 +44,7 @@ async def create_bank_transaction(
     """Create an empty bank transaction for a claim."""
     resp = db.table("bank_transactions").insert({"claim_id": claim_id, "amount": amount}).execute()
     if not resp.data:
-        raise HTTPException(500, "Failed to create bank transaction")
+        raise HTTPException(status_code=500, detail="Failed to create bank transaction")
     return {**resp.data[0], "images": []}
 
 
@@ -31,33 +56,14 @@ async def upload_bank_transaction_image(
     db: Client = Depends(get_supabase),
 ):
     """Upload an image for a bank transaction, store in Drive, persist Drive ID."""
-    # Verify BT exists + get claim reference_code
-    bt_resp = db.table("bank_transactions").select("*, claim:claims(reference_code)").eq("id", bt_id).execute()
-    if not bt_resp.data:
-        raise HTTPException(404, "Bank transaction not found")
-    bt = bt_resp.data[0]
-    reference_code = bt.get("claim", {}).get("reference_code", bt["claim_id"])
+    _bt, drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "bank")
 
-    # Process image
-    raw_bytes = await file.read()
-    try:
-        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-
-    # Upload to Drive
-    claim_folder_id = drive.get_claim_folder_id(reference_code)
-    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    drive_file_id = drive.upload_file(processed, f"bank_{timestamp}.jpg", "image/jpeg", receipts_folder_id)
-
-    # Persist
     img_resp = db.table("bank_transaction_images").insert({
         "bank_transaction_id": bt_id,
         "drive_file_id": drive_file_id,
     }).execute()
     if not img_resp.data:
-        raise HTTPException(500, "Failed to save bank transaction image")
+        raise HTTPException(status_code=500, detail="Failed to save bank transaction image")
     return img_resp.data[0]
 
 
@@ -68,9 +74,17 @@ async def delete_bank_transaction_image(
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    resp = db.table("bank_transaction_images").select("*").eq("id", image_id).eq("bank_transaction_id", bt_id).execute()
+    """Delete a bank transaction image record and remove the file from Drive."""
+    resp = db.table("bank_transaction_images").select("id, drive_file_id").eq("id", image_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
-        raise HTTPException(404, "Image not found")
+        raise HTTPException(status_code=404, detail="Image not found")
+    row = resp.data[0]
+    file_id = row.get("drive_file_id")
+    if file_id:
+        try:
+            drive.delete_file(file_id)
+        except Exception:
+            pass
     db.table("bank_transaction_images").delete().eq("id", image_id).execute()
     return {"deleted": True}
 
@@ -84,34 +98,15 @@ async def create_bt_refund(
     db: Client = Depends(get_supabase),
 ):
     """Create a refund for a bank transaction with receipt image."""
-    # Verify BT exists + get claim reference_code
-    bt_resp = db.table("bank_transactions").select("*, claim:claims(reference_code)").eq("id", bt_id).execute()
-    if not bt_resp.data:
-        raise HTTPException(404, "Bank transaction not found")
-    bt = bt_resp.data[0]
-    reference_code = bt.get("claim", {}).get("reference_code", bt["claim_id"])
+    _bt, drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "refund")
 
-    # Process image
-    raw_bytes = await file.read()
-    try:
-        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-
-    # Upload to Drive
-    claim_folder_id = drive.get_claim_folder_id(reference_code)
-    receipts_folder_id = drive.get_or_create_folder("receipts", claim_folder_id)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    drive_file_id = drive.upload_file(processed, f"refund_{timestamp}.jpg", "image/jpeg", receipts_folder_id)
-
-    # Persist
     refund_resp = db.table("bank_transaction_refunds").insert({
         "bank_transaction_id": bt_id,
         "amount": amount,
         "drive_file_id": drive_file_id,
     }).execute()
     if not refund_resp.data:
-        raise HTTPException(500, "Failed to create refund")
+        raise HTTPException(status_code=500, detail="Failed to create refund")
     return refund_resp.data[0]
 
 
@@ -122,9 +117,17 @@ async def delete_bt_refund(
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    resp = db.table("bank_transaction_refunds").select("id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
+    """Delete a bank transaction refund record and remove the receipt file from Drive."""
+    resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
-        raise HTTPException(404, "Refund not found")
+        raise HTTPException(status_code=404, detail="Refund not found")
+    row = resp.data[0]
+    file_id = row.get("drive_file_id")
+    if file_id:
+        try:
+            drive.delete_file(file_id)
+        except Exception:
+            pass
     db.table("bank_transaction_refunds").delete().eq("id", refund_id).execute()
     return {"deleted": True}
 
@@ -136,9 +139,13 @@ async def update_bank_transaction(
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
+    """Update a bank transaction's total amount."""
+    check = db.table("bank_transactions").select("id").eq("id", bt_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Bank transaction not found")
     resp = db.table("bank_transactions").update({"amount": amount}).eq("id", bt_id).execute()
     if not resp.data:
-        raise HTTPException(404, "Bank transaction not found")
+        raise HTTPException(status_code=500, detail="Failed to update bank transaction")
     return resp.data[0]
 
 
@@ -149,6 +156,9 @@ async def delete_bank_transaction(
     db: Client = Depends(get_supabase),
 ):
     """Delete a bank transaction; unlinks all receipts (sets their bank_transaction_id to null)."""
+    check = db.table("bank_transactions").select("id").eq("id", bt_id).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Bank transaction not found")
     db.table("receipts").update({"bank_transaction_id": None}).eq("bank_transaction_id", bt_id).execute()
     db.table("bank_transactions").delete().eq("id", bt_id).execute()
     return {"deleted": True}
