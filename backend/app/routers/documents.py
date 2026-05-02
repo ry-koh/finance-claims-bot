@@ -198,6 +198,7 @@ async def generate_documents(
 
         # --- Auto-generate remarks ---
         remarks_lines = []
+        n = 1  # running line number across all remark entries
 
         # Refund remarks — for each BT with refunds
         for bt in bank_transactions:
@@ -205,8 +206,6 @@ async def generate_documents(
                 refund_amounts = [float(r["amount"]) for r in bt["refunds"]]
                 total_refunded = sum(refund_amounts)
                 net = float(bt["amount"]) - total_refunded
-                # Number each refund line, then initial BT, then total
-                n = 1
                 for amt in refund_amounts:
                     remarks_lines.append(f"{n}. An item was refunded and the amount refunded is ${amt:.2f}")
                     n += 1
@@ -214,16 +213,15 @@ async def generate_documents(
                 n += 1
                 formula = " - ".join([f"${float(bt['amount']):.2f}"] + [f"${a:.2f}" for a in refund_amounts])
                 remarks_lines.append(f"{n}. Total Amount is {formula} = ${net:.2f}")
+                n += 1
 
         # Cross-split remarks — only when there are multiple halves
         if len(halves) > 1:
-            # Build map: line_item_id -> suffix
             li_to_suffix = {}
             for items, suf in halves:
                 for item in items:
                     li_to_suffix[item["id"]] = suf
 
-            # Build map: receipt_id -> suffix
             r_to_suffix = {}
             for r in all_receipts:
                 if r.get("line_item_id") in li_to_suffix:
@@ -248,11 +246,13 @@ async def generate_documents(
                             f"${v:.2f} ({base_code}{s})" for s, v in sorted(half_sums.items())
                         )
                         remarks_lines.append(
-                            f"1. Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well"
+                            f"{n}. Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well"
                         )
+                        n += 1
                         remarks_lines.append(
-                            f"2. {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)"
+                            f"{n}. {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)"
                         )
+                        n += 1
 
         # Persist remarks (replace AUTO block or append)
         if remarks_lines:
@@ -293,8 +293,11 @@ async def compile_documents(
     result = db.table("claim_documents").select("*").eq("claim_id", claim_id).eq("is_current", True).execute()
     docs_by_type = {d["type"]: d for d in result.data}
 
-    required = ["loa", "summary", "rfp", "email_screenshot"]
-    missing = [t for t in required if t not in docs_by_type]
+    # Check required types — supports both plain and split variants
+    def has_type_prefix(prefix):
+        return any(t == prefix or t.startswith(prefix + "_") for t in docs_by_type)
+
+    missing = [t for t in ["loa", "summary", "rfp", "email_screenshot"] if not has_type_prefix(t)]
     if missing:
         raise HTTPException(400, f"Missing required documents: {missing}")
 
@@ -305,7 +308,16 @@ async def compile_documents(
 
         writer = PdfWriter()
         total_pages = 0
-        for doc_type in ["rfp", "loa", "transport", "email_screenshot", "summary"]:
+
+        # Merge order: rfp(s) → loa(s) → transport → email_screenshot → summary(s)
+        ordered_types = (
+            ["rfp", "rfp_a", "rfp_b", "rfp_c"]
+            + ["loa", "loa_a", "loa_b", "loa_c"]
+            + ["transport"]
+            + ["email_screenshot"]
+            + ["summary", "summary_a", "summary_b", "summary_c"]
+        )
+        for doc_type in ordered_types:
             if doc_type not in docs_by_type:
                 continue
             file_bytes = pdf_service.download_drive_file(docs_by_type[doc_type]["drive_file_id"])
