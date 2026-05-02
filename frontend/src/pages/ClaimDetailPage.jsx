@@ -1366,7 +1366,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
       const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
       setReceiptImageDriveIds(prev => [...prev, data.drive_file_id])
     } catch(e) {
-      setImgUploadErr('Upload failed. Please try again.')
+      setImgUploadErr(e?.response?.data?.detail || e?.message || 'Upload failed. Please try again.')
     } finally {
       setUploadingReceiptImg(false)
     }
