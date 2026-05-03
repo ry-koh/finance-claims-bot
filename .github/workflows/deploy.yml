@@ -24,6 +24,43 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Write env vars file
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_PARENT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_PARENT_FOLDER_ID }}
+          DRIVE_REFRESH_TOKEN: ${{ secrets.DRIVE_REFRESH_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          FD_NAME: ${{ secrets.FD_NAME }}
+          FD_MATRIC_NO: ${{ secrets.FD_MATRIC_NO }}
+          FD_PHONE: ${{ secrets.FD_PHONE }}
+          ACADEMIC_YEAR: ${{ secrets.ACADEMIC_YEAR }}
+          MINI_APP_URL: ${{ secrets.MINI_APP_URL }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          python3 - <<'EOF'
+          import os, yaml
+          keys = [
+              'SUPABASE_URL', 'SUPABASE_KEY', 'TELEGRAM_BOT_TOKEN',
+              'GOOGLE_SERVICE_ACCOUNT_JSON', 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
+              'GMAIL_REFRESH_TOKEN', 'GOOGLE_DRIVE_PARENT_FOLDER_ID', 'DRIVE_REFRESH_TOKEN',
+              'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME',
+              'FD_NAME', 'FD_MATRIC_NO', 'FD_PHONE', 'ACADEMIC_YEAR', 'MINI_APP_URL', 'APP_URL',
+          ]
+          data = {k: os.environ.get(k, '') for k in keys}
+          data['ALLOWED_ORIGINS'] = os.environ.get('MINI_APP_URL', '')
+          with open('/tmp/env-vars.yaml', 'w') as f:
+              yaml.dump(data, f, default_flow_style=False, allow_unicode=True, width=float('inf'))
+          EOF
+
       - name: Build and deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
@@ -34,26 +71,7 @@ jobs:
             --allow-unauthenticated \
             --memory 1Gi \
             --timeout 300 \
-            --set-env-vars "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" \
-            --set-env-vars "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" \
-            --set-env-vars "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-            --set-env-vars "GOOGLE_SERVICE_ACCOUNT_JSON=${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}" \
-            --set-env-vars "GMAIL_CLIENT_ID=${{ secrets.GMAIL_CLIENT_ID }}" \
-            --set-env-vars "GMAIL_CLIENT_SECRET=${{ secrets.GMAIL_CLIENT_SECRET }}" \
-            --set-env-vars "GMAIL_REFRESH_TOKEN=${{ secrets.GMAIL_REFRESH_TOKEN }}" \
-            --set-env-vars "GOOGLE_DRIVE_PARENT_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_PARENT_FOLDER_ID }}" \
-            --set-env-vars "DRIVE_REFRESH_TOKEN=${{ secrets.DRIVE_REFRESH_TOKEN }}" \
-            --set-env-vars "R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}" \
-            --set-env-vars "R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}" \
-            --set-env-vars "R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}" \
-            --set-env-vars "R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}" \
-            --set-env-vars "FD_NAME=${{ secrets.FD_NAME }}" \
-            --set-env-vars "FD_MATRIC_NO=${{ secrets.FD_MATRIC_NO }}" \
-            --set-env-vars "FD_PHONE=${{ secrets.FD_PHONE }}" \
-            --set-env-vars "ACADEMIC_YEAR=${{ secrets.ACADEMIC_YEAR }}" \
-            --set-env-vars "MINI_APP_URL=${{ secrets.MINI_APP_URL }}" \
-            --set-env-vars "ALLOWED_ORIGINS=${{ secrets.MINI_APP_URL }}" \
-            --set-env-vars "APP_URL=${{ secrets.APP_URL }}"
+            --env-vars-file /tmp/env-vars.yaml
 
       - name: Print service URL
         run: |
