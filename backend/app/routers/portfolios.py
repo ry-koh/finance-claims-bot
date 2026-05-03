@@ -5,7 +5,7 @@ from app.auth import require_auth
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
 
-@router.get("/")
+@router.get("")
 async def list_portfolios(auth=Depends(require_auth), db=Depends(get_supabase)):
     result = db.table("portfolios").select("*").order("name").execute()
     return result.data
