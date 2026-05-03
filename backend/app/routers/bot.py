@@ -1,11 +1,4 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    WebAppInfo,
-    Bot,
-)
 from app.config import settings
 from app.database import get_supabase
 from app.auth import require_director
@@ -18,7 +11,8 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_bot() -> Bot:
+def _get_bot():
+    from telegram import Bot  # lazy import
     return Bot(token=settings.TELEGRAM_BOT_TOKEN)
 
 
@@ -26,7 +20,7 @@ def _mini_app_url() -> str:
     return settings.MINI_APP_URL or "https://example.com"
 
 
-async def _send_message(bot: Bot, chat_id: int, text: str, **kwargs) -> None:
+async def _send_message(bot, chat_id: int, text: str, **kwargs) -> None:
     """Send a text message, logging errors without raising."""
     try:
         await bot.send_message(chat_id=chat_id, text=text, **kwargs)
@@ -49,7 +43,7 @@ async def _get_member(db, telegram_id: int) -> dict | None:
 # Command handlers
 # ---------------------------------------------------------------------------
 
-async def _handle_start(bot: Bot, db, chat_id: int, telegram_id: int, name: str) -> None:
+async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> None:
     member = await _get_member(db, telegram_id)
     if not member:
         await _send_message(
@@ -63,15 +57,9 @@ async def _handle_start(bot: Bot, db, chat_id: int, telegram_id: int, name: str)
         )
         return
 
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # lazy import
     keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "Open Claims App",
-                    web_app=WebAppInfo(url=_mini_app_url()),
-                )
-            ]
-        ]
+        [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
     )
     await _send_message(
         bot,
@@ -82,7 +70,7 @@ async def _handle_start(bot: Bot, db, chat_id: int, telegram_id: int, name: str)
 
 
 async def _handle_register_director(
-    bot: Bot, db, chat_id: int, sender_id: int, args: list[str]
+    bot, db, chat_id: int, sender_id: int, args: list[str]
 ) -> None:
     """/register_director <name> <email> — bootstrap the first Finance Director.
     Only works when the finance_team table is completely empty."""
@@ -118,6 +106,7 @@ async def _handle_register_director(
         await _send_message(bot, chat_id, f"Failed to register: {exc}")
         return
 
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # lazy import
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
     )
@@ -133,7 +122,7 @@ async def _handle_register_director(
     )
 
 
-async def _handle_addmember(bot: Bot, db, chat_id: int, sender_id: int) -> None:
+async def _handle_addmember(bot, db, chat_id: int, sender_id: int) -> None:
     """Director-only: Prints instructions for registering a new member."""
     member = await _get_member(db, sender_id)
     if not member or member.get("role") != "director":
@@ -156,7 +145,7 @@ async def _handle_addmember(bot: Bot, db, chat_id: int, sender_id: int) -> None:
 
 
 async def _handle_confirm_member(
-    bot: Bot, db, chat_id: int, sender_id: int, args: list[str]
+    bot, db, chat_id: int, sender_id: int, args: list[str]
 ) -> None:
     """Director-only: /confirm_member <telegram_id> <name...> <email> <role>"""
     member = await _get_member(db, sender_id)
@@ -226,7 +215,7 @@ async def _handle_confirm_member(
     )
 
 
-async def _handle_listmembers(bot: Bot, db, chat_id: int, sender_id: int) -> None:
+async def _handle_listmembers(bot, db, chat_id: int, sender_id: int) -> None:
     """Director-only: list all finance_team members."""
     member = await _get_member(db, sender_id)
     if not member or member.get("role") != "director":
@@ -255,7 +244,7 @@ async def _handle_listmembers(bot: Bot, db, chat_id: int, sender_id: int) -> Non
 
 
 async def _handle_removemember(
-    bot: Bot, db, chat_id: int, sender_id: int, args: list[str]
+    bot, db, chat_id: int, sender_id: int, args: list[str]
 ) -> None:
     """Director-only: /removemember <telegram_id>"""
     member = await _get_member(db, sender_id)
@@ -311,6 +300,7 @@ async def webhook(request: Request):
         return {"ok": True}  # Return 200 to prevent Telegram retries
 
     try:
+        from telegram import Update  # lazy import
         update = Update.de_json(data, bot=None)
     except Exception as exc:
         logger.warning("Could not parse Telegram update: %s", exc)
