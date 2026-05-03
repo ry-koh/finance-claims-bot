@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 async def _register_webhook() -> None:
-    """Call Telegram setWebhook on startup if RENDER_EXTERNAL_URL is configured."""
-    if not settings.RENDER_EXTERNAL_URL:
-        logger.info("RENDER_EXTERNAL_URL not set; skipping webhook registration.")
+    """Call Telegram setWebhook on startup if APP_URL is configured."""
+    if not settings.APP_URL:
+        logger.info("APP_URL not set; skipping webhook registration.")
         return
 
-    webhook_url = f"{settings.RENDER_EXTERNAL_URL}/bot/webhook"
+    webhook_url = f"{settings.APP_URL}/bot/webhook"
     api_url = (
         f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/setWebhook"
     )

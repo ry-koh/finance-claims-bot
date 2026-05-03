@@ -387,13 +387,13 @@ async def webhook(request: Request):
 @router.post("/set_webhook")
 async def set_webhook(director: dict = Depends(require_director)):
     """Manually trigger webhook registration with Telegram. Requires director auth."""
-    if not settings.RENDER_EXTERNAL_URL:
+    if not settings.APP_URL:
         raise HTTPException(
             status_code=400,
-            detail="RENDER_EXTERNAL_URL is not configured; cannot set webhook.",
+            detail="APP_URL is not configured; cannot set webhook.",
         )
 
-    webhook_url = f"{settings.RENDER_EXTERNAL_URL}/bot/webhook"
+    webhook_url = f"{settings.APP_URL}/bot/webhook"
     bot = _get_bot()
     try:
         result = await bot.set_webhook(

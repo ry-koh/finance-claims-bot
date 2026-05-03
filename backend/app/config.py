@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = ""
     R2_STORAGE_LIMIT_BYTES: int = 9_500_000_000  # 9.5 GB hard stop
     ACADEMIC_YEAR: str
-    RENDER_EXTERNAL_URL: str = ""  # set by Render automatically
+    APP_URL: str = ""  # public HTTPS URL of this backend (e.g. https://api.yourdomain.duckdns.org)
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
     SUMMARY_TEMPLATE_ID: str = "1xPPlWy6T_tZqwFYHZlTSFYqciItF0Jm7Q25k1K-GHX4"
     RFP_TEMPLATE_ID: str = "1wa7B5w65cbN6Omo3SaqiD4csOy5wQz0u3eHn1NEKTMM"

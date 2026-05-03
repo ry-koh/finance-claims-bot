@@ -1,0 +1,33 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/finance-claims-bot
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            echo "Installing dependencies..."
+            ./backend/venv/bin/pip install -r backend/requirements.txt -q
+
+            echo "Restarting service..."
+            sudo systemctl restart finance-claims-bot
+
+            echo "Waiting for service to come up..."
+            sleep 3
+            sudo systemctl is-active --quiet finance-claims-bot && echo "Service is running" || (sudo journalctl -u finance-claims-bot -n 20 && exit 1)
