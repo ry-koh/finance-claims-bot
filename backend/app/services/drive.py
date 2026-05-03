@@ -10,9 +10,6 @@ configured GOOGLE_DRIVE_PARENT_FOLDER_ID.  Responsibilities include:
 - Deleting or moving files when a claim is cancelled or superseded.
 """
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 from app.config import settings
 import json
 import io
@@ -28,6 +25,8 @@ def get_drive_service():
     Build and return an authenticated Google Drive v3 service using the
     service account credentials stored in settings.
     """
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
     info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
     creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     return build('drive', 'v3', credentials=creds, cache_discovery=False)
@@ -39,6 +38,7 @@ def upload_file(file_bytes: bytes, filename: str, mime_type: str, parent_folder_
     Returns the Drive file ID string.
     Supports both My Drive and Shared Drives (supportsAllDrives=True).
     """
+    from googleapiclient.http import MediaIoBaseUpload
     drive = get_drive_service()
     media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime_type, resumable=False)
     result = drive.files().create(

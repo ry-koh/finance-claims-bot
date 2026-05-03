@@ -7,12 +7,7 @@ from app.auth import require_auth
 from app.services import pdf as pdf_service
 from app.services import image as image_service
 from app.services import r2 as r2_service
-from app.services import drive as drive_service
 from app.config import settings
-from fpdf import FPDF
-from PIL import Image as PILImage
-from telegram import Bot
-from telegram.request import HTTPXRequest
 import io, tempfile, os, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -68,9 +63,10 @@ def _get_finance_director(db) -> dict:
 
 
 def _download_doc(drive_file_id: str) -> bytes:
-    """Download a claim document from Drive (new) or R2 (legacy path contains '/')."""
+    """Download a claim document from R2 (path contains '/') or Drive (legacy)."""
     if '/' in drive_file_id:
         return r2_service.download_file(drive_file_id)
+    from app.services import drive as drive_service
     return drive_service.download_file(drive_file_id)
 
 
@@ -89,7 +85,7 @@ def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str
 
 def _do_compile(claim_id: str, reference_code: str, db) -> dict:
     """Merge all current documents into a compiled PDF. Returns page_count."""
-    from pypdf import PdfWriter, PdfReader
+    from pypdf import PdfWriter, PdfReader  # lazy import — pypdf is heavy
 
     result = db.table("claim_documents").select("*").eq("claim_id", claim_id).eq("is_current", True).execute()
     docs_by_type = {d["type"]: d for d in result.data}
@@ -333,6 +329,10 @@ async def upload_screenshot(
     _auth=Depends(require_auth),
 ):
     """Upload an email screenshot, convert to PDF, and mark claim as screenshot_uploaded."""
+    from PIL import Image as PILImage  # lazy import
+    from fpdf import FPDF  # lazy import
+    import gc
+
     raw_bytes = await file.read()
     try:
         processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
@@ -340,6 +340,8 @@ async def upload_screenshot(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
+    finally:
+        del raw_bytes
 
     claim = _get_full_claim(claim_id, db)
 
@@ -364,16 +366,20 @@ async def upload_screenshot(
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         tmp.write(processed)
         tmp_path = tmp.name
+    del processed
     try:
         pdf.image(tmp_path, x=x_pos, y=y_pos, w=render_w, h=render_h)
     finally:
         os.unlink(tmp_path)
     screenshot_pdf_bytes = bytes(pdf.output())
+    del pdf
+    gc.collect()
 
     _save_document(
         claim_id, "email_screenshot", screenshot_pdf_bytes,
         f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db
     )
+    del screenshot_pdf_bytes
     db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
 
     # Auto-generate and compile documents now that the screenshot is available

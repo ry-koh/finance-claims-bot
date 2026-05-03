@@ -9,20 +9,20 @@ API with OAuth 2.0 refresh-token credentials.  Responsibilities include:
 - Handling token refresh transparently so long-lived deployments keep working.
 """
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from app.config import settings
-import base64, logging
+import base64, logging, re
 
 logger = logging.getLogger(__name__)
 
 
 def get_gmail_service():
     """Return an authenticated Gmail v1 service using OAuth2 refresh token."""
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
     creds = Credentials(
         token=None,
         refresh_token=settings.GMAIL_REFRESH_TOKEN,
@@ -90,7 +90,9 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
 
     # --- Remarks section ---
     if remarks.strip():
-        remarks_section = f"<p><strong>Remarks:</strong><br>{remarks}</p>"
+        cleaned = re.sub(r'<!--\s*/?AUTO\s*-->', '', remarks).strip()
+        cleaned_html = cleaned.replace('\n', '<br>')
+        remarks_section = f"<p><strong>Remarks:</strong><br>{cleaned_html}</p>"
     else:
         remarks_section = ""
 

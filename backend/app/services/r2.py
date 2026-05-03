@@ -11,8 +11,6 @@ import datetime
 import io
 import logging
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from app.config import settings
@@ -23,6 +21,7 @@ _QUOTA_ERROR_CODES = {"QuotaExceeded", "StorageQuotaExceeded", "TotalStorageExce
 
 
 def _get_client():
+    import boto3
     return boto3.client(
         "s3",
         endpoint_url=f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
@@ -38,6 +37,7 @@ def upload_file(file_bytes: bytes, object_name: str, content_type: str = "image/
     Returns object_name (stored as the image identifier in DB).
     Raises HTTP 507 if the R2 bucket quota is exceeded.
     """
+    from botocore.exceptions import ClientError
     client = _get_client()
     try:
         client.put_object(
@@ -61,6 +61,7 @@ def upload_file(file_bytes: bytes, object_name: str, content_type: str = "image/
 
 def delete_file(object_name: str) -> None:
     """Delete an object from R2. Silently ignores not-found errors."""
+    from botocore.exceptions import ClientError
     try:
         client = _get_client()
         client.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=object_name)
@@ -75,6 +76,7 @@ def generate_signed_url(object_name: str, expiration_minutes: int = 60) -> str:
     """
     Generate a presigned GET URL for object_name, valid for expiration_minutes.
     """
+    from botocore.exceptions import ClientError
     client = _get_client()
     try:
         return client.generate_presigned_url(
@@ -89,6 +91,7 @@ def generate_signed_url(object_name: str, expiration_minutes: int = 60) -> str:
 
 def download_file(object_name: str) -> bytes:
     """Download an object from the R2 bucket and return its bytes."""
+    from botocore.exceptions import ClientError
     client = _get_client()
     try:
         response = client.get_object(Bucket=settings.R2_BUCKET_NAME, Key=object_name)
