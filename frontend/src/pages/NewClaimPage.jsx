@@ -574,7 +574,7 @@ function ReceiptForm({ onAdd, existingCategories }) {
           <Input
             value={form.receipt_no}
             onChange={(v) => set('receipt_no', v)}
-            placeholder="e.g. R001"
+            placeholder=""
           />
         </div>
         <div>
@@ -582,7 +582,7 @@ function ReceiptForm({ onAdd, existingCategories }) {
           <Input
             value={form.company}
             onChange={(v) => set('company', v)}
-            placeholder="e.g. FairPrice"
+            placeholder=""
           />
         </div>
       </div>

@@ -50,18 +50,36 @@ def download_drive_file(file_id: str) -> bytes:
         raise ValueError(f"Could not download Drive file {file_id}: {exc}") from exc
 
 
+def _best_fit_area(img_w: int, img_h: int, box_w: float, box_h: float) -> float:
+    """Return the display area (mm²) when fitting img_w×img_h pixels into box_w×box_h mm."""
+    if img_w <= 0 or img_h <= 0:
+        return 0.0
+    scale = min(box_w / img_w, box_h / img_h)
+    return img_w * scale * img_h * scale
+
+
 def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
-    """Download an R2 image and embed it on a new PDF page with a header label."""
+    """Download an R2 image and embed it on a new PDF page.
+
+    EXIF orientation is corrected first, then the image is optionally rotated
+    90° if that orientation fills more of the A4 content area.
+    """
     try:
         file_bytes = r2_service.download_file(drive_id)
         img = Image.open(io.BytesIO(file_bytes))
-        img = ImageOps.exif_transpose(img)  # respect EXIF orientation
+        img = ImageOps.exif_transpose(img)  # correct EXIF orientation first
+
+        available_h = CONTENT_H - 8  # leave room for the header label
+
+        # Rotate 90° if that yields a larger display area on the page
+        if _best_fit_area(img.height, img.width, CONTENT_W, available_h) > \
+                _best_fit_area(img.width, img.height, CONTENT_W, available_h):
+            img = img.rotate(90, expand=True)
 
         px_per_mm = 150 / 25.4
         width_mm = img.width / px_per_mm
         height_mm = img.height / px_per_mm
 
-        available_h = CONTENT_H - 8
         scale = min(
             CONTENT_W / width_mm if width_mm > 0 else 1,
             available_h / height_mm if height_mm > 0 else 1,
