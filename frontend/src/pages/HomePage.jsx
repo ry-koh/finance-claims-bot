@@ -417,6 +417,17 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Sending overlay */}
+      {sendMutation.isPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl px-8 py-6 flex flex-col items-center gap-3 mx-4">
+            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-gray-800">Sending to Telegram…</p>
+            <p className="text-xs text-gray-500 text-center">Uploading PDFs — this may take 1–2 minutes</p>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {actionResult && (
         <div className="fixed top-4 left-4 right-4 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg z-50 text-center">

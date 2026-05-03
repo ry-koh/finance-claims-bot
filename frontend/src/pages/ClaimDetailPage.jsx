@@ -59,6 +59,13 @@ function imageUrl(gcsPath) {
   return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(gcsPath)}`
 }
 
+// For documents: Drive file IDs (no '/') use a Google Drive URL; R2 paths (with '/') use backend proxy
+function docUrl(fileId) {
+  if (!fileId) return '#'
+  if (!fileId.includes('/')) return `https://drive.google.com/file/d/${fileId}/view`
+  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(fileId)}`
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Spinner({ small }) {
@@ -96,6 +103,10 @@ function StatusPipeline({ claim, onAction }) {
   const displayStatus = claim.status === 'error' ? 'screenshot_uploaded' : claim.status
   const currentIdx = statusIndex(displayStatus)
 
+  const screenshotUploading = onAction.loading?.screenshot
+  // Status is screenshot_uploaded but NOT during an active upload → docs may still be processing server-side
+  const docsProcessingOnLoad = claim.status === 'screenshot_uploaded' && !screenshotUploading
+
   const steps = [
     {
       label: 'Email',
@@ -103,22 +114,15 @@ function StatusPipeline({ claim, onAction }) {
       doneAt: 'email_sent',
       activeAt: ['draft'],
       render: ({ isDone, isCurrent }) => (
-        <div className="flex items-center gap-2 flex-wrap">
-          {isDone && (
-            <ActionButton
-              variant="secondary"
-              onClick={() => onAction('resend')}
-              loading={onAction.loading?.resend}
-            >
-              Resend
+        <div className="flex flex-col items-start gap-1.5">
+          {isCurrent && displayStatus === 'draft' && (
+            <ActionButton onClick={() => onAction('send')} loading={onAction.loading?.send}>
+              Send Email
             </ActionButton>
           )}
-          {isCurrent && displayStatus === 'draft' && (
-            <ActionButton
-              onClick={() => onAction('send')}
-              loading={onAction.loading?.send}
-            >
-              Send Email
+          {isDone && (
+            <ActionButton variant="secondary" onClick={() => onAction('resend')} loading={onAction.loading?.resend}>
+              Resend
             </ActionButton>
           )}
         </div>
@@ -129,40 +133,85 @@ function StatusPipeline({ claim, onAction }) {
       description: 'Upload email screenshot',
       doneAt: 'screenshot_uploaded',
       activeAt: ['email_sent', 'screenshot_pending'],
-      render: ({ isCurrent }) =>
-        isCurrent ? (
-          <ScreenshotUploadButton claimId={claim.id} onAction={onAction} />
-        ) : null,
+      render: ({ isDone, isCurrent }) => (
+        <div className="flex flex-col items-start gap-1">
+          {isCurrent && <ScreenshotUploadButton claimId={claim.id} onAction={onAction} />}
+          {isDone && <ScreenshotUploadButton claimId={claim.id} onAction={onAction} variant="secondary" />}
+        </div>
+      ),
     },
     {
       label: 'Documents',
       description: 'Generate claim documents',
       doneAt: 'docs_generated',
       activeAt: ['screenshot_uploaded', 'docs_generated'],
-      render: ({ isCurrent }) =>
-        isCurrent ? (
-          <ActionButton
-            onClick={() => onAction('generate')}
-            loading={onAction.loading?.generate}
-          >
-            Generate Docs
-          </ActionButton>
-        ) : null,
+      render: ({ isDone, isCurrent }) => {
+        if (screenshotUploading) {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <Spinner small />
+                <span className="text-xs text-gray-500">Generating documents…</span>
+              </div>
+              <p className="text-xs text-gray-400">This may take 1–2 minutes</p>
+            </div>
+          )
+        }
+        if (docsProcessingOnLoad) {
+          return (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs text-amber-600">Documents may still be processing…</p>
+              <ActionButton onClick={() => onAction('generate')} loading={onAction.loading?.generate}>
+                Generate Now
+              </ActionButton>
+            </div>
+          )
+        }
+        return (
+          <div className="flex flex-col items-start gap-1.5">
+            {isCurrent && !isDone && (
+              <ActionButton onClick={() => onAction('generate')} loading={onAction.loading?.generate}>
+                Generate Docs
+              </ActionButton>
+            )}
+            {isDone && (
+              <ActionButton variant="secondary" onClick={() => onAction('generate')} loading={onAction.loading?.generate}>
+                Regenerate
+              </ActionButton>
+            )}
+          </div>
+        )
+      },
     },
     {
       label: 'Compile PDF',
       description: 'Compile into single PDF',
       doneAt: 'compiled',
       activeAt: ['docs_generated'],
-      render: ({ isCurrent }) =>
-        isCurrent ? (
-          <ActionButton
-            onClick={() => onAction('compile')}
-            loading={onAction.loading?.compile}
-          >
-            Compile PDF
-          </ActionButton>
-        ) : null,
+      render: ({ isDone, isCurrent }) => {
+        if (screenshotUploading) {
+          return (
+            <div className="flex items-center gap-1.5">
+              <Spinner small />
+              <span className="text-xs text-gray-400">Will compile after generation</span>
+            </div>
+          )
+        }
+        return (
+          <div className="flex flex-col items-start gap-1.5">
+            {isCurrent && !isDone && (
+              <ActionButton onClick={() => onAction('compile')} loading={onAction.loading?.compile}>
+                Compile PDF
+              </ActionButton>
+            )}
+            {isDone && (
+              <ActionButton variant="secondary" onClick={() => onAction('compile')} loading={onAction.loading?.compile}>
+                Recompile
+              </ActionButton>
+            )}
+          </div>
+        )
+      },
     },
     {
       label: 'Submitted',
@@ -171,11 +220,7 @@ function StatusPipeline({ claim, onAction }) {
       activeAt: ['compiled'],
       render: ({ isCurrent }) =>
         isCurrent ? (
-          <ActionButton
-            variant="warning"
-            onClick={() => onAction('submit')}
-            loading={onAction.loading?.submit}
-          >
+          <ActionButton variant="warning" onClick={() => onAction('submit')} loading={onAction.loading?.submit}>
             Mark Submitted
           </ActionButton>
         ) : null,
@@ -242,7 +287,7 @@ function StatusPipeline({ claim, onAction }) {
 }
 
 // Screenshot upload — plain file input
-function ScreenshotUploadButton({ claimId, onAction }) {
+function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
   const fileRef = useRef(null)
   const loading = onAction.loading?.screenshot
   return (
@@ -250,8 +295,9 @@ function ScreenshotUploadButton({ claimId, onAction }) {
       <ActionButton
         onClick={() => fileRef.current?.click()}
         loading={loading}
+        variant={variant}
       >
-        {loading ? 'Processing…' : 'Upload Screenshot'}
+        {loading ? 'Processing…' : (variant === 'secondary' ? 'Re-upload Screenshot' : 'Upload Screenshot')}
       </ActionButton>
       {loading && (
         <p className="text-xs text-gray-500">Uploading &amp; generating documents — this may take 1–2 minutes</p>
@@ -1298,7 +1344,7 @@ export default function ClaimDetailPage() {
               if (!compiled) return null
               return (
                 <a
-                  href={imageUrl(compiled.drive_file_id)}
+                  href={docUrl(compiled.drive_file_id)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 w-full justify-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl mb-3"
@@ -1584,7 +1630,7 @@ function DocumentRow({ doc }) {
       <span className="text-sm text-gray-700">{typeLabel}</span>
       {doc.drive_file_id && (
         <a
-          href={imageUrl(doc.drive_file_id)}
+          href={docUrl(doc.drive_file_id)}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-blue-600 underline"

@@ -4,7 +4,7 @@ import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useClaimers, useCreateClaimer } from '../api/claimers'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
-import { createBankTransaction, uploadBankTransactionImage } from '../api/bankTransactions'
+import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ function generateId() {
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 function StepIndicator({ current }) {
-  const steps = ['Who', 'What', 'Bank Txns']
+  const steps = ['Who', 'What', 'Transactions']
   return (
     <div className="flex items-center justify-center gap-2 mb-6">
       {steps.map((label, i) => {
@@ -442,8 +442,10 @@ const EMPTY_RECEIPT = {
   files: [],
 }
 
-function ReceiptForm({ onAdd, existingCategories }) {
-  const [form, setForm] = useState(EMPTY_RECEIPT)
+function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
+  const [form, setForm] = useState(
+    initial ? { ...initial, amount: String(initial.amount) } : EMPTY_RECEIPT
+  )
   const [errors, setErrors] = useState({})
 
   function set(field, value) {
@@ -467,14 +469,21 @@ function ReceiptForm({ onAdd, existingCategories }) {
       return
     }
 
-    const uniqueAfter = new Set([...existingCategories, form.category])
-    if (uniqueAfter.size > MAX_CATEGORIES) {
-      setErrors({ category: `Max ${MAX_CATEGORIES} categories per claim. Please split into a separate claim.` })
-      return
+    if (!initial) {
+      const uniqueAfter = new Set([...existingCategories, form.category])
+      if (uniqueAfter.size > MAX_CATEGORIES) {
+        setErrors({ category: `Max ${MAX_CATEGORIES} categories per claim. Please split into a separate claim.` })
+        return
+      }
     }
 
-    onAdd({ ...form, amount: Number(form.amount) })
-    setForm(EMPTY_RECEIPT)
+    const result = { ...form, amount: Number(form.amount) }
+    if (onEdit) {
+      onEdit(result)
+    } else {
+      onAdd(result)
+      setForm(EMPTY_RECEIPT)
+    }
     setErrors({})
   }
 
@@ -601,8 +610,207 @@ function ReceiptForm({ onAdd, existingCategories }) {
         onClick={handleAdd}
         className="w-full bg-blue-600 text-white text-sm font-semibold py-2 rounded-lg mt-1"
       >
-        Add to List
+        {onEdit ? 'Save' : 'Add to List'}
       </button>
+    </div>
+  )
+}
+
+// ─── DraftReceiptRow ──────────────────────────────────────────────────────────
+
+function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories }) {
+  const [editing, setEditing] = useState(false)
+
+  if (editing) {
+    return (
+      <div>
+        <ReceiptForm
+          initial={receipt}
+          onEdit={(updated) => { onEdit(receipt.localId, updated); setEditing(false) }}
+          existingCategories={existingCategories.filter((c) => c !== receipt.category)}
+        />
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="w-full mt-2 text-xs text-gray-500 py-1"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2">
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-gray-800 truncate">{receipt.description}</p>
+        <p className="text-xs text-gray-500">
+          {receipt.category}{receipt.company ? ` · ${receipt.company}` : ''}
+          {receipt.files?.length > 0 && ` · ${receipt.files.length} photo${receipt.files.length !== 1 ? 's' : ''}`}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 ml-2 shrink-0">
+        <span className="text-xs font-bold text-gray-900">${receipt.amount.toFixed(2)}</span>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-xs text-blue-600 font-medium"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => onRemove(receipt.localId)}
+          className="text-gray-400 hover:text-red-500 text-sm leading-none"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── NewBtDraftModal ──────────────────────────────────────────────────────────
+
+function NewBtDraftModal({ initial, onSave, onClose }) {
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
+  const [files, setFiles] = useState(initial?.files ?? [])
+  const [refunds, setRefunds] = useState(initial?.refunds ?? [])
+  const [err, setErr] = useState('')
+
+  const netAmount = Number(amount || 0) - refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
+
+  function addRefund() {
+    setRefunds((prev) => [...prev, { localId: generateId(), amount: '', file: null }])
+  }
+
+  function updateRefund(localId, patch) {
+    setRefunds((prev) => prev.map((r) => (r.localId === localId ? { ...r, ...patch } : r)))
+  }
+
+  function removeRefund(localId) {
+    setRefunds((prev) => prev.filter((r) => r.localId !== localId))
+  }
+
+  function handleSave() {
+    const val = Number(amount)
+    if (!amount || isNaN(val) || val <= 0) {
+      setErr('Enter a valid amount')
+      return
+    }
+    for (const r of refunds) {
+      if (r.amount && !r.file) { setErr('Each refund needs a file'); return }
+      if (!r.amount && r.file) { setErr('Each refund needs an amount'); return }
+    }
+    onSave({ amount: val, files, refunds: refunds.filter((r) => r.amount && r.file) })
+  }
+
+  const inputCls = 'w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40">
+      <div className="bg-white w-full max-w-lg rounded-t-2xl shadow-xl p-5 pb-8 flex flex-col gap-3 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-800">
+            {initial ? 'Edit Bank Transaction' : 'New Bank Transaction'}
+          </p>
+          <button onClick={onClose} className="text-gray-400 text-xl leading-none">×</button>
+        </div>
+
+        {err && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</p>
+        )}
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Amount ($) *</label>
+          <input
+            className={inputCls}
+            type="number"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => { setAmount(e.target.value); setErr('') }}
+          />
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">Bank Screenshots</p>
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {files.map((file, i) => (
+                <div key={i} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
+                  <span className="text-gray-700 truncate max-w-[120px]">{file.name}</span>
+                  <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+              className="hidden"
+              multiple
+              onChange={(e) => {
+                const newFiles = Array.from(e.target.files ?? [])
+                e.target.value = ''
+                if (newFiles.length) setFiles((prev) => [...prev, ...newFiles])
+              }}
+            />
+            + Add screenshot
+          </label>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold text-gray-600">Refunds</p>
+            <button type="button" onClick={addRefund} className="text-xs text-blue-600 font-medium">
+              + Add Refund
+            </button>
+          </div>
+          {refunds.map((refund) => (
+            <div key={refund.localId} className="flex items-center gap-2 mb-1.5">
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="Amount"
+                value={refund.amount}
+                onChange={(e) => updateRefund(refund.localId, { amount: e.target.value })}
+                className="w-24 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium flex-1 truncate">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) updateRefund(refund.localId, { file })
+                  }}
+                />
+                {refund.file ? refund.file.name : '+ File'}
+              </label>
+              <button type="button" onClick={() => removeRefund(refund.localId)} className="text-red-400 text-sm">×</button>
+            </div>
+          ))}
+          {refunds.length > 0 && Number(amount) > 0 && (
+            <p className="text-xs text-gray-600 mt-1">
+              Net amount: <strong>${netAmount.toFixed(2)}</strong>
+              {netAmount < 0 && <span className="text-red-500 ml-1">(Refunds exceed amount!)</span>}
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleSave} className="flex-1 bg-blue-600 text-white text-sm font-medium py-2 rounded-lg">
+            Save
+          </button>
+          <button onClick={onClose} className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-2 rounded-lg">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -610,24 +818,26 @@ function ReceiptForm({ onAdd, existingCategories }) {
 // ─── BtDraftCard ──────────────────────────────────────────────────────────────
 
 function BtDraftCard({
-  bt, btIndex, linkedReceipts, expanded, onToggle, onRemove,
-  onAddReceipt, onRemoveReceipt, existingCategories,
+  bt, btIndex, linkedReceipts, expanded, onToggle, onRemove, onEdit,
+  onAddReceipt, onRemoveReceipt, onEditReceipt, existingCategories,
   onAddBtFiles, onRemoveBtFile,
 }) {
   const [showReceiptForm, setShowReceiptForm] = useState(false)
   const receiptSum = linkedReceipts.reduce((s, r) => s + r.amount, 0)
+  const netAmount = bt.refunds?.length > 0
+    ? bt.amount - bt.refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
+    : null
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
       <div className="flex items-center gap-1 px-3 py-2.5 bg-gray-50">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex-1 flex items-center gap-2 text-left"
-        >
+        <button type="button" onClick={onToggle} className="flex-1 flex items-center gap-2 text-left">
           <span className="text-gray-400 text-xs">{expanded ? '▼' : '▶'}</span>
           <span className="flex-1 text-xs font-semibold text-gray-700">
             Bank Tx {btIndex} · ${bt.amount.toFixed(2)}
+            {netAmount !== null && (
+              <span className="font-normal text-gray-500"> · net ${netAmount.toFixed(2)}</span>
+            )}
             {linkedReceipts.length > 0 && (
               <span className="font-normal text-gray-500">
                 {' '}· {linkedReceipts.length} receipt{linkedReceipts.length !== 1 ? 's' : ''} · ${receiptSum.toFixed(2)}
@@ -635,10 +845,18 @@ function BtDraftCard({
             )}
             {bt.files?.length > 0 && (
               <span className="font-normal text-gray-400">
-                {' '}· {bt.files.length} screenshot{bt.files.length !== 1 ? 's' : ''}
+                {' '}· {bt.files.length} img
               </span>
             )}
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-xs text-blue-600 font-medium px-1.5 leading-none"
+          title="Edit"
+        >
+          ✎
         </button>
         <button
           type="button"
@@ -651,59 +869,16 @@ function BtDraftCard({
 
       {expanded && (
         <div className="px-3 py-2.5 space-y-2">
-          {/* Bank screenshots */}
-          <div>
-            <p className="text-xs font-medium text-gray-600 mb-1">Bank Screenshots</p>
-            {bt.files?.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-1">
-                {bt.files.map((file, i) => (
-                  <div key={i} className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded px-2 py-0.5 text-xs">
-                    <span className="text-gray-700 truncate max-w-[100px]">{file.name}</span>
-                    <button type="button" onClick={() => onRemoveBtFile(i)} className="text-red-400 ml-1">×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-                className="hidden"
-                multiple
-                onChange={(e) => {
-                  const newFiles = Array.from(e.target.files ?? [])
-                  e.target.value = ''
-                  if (newFiles.length) onAddBtFiles(newFiles)
-                }}
-              />
-              + Add screenshot
-            </label>
-          </div>
-
           {linkedReceipts.length > 0 && (
             <div className="space-y-1">
               {linkedReceipts.map((r) => (
-                <div
+                <DraftReceiptRow
                   key={r.localId}
-                  className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-800 truncate">{r.description}</p>
-                    <p className="text-xs text-gray-500">
-                      {r.category}{r.company ? ` · ${r.company}` : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2 shrink-0">
-                    <span className="text-xs font-bold text-gray-900">${r.amount.toFixed(2)}</span>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveReceipt(r.localId)}
-                      className="text-gray-400 hover:text-red-500 text-sm leading-none"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+                  receipt={r}
+                  onEdit={onEditReceipt}
+                  onRemove={onRemoveReceipt}
+                  existingCategories={existingCategories}
+                />
               ))}
             </div>
           )}
@@ -740,30 +915,26 @@ function BtDraftCard({
 // ─── Step 3: Bank Transactions & Receipts ─────────────────────────────────────
 
 function Step3({
-  bankTransactions, onAddBt, onRemoveBt,
-  receipts, onAddReceipt, onRemoveReceipt,
+  bankTransactions, onAddBt, onRemoveBt, onEditBt,
+  receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
   expandedBtId, onSetExpandedBtId,
-  onAddBtFiles, onRemoveBtFile,
 }) {
-  const [showAddBt, setShowAddBt] = useState(false)
-  const [newBtAmount, setNewBtAmount] = useState('')
-  const [btAmountError, setBtAmountError] = useState('')
+  const [showBtModal, setShowBtModal] = useState(false)
+  const [editingBt, setEditingBt] = useState(null)
   const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
 
   const allCategories = useMemo(() => receipts.map((r) => r.category), [receipts])
   const total = receipts.reduce((s, r) => s + r.amount, 0)
   const unlinkedReceipts = receipts.filter((r) => !r.btLocalId)
 
-  function handleAddBt() {
-    const val = Number(newBtAmount)
-    if (!newBtAmount || isNaN(val) || val <= 0) {
-      setBtAmountError('Enter a valid amount')
-      return
+  function handleBtSave(data) {
+    if (editingBt) {
+      onEditBt(editingBt.localId, data)
+    } else {
+      onAddBt({ localId: generateId(), ...data })
     }
-    onAddBt({ localId: generateId(), amount: val })
-    setNewBtAmount('')
-    setBtAmountError('')
-    setShowAddBt(false)
+    setShowBtModal(false)
+    setEditingBt(null)
   }
 
   return (
@@ -782,58 +953,26 @@ function Step3({
                 expanded={expandedBtId === bt.localId}
                 onToggle={() => onSetExpandedBtId(expandedBtId === bt.localId ? null : bt.localId)}
                 onRemove={() => onRemoveBt(bt.localId)}
+                onEdit={() => { setEditingBt(bt); setShowBtModal(true) }}
                 onAddReceipt={(r) => onAddReceipt({ ...r, btLocalId: bt.localId })}
                 onRemoveReceipt={onRemoveReceipt}
+                onEditReceipt={onEditReceipt}
                 existingCategories={allCategories}
-                onAddBtFiles={(files) => onAddBtFiles(bt.localId, files)}
-                onRemoveBtFile={(idx) => onRemoveBtFile(bt.localId, idx)}
+                onAddBtFiles={() => {}}
+                onRemoveBtFile={() => {}}
               />
             )
           })}
         </div>
       )}
 
-      {/* Add BT form / button */}
-      {showAddBt ? (
-        <div className="border border-gray-200 rounded-xl bg-gray-50 p-3 space-y-2">
-          <p className="text-xs font-semibold text-gray-700">New Bank Transaction</p>
-          <div>
-            <Label required>Amount ($)</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={newBtAmount}
-              onChange={(v) => { setNewBtAmount(v); if (btAmountError) setBtAmountError('') }}
-              placeholder="0.00"
-            />
-            {btAmountError && <p className="text-xs text-red-500 mt-0.5">{btAmountError}</p>}
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleAddBt}
-              className="flex-1 bg-blue-600 text-white text-sm font-medium py-1.5 rounded-lg"
-            >
-              Add
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowAddBt(false); setNewBtAmount(''); setBtAmountError('') }}
-              className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-1.5 rounded-lg"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowAddBt(true)}
-          className="w-full border-2 border-dashed border-blue-300 text-blue-600 text-sm font-medium py-3 rounded-xl"
-        >
-          + Add Bank Transaction
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => { setEditingBt(null); setShowBtModal(true) }}
+        className="w-full border-2 border-dashed border-blue-300 text-blue-600 text-sm font-medium py-3 rounded-xl"
+      >
+        + Add Bank Transaction
+      </button>
 
       {/* Unlinked receipts */}
       <div className="space-y-2">
@@ -842,11 +981,7 @@ function Step3({
             Unlinked Receipts{unlinkedReceipts.length > 0 ? ` (${unlinkedReceipts.length})` : ''}
           </p>
           {!showUnlinkedForm && (
-            <button
-              type="button"
-              onClick={() => setShowUnlinkedForm(true)}
-              className="text-xs text-blue-600 font-medium"
-            >
+            <button type="button" onClick={() => setShowUnlinkedForm(true)} className="text-xs text-blue-600 font-medium">
               + Add
             </button>
           )}
@@ -855,26 +990,13 @@ function Step3({
         {unlinkedReceipts.length > 0 && (
           <div className="space-y-1">
             {unlinkedReceipts.map((r) => (
-              <div
+              <DraftReceiptRow
                 key={r.localId}
-                className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-800 truncate">{r.description}</p>
-                  <p className="text-xs text-gray-500">
-                    {r.category}{r.company ? ` · ${r.company}` : ''}
-                    {r.files?.length > 0 && ` · ${r.files.length} photo${r.files.length !== 1 ? 's' : ''}`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 ml-2 shrink-0">
-                  <span className="text-xs font-bold text-gray-900">${r.amount.toFixed(2)}</span>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveReceipt(r.localId)}
-                    className="text-gray-400 hover:text-red-500 text-sm leading-none"
-                  >✕</button>
-                </div>
-              </div>
+                receipt={r}
+                onEdit={onEditReceipt}
+                onRemove={onRemoveReceipt}
+                existingCategories={allCategories}
+              />
             ))}
           </div>
         )}
@@ -885,11 +1007,7 @@ function Step3({
               onAdd={(r) => { onAddReceipt(r); setShowUnlinkedForm(false) }}
               existingCategories={allCategories}
             />
-            <button
-              type="button"
-              onClick={() => setShowUnlinkedForm(false)}
-              className="w-full mt-2 text-xs text-gray-500 py-1"
-            >
+            <button type="button" onClick={() => setShowUnlinkedForm(false)} className="w-full mt-2 text-xs text-gray-500 py-1">
               Cancel
             </button>
           </div>
@@ -910,9 +1028,7 @@ function Step3({
                 <div key={bt.localId} className="flex items-center justify-between px-3 py-2">
                   <div>
                     <span className="text-sm text-gray-800">Bank Tx {i + 1}</span>
-                    <span className="text-xs text-gray-400 ml-2">
-                      {linked.length} receipt{linked.length !== 1 ? 's' : ''}
-                    </span>
+                    <span className="text-xs text-gray-400 ml-2">{linked.length} receipt{linked.length !== 1 ? 's' : ''}</span>
                   </div>
                   <span className="text-sm font-semibold text-gray-900">${sum.toFixed(2)}</span>
                 </div>
@@ -927,14 +1043,16 @@ function Step3({
       )}
 
       {bankTransactions.length === 0 && (
-        <p className="text-xs text-gray-400 text-center py-2">
-          Add a bank transaction to get started
-        </p>
+        <p className="text-xs text-gray-400 text-center py-2">Add a bank transaction to get started</p>
       )}
-      {bankTransactions.length > 0 && receipts.length === 0 && (
-        <p className="text-xs text-gray-400 text-center py-1">
-          Expand a bank transaction to add receipts
-        </p>
+
+      {/* BT modal */}
+      {showBtModal && (
+        <NewBtDraftModal
+          initial={editingBt}
+          onSave={handleBtSave}
+          onClose={() => { setShowBtModal(false); setEditingBt(null) }}
+        />
       )}
     </div>
   )
@@ -971,7 +1089,7 @@ export default function NewClaimPage() {
   const [step2, setStep2] = useState(DEFAULT_STEP2)
 
   // Step 3 state
-  const [bankTransactions, setBankTransactions] = useState([])
+  const [bankTransactions, setBankTransactions] = useState([])  // [{localId, amount, files, refunds}]
   const [receipts, setReceipts] = useState([])
   const [expandedBtId, setExpandedBtId] = useState(null)
 
@@ -984,7 +1102,7 @@ export default function NewClaimPage() {
         if (s1) setStep1(s1)
         if (s2) setStep2(s2)
         if (r) setReceipts(r.map((rec) => ({ ...rec, files: [] })))
-        if (bt) setBankTransactions(bt.map((b) => ({ ...b, files: [] })))
+        if (bt) setBankTransactions(bt.map((b) => ({ files: [], ...b, refunds: (b.refunds ?? []).map((r) => ({ ...r, file: null })) })))
         if (eid) setExpandedBtId(eid)
         if (s) setStep(s)
       }
@@ -994,7 +1112,10 @@ export default function NewClaimPage() {
   // Persist draft to sessionStorage on every change (strip File objects — not serializable)
   useEffect(() => {
     try {
-      const btsForDraft = bankTransactions.map(({ files: _f, ...bt }) => bt)
+      const btsForDraft = bankTransactions.map(({ files: _f, ...bt }) => ({
+        ...bt,
+        refunds: (bt.refunds ?? []).map(({ file: _rf, ...r }) => r),
+      }))
       const receiptsForDraft = receipts.map(({ files: _f, ...r }) => r)
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId }))
     } catch {}
@@ -1023,19 +1144,13 @@ export default function NewClaimPage() {
   }
 
   function addBt(bt) {
-    setBankTransactions((prev) => [...prev, { ...bt, files: [] }])
+    setBankTransactions((prev) => [...prev, { files: [], refunds: [], ...bt }])
     setExpandedBtId(bt.localId)
   }
 
-  function addBtFiles(btLocalId, files) {
+  function editBt(btLocalId, data) {
     setBankTransactions((prev) =>
-      prev.map((bt) => bt.localId === btLocalId ? { ...bt, files: [...(bt.files ?? []), ...files] } : bt)
-    )
-  }
-
-  function removeBtFile(btLocalId, idx) {
-    setBankTransactions((prev) =>
-      prev.map((bt) => bt.localId === btLocalId ? { ...bt, files: bt.files.filter((_, i) => i !== idx) } : bt)
+      prev.map((bt) => bt.localId === btLocalId ? { ...bt, ...data } : bt)
     )
   }
 
@@ -1047,6 +1162,10 @@ export default function NewClaimPage() {
 
   function addReceipt(receipt) {
     setReceipts((prev) => [...prev, { ...receipt, localId: generateId() }])
+  }
+
+  function editReceipt(localId, updated) {
+    setReceipts((prev) => prev.map((r) => r.localId === localId ? { ...r, ...updated } : r))
   }
 
   function removeReceipt(localId) {
@@ -1077,17 +1196,17 @@ export default function NewClaimPage() {
       claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
 
-      // 2. Create bank transactions, upload screenshots, build local → real ID map
+      // 2. Create bank transactions, upload screenshots + refunds, build local → real ID map
       const btIdMap = {}
       for (const bt of bankTransactions) {
         const created = await createBankTransaction({ claimId, amount: bt.amount })
         btIdMap[bt.localId] = created.id
         for (const file of (bt.files ?? [])) {
-          try {
-            await uploadBankTransactionImage({ btId: created.id, file })
-          } catch {
-            // Non-fatal: Drive unavailable, continue saving
-          }
+          try { await uploadBankTransactionImage({ btId: created.id, file }) } catch {}
+        }
+        for (const refund of (bt.refunds ?? [])) {
+          if (!refund.amount || !refund.file) continue
+          try { await createBtRefund({ btId: created.id, amount: Number(refund.amount), file: refund.file }) } catch {}
         }
       }
 
@@ -1156,13 +1275,13 @@ export default function NewClaimPage() {
             bankTransactions={bankTransactions}
             onAddBt={addBt}
             onRemoveBt={removeBt}
+            onEditBt={editBt}
             receipts={receipts}
             onAddReceipt={addReceipt}
             onRemoveReceipt={removeReceipt}
+            onEditReceipt={editReceipt}
             expandedBtId={expandedBtId}
             onSetExpandedBtId={setExpandedBtId}
-            onAddBtFiles={addBtFiles}
-            onRemoveBtFile={removeBtFile}
           />
         )}
 

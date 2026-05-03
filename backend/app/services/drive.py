@@ -98,6 +98,32 @@ def get_claim_folder_id(reference_code: str) -> str:
     return get_or_create_folder(reference_code, settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
 
 
+def download_file(file_id: str) -> bytes:
+    """Download a file from Google Drive by file ID. Returns raw bytes."""
+    from googleapiclient.http import MediaIoBaseDownload
+    drive = get_drive_service()
+    request = drive.files().get_media(fileId=file_id, supportsAllDrives=True)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return fh.getvalue()
+
+
+def set_public_readable(file_id: str) -> None:
+    """Make a Drive file readable by anyone with the link."""
+    try:
+        drive = get_drive_service()
+        drive.permissions().create(
+            fileId=file_id,
+            body={"type": "anyone", "role": "reader"},
+            supportsAllDrives=True,
+        ).execute()
+    except Exception as e:
+        logger.warning("Could not set public permission on file %s: %s", file_id, e)
+
+
 def delete_file(file_id: str) -> None:
     """
     Move a Drive file to the trash (soft delete).

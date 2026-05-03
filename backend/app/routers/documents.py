@@ -7,8 +7,10 @@ from app.auth import require_auth
 from app.services import pdf as pdf_service
 from app.services import image as image_service
 from app.services import r2 as r2_service
+from app.services import drive as drive_service
 from app.config import settings
 from fpdf import FPDF
+from PIL import Image as PILImage
 from telegram import Bot
 from telegram.request import HTTPXRequest
 import io, tempfile, os, logging, re
@@ -65,17 +67,25 @@ def _get_finance_director(db) -> dict:
     return result.data[0]
 
 
+def _download_doc(drive_file_id: str) -> bytes:
+    """Download a claim document from Drive (new) or R2 (legacy path contains '/')."""
+    if '/' in drive_file_id:
+        return r2_service.download_file(drive_file_id)
+    return drive_service.download_file(drive_file_id)
+
+
 def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, reference_code: str, db) -> str:
-    object_name = r2_service.make_document_object_name(reference_code, filename)
-    r2_service.upload_file(pdf_bytes, object_name, content_type="application/pdf")
+    folder_id = drive_service.get_claim_folder_id(reference_code)
+    file_id = drive_service.upload_file(pdf_bytes, filename, "application/pdf", folder_id)
+    drive_service.set_public_readable(file_id)
     db.table("claim_documents").update({"is_current": False}).eq("claim_id", claim_id).eq("type", doc_type).eq("is_current", True).execute()
     db.table("claim_documents").insert({
         "claim_id": claim_id,
         "type": doc_type,
-        "drive_file_id": object_name,
+        "drive_file_id": file_id,
         "is_current": True,
     }).execute()
-    return object_name
+    return file_id
 
 
 def _do_compile(claim_id: str, reference_code: str, db) -> dict:
@@ -105,7 +115,7 @@ def _do_compile(claim_id: str, reference_code: str, db) -> dict:
     for doc_type in ordered_types:
         if doc_type not in docs_by_type:
             continue
-        file_bytes = r2_service.download_file(docs_by_type[doc_type]["drive_file_id"])
+        file_bytes = _download_doc(docs_by_type[doc_type]["drive_file_id"])
         reader = PdfReader(io.BytesIO(file_bytes))
         for page in reader.pages:
             writer.add_page(page)
@@ -334,7 +344,21 @@ async def upload_screenshot(
 
     claim = _get_full_claim(claim_id, db)
 
-    # Convert processed JPEG to single-page A4 PDF
+    # Convert processed JPEG to single-page A4 PDF, filling as much of the page as possible
+    img_info = PILImage.open(io.BytesIO(processed))
+    img_w, img_h = img_info.size
+    img_info.close()
+
+    A4_W, A4_H = 210.0, 297.0
+    MARGIN = 5.0
+    avail_w = A4_W - 2 * MARGIN
+    avail_h = A4_H - 2 * MARGIN
+    scale = min(avail_w / img_w, avail_h / img_h)
+    render_w = img_w * scale
+    render_h = img_h * scale
+    x_pos = (A4_W - render_w) / 2
+    y_pos = (A4_H - render_h) / 2
+
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(False)
     pdf.add_page()
@@ -342,7 +366,7 @@ async def upload_screenshot(
         tmp.write(processed)
         tmp_path = tmp.name
     try:
-        pdf.image(tmp_path, x=15, y=15, w=180)
+        pdf.image(tmp_path, x=x_pos, y=y_pos, w=render_w, h=render_h)
     finally:
         os.unlink(tmp_path)
     screenshot_pdf_bytes = bytes(pdf.output())
@@ -424,7 +448,7 @@ async def send_to_telegram(
                     continue
                 reference_code = claim_resp.data["reference_code"]
 
-                file_bytes = r2_service.download_file(doc["drive_file_id"])
+                file_bytes = _download_doc(doc["drive_file_id"])
                 await bot.send_document(
                     chat_id=int(telegram_id),
                     document=io.BytesIO(file_bytes),
