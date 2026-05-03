@@ -10,6 +10,7 @@ from app.services import r2 as r2_service
 from app.config import settings
 from fpdf import FPDF
 from telegram import Bot
+from telegram.request import HTTPXRequest
 import io, tempfile, os, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -386,7 +387,10 @@ async def send_to_telegram(
     if not telegram_id:
         raise HTTPException(400, "Your account has no Telegram ID linked.")
 
-    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+    bot = Bot(
+        token=settings.TELEGRAM_BOT_TOKEN,
+        request=HTTPXRequest(connect_timeout=30, read_timeout=300, write_timeout=300),
+    )
     sent = 0
     skipped_ids: list[str] = []
 
@@ -431,7 +435,10 @@ async def send_to_telegram(
                 logger.warning("Failed to send Telegram document for claim %s: %s", claim_id, e)
                 skipped_ids.append(claim_id)
     finally:
-        await bot.close()
+        try:
+            await bot.close()
+        except Exception:
+            pass
 
     return {"sent": sent, "skipped": len(skipped_ids), "skipped_ids": skipped_ids}
 

@@ -244,14 +244,18 @@ function StatusPipeline({ claim, onAction }) {
 // Screenshot upload — plain file input
 function ScreenshotUploadButton({ claimId, onAction }) {
   const fileRef = useRef(null)
+  const loading = onAction.loading?.screenshot
   return (
-    <>
+    <div className="flex flex-col items-start gap-1">
       <ActionButton
         onClick={() => fileRef.current?.click()}
-        loading={onAction.loading?.screenshot}
+        loading={loading}
       >
-        Upload Screenshot
+        {loading ? 'Processing…' : 'Upload Screenshot'}
       </ActionButton>
+      {loading && (
+        <p className="text-xs text-gray-500">Uploading &amp; generating documents — this may take 1–2 minutes</p>
+      )}
       <input
         ref={fileRef}
         type="file"
@@ -263,7 +267,7 @@ function ScreenshotUploadButton({ claimId, onAction }) {
           if (file) onAction('screenshot', file)
         }}
       />
-    </>
+    </div>
   )
 }
 
@@ -438,6 +442,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
           <input
             className={inputCls}
             type="number"
+            inputMode="decimal"
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -516,6 +521,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
               <input
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-24"
                 type="number"
+                inputMode="decimal"
                 placeholder="Amount"
                 value={refund.amount}
                 onChange={(e) => updateRefund(idx, { amount: e.target.value })}
@@ -1443,7 +1449,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <input className={inputCls} type="number" placeholder="Amount *" value={f.amount} onChange={set('amount')} />
+          <input className={inputCls} type="number" inputMode="decimal" placeholder="Amount *" value={f.amount} onChange={set('amount')} />
           {err.amount && <p className="text-xs text-red-500 mt-0.5">{err.amount}</p>}
         </div>
         <div>

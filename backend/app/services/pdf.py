@@ -13,7 +13,7 @@ using fpdf2 and pypdf.  Responsibilities include:
 """
 
 from fpdf import FPDF
-from PIL import Image
+from PIL import Image, ImageOps
 import io, os, tempfile, logging, time
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -55,6 +55,7 @@ def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
     try:
         file_bytes = r2_service.download_file(drive_id)
         img = Image.open(io.BytesIO(file_bytes))
+        img = ImageOps.exif_transpose(img)  # respect EXIF orientation
 
         px_per_mm = 150 / 25.4
         width_mm = img.width / px_per_mm
@@ -324,16 +325,24 @@ def generate_summary(
         for idx, item in enumerate(line_items or []):
             row = 31 + idx
 
-            # Collect receipt numbers from the receipts list on this line item
+            # Collect receipt numbers and descriptions from receipts on this line item
             receipts = item.get('receipts') or []
             receipt_nos = [
                 str(r.get('receipt_no', '')).strip()
                 for r in receipts
                 if r.get('receipt_no') not in (None, '')
             ]
-            receipt_nos_str = ', '.join(receipt_nos)
+            receipt_nos_str = '\n'.join(receipt_nos)
 
-            item_amount = item.get('total_amount', 0) or 0
+            descriptions = [
+                str(r.get('description', '')).strip()
+                for r in receipts
+                if r.get('description') not in (None, '')
+            ]
+            descriptions_str = '\n'.join(descriptions) if descriptions else item.get('combined_description', '')
+
+            # Compute total from receipts (more reliable than stored total_amount)
+            item_amount = sum(float(r.get('amount', 0) or 0) for r in receipts)
 
             # One valueRange per row to keep addressing simple
             value_ranges.append({
@@ -342,7 +351,7 @@ def generate_summary(
                     item.get('line_item_index', idx + 1),  # col A
                     receipt_nos_str,                        # col B
                     '',                                     # col C (unused)
-                    item.get('combined_description', ''),   # col D
+                    descriptions_str,                       # col D
                     '',                                     # col E
                     '',                                     # col F
                     '',                                     # col G

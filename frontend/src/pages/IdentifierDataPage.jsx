@@ -1,56 +1,60 @@
 import { useState, useMemo } from 'react'
 import { useClaimers, useCreateClaimer, useUpdateClaimer, useDeleteClaimer } from '../api/claimers'
-import { useAllCcas } from '../api/portfolios'
+import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 
 // ── Inline edit / add form ────────────────────────────────────────────────────
-function ClaimerForm({ initial, ccas, onSave, onCancel, saving }) {
+function ClaimerForm({ initial, onSave, onCancel, saving }) {
   const [fields, setFields] = useState({
     name: initial?.name ?? '',
     matric_no: initial?.matric_no ?? '',
     phone: initial?.phone ?? '',
     email: initial?.email ?? '',
+    portfolio_id: initial?.cca?.portfolio?.id ?? '',
     cca_id: initial?.cca_id ?? initial?.cca?.id ?? '',
   })
 
   const set = (k) => (e) => setFields((f) => ({ ...f, [k]: e.target.value }))
 
+  const { data: portfolios = [] } = usePortfolios()
+  const { data: ccas = [], isLoading: ccasLoading } = useCcasByPortfolio(fields.portfolio_id)
+
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!fields.name.trim()) return
     if (!fields.cca_id) return
-    onSave(fields)
+    const { portfolio_id: _p, ...rest } = fields
+    onSave(rest)
   }
-
-  // Group ccas by portfolio name for the select
-  const grouped = useMemo(() => {
-    const map = {}
-    ;(ccas || []).forEach((c) => {
-      const pName = c.portfolio?.name ?? 'Other'
-      if (!map[pName]) map[pName] = []
-      map[pName].push(c)
-    })
-    return map
-  }, [ccas])
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+      <div>
+        <label className="block text-xs text-gray-500 mb-0.5">Portfolio *</label>
+        <select
+          value={fields.portfolio_id}
+          onChange={(e) => setFields((f) => ({ ...f, portfolio_id: e.target.value, cca_id: '' }))}
+          required
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="">Select portfolio…</option>
+          {portfolios.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
+
       <div>
         <label className="block text-xs text-gray-500 mb-0.5">CCA *</label>
         <select
           value={fields.cca_id}
           onChange={set('cca_id')}
           required
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+          disabled={!fields.portfolio_id || ccasLoading}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
         >
-          <option value="">Select CCA…</option>
-          {Object.entries(grouped).map(([portfolio, ccaList]) => (
-            <optgroup key={portfolio} label={portfolio}>
-              {ccaList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </optgroup>
+          <option value="">{fields.portfolio_id ? (ccasLoading ? 'Loading…' : 'Select CCA…') : 'Select portfolio first'}</option>
+          {ccas.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
       </div>
@@ -74,7 +78,7 @@ function ClaimerForm({ initial, ccas, onSave, onCancel, saving }) {
             type="text"
             value={fields.matric_no}
             onChange={set('matric_no')}
-            placeholder="A0XXXXXX"
+            placeholder="A0XXXXXXX"
             className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -84,19 +88,19 @@ function ClaimerForm({ initial, ccas, onSave, onCancel, saving }) {
             type="tel"
             value={fields.phone}
             onChange={set('phone')}
-            placeholder="+65XXXXXXXX"
+            placeholder="XXXXXXXX"
             className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-gray-500 mb-0.5">Email</label>
+        <label className="block text-xs text-gray-500 mb-0.5">School Email</label>
         <input
           type="email"
           value={fields.email}
           onChange={set('email')}
-          placeholder="e@u.nus.edu"
+          placeholder="XXX@u.nus.edu"
           className="w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
@@ -123,7 +127,7 @@ function ClaimerForm({ initial, ccas, onSave, onCancel, saving }) {
 }
 
 // ── Single claimer row ────────────────────────────────────────────────────────
-function ClaimerRow({ claimer, ccas, updateMutation, deleteMutation }) {
+function ClaimerRow({ claimer, updateMutation, deleteMutation }) {
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
@@ -161,7 +165,6 @@ function ClaimerRow({ claimer, ccas, updateMutation, deleteMutation }) {
       <li className="px-3 pb-2">
         <ClaimerForm
           initial={claimer}
-          ccas={ccas}
           onSave={handleSave}
           onCancel={() => setEditing(false)}
           saving={updateMutation.isPending}
@@ -238,7 +241,6 @@ export default function IdentifierDataPage() {
 
   const claimerParams = search ? { search } : {}
   const { data: claimers, isLoading, isError, error } = useClaimers(claimerParams)
-  const { data: allCcas } = useAllCcas()
   const createMutation = useCreateClaimer()
   const updateMutation = useUpdateClaimer()
   const deleteMutation = useDeleteClaimer()
@@ -300,7 +302,6 @@ export default function IdentifierDataPage() {
           <div>
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">New Claimer</h2>
             <ClaimerForm
-              ccas={allCcas}
               onSave={handleAdd}
               onCancel={() => setShowAddForm(false)}
               saving={createMutation.isPending}
@@ -356,7 +357,6 @@ export default function IdentifierDataPage() {
                       <ClaimerRow
                         key={claimer.id}
                         claimer={claimer}
-                        ccas={allCcas}
                         updateMutation={updateMutation}
                         deleteMutation={deleteMutation}
                       />

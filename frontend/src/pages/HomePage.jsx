@@ -218,7 +218,10 @@ export default function HomePage() {
                 className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400"
               />
               <button
-                onClick={() => setFilterOpen(f => !f)}
+                onClick={() => {
+                  if (filterOpen) { setDateFrom(''); setDateTo('') }
+                  setFilterOpen(f => !f)
+                }}
                 className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${filterOpen ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600'}`}
               >
                 Filter
@@ -226,12 +229,12 @@ export default function HomePage() {
             </div>
             {filterOpen && (
               <div className="flex gap-2 mt-2">
-                <div className="flex-1">
+                <div className="w-[140px] shrink-0">
                   <label className="text-xs text-gray-500">From</label>
                   <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
                     className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
                 </div>
-                <div className="flex-1">
+                <div className="w-[140px] shrink-0">
                   <label className="text-xs text-gray-500">To</label>
                   <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                     className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />

@@ -102,7 +102,7 @@ function Select({ value, onChange, disabled, placeholder, options, className = '
   )
 }
 
-function Input({ value, onChange, type = 'text', placeholder, disabled, className = '' }) {
+function Input({ value, onChange, type = 'text', placeholder, disabled, inputMode, className = '' }) {
   return (
     <input
       type={type}
@@ -110,6 +110,7 @@ function Input({ value, onChange, type = 'text', placeholder, disabled, classNam
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       disabled={disabled}
+      inputMode={inputMode}
       className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400 ${type === 'date' ? 'max-w-[200px]' : ''} ${className}`}
     />
   )
@@ -245,7 +246,7 @@ function Step1({ data, onChange }) {
                 <Input
                   value={newClaimer.matric_no}
                   onChange={(v) => setNewClaimer((p) => ({ ...p, matric_no: v }))}
-                  placeholder="A1234567B"
+                  placeholder="A0XXXXXXX"
                 />
               </div>
               <div>
@@ -253,17 +254,17 @@ function Step1({ data, onChange }) {
                 <Input
                   value={newClaimer.phone}
                   onChange={(v) => setNewClaimer((p) => ({ ...p, phone: v }))}
-                  placeholder="+65 9xxx"
+                  placeholder="XXXXXXXX"
                 />
               </div>
             </div>
             <div>
-              <Label>Email</Label>
+              <Label>School Email</Label>
               <Input
                 type="email"
                 value={newClaimer.email}
                 onChange={(v) => setNewClaimer((p) => ({ ...p, email: v }))}
-                placeholder="name@example.com"
+                placeholder="XXX@u.nus.edu"
               />
             </div>
             {addClaimerError && (
@@ -529,6 +530,7 @@ function ReceiptForm({ onAdd, existingCategories }) {
           <Label required>Amount ($)</Label>
           <Input
             type="number"
+            inputMode="decimal"
             value={form.amount}
             onChange={(v) => set('amount', v)}
             placeholder="0.00"
@@ -572,7 +574,7 @@ function ReceiptForm({ onAdd, existingCategories }) {
           <Input
             value={form.receipt_no}
             onChange={(v) => set('receipt_no', v)}
-            placeholder="Optional"
+            placeholder="e.g. R001"
           />
         </div>
         <div>
@@ -580,7 +582,7 @@ function ReceiptForm({ onAdd, existingCategories }) {
           <Input
             value={form.company}
             onChange={(v) => set('company', v)}
-            placeholder="Optional"
+            placeholder="e.g. FairPrice"
           />
         </div>
       </div>
@@ -799,6 +801,7 @@ function Step3({
             <Label required>Amount ($)</Label>
             <Input
               type="number"
+              inputMode="decimal"
               value={newBtAmount}
               onChange={(v) => { setNewBtAmount(v); if (btAmountError) setBtAmountError('') }}
               placeholder="0.00"
@@ -1198,21 +1201,26 @@ export default function NewClaimPage() {
         )}
 
         {step === 3 && (
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <>
-                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving…
-              </>
-            ) : (
-              'Save Claim'
+          <div className="flex-1 flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Uploading…
+                </>
+              ) : (
+                'Save Claim'
+              )}
+            </button>
+            {saving && (
+              <p className="text-xs text-gray-500 text-center">Uploading images — this may take a minute</p>
             )}
-          </button>
+          </div>
         )}
       </div>
     </div>
