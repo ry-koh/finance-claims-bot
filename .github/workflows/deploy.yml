@@ -71,6 +71,8 @@ jobs:
             --allow-unauthenticated \
             --memory 1Gi \
             --timeout 300 \
+            --concurrency 10 \
+            --max-instances 2 \
             --env-vars-file /tmp/env-vars.yaml
 
       - name: Print service URL
