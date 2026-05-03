@@ -1071,18 +1071,6 @@ export default function ClaimDetailPage() {
           </div>
         )}
 
-        {/* ── Action error banner ── */}
-        {actionError && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3">
-            <p className="flex-1 text-xs text-red-600">{actionError}</p>
-            <button
-              onClick={() => setActionError(null)}
-              className="text-red-400 hover:text-red-600 text-lg leading-none"
-            >
-              ×
-            </button>
-          </div>
-        )}
 
         {/* ── Stale documents warning ── */}
         {staleDocsWarning && (
@@ -1398,6 +1386,20 @@ export default function ClaimDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Fixed-bottom action error toast ── */}
+      {actionError && (
+        <div className="fixed bottom-4 left-4 right-4 z-50 bg-red-600 text-white rounded-xl px-4 py-3 shadow-xl flex items-start gap-3">
+          <p className="flex-1 text-sm leading-snug">{actionError}</p>
+          <button
+            onClick={() => setActionError(null)}
+            className="shrink-0 text-white/70 hover:text-white text-xl leading-none mt-0.5"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
     </div>

@@ -4,8 +4,6 @@ from pydantic import BaseModel
 from typing import Optional
 from app.database import get_supabase
 from app.auth import require_auth
-from app.services import pdf as pdf_service
-from app.services import image as image_service
 from app.services import r2 as r2_service
 from app.config import settings
 import io, tempfile, os, logging, re
@@ -139,6 +137,7 @@ def _bt_in_half(bt: dict, all_receipts: list, receipts_in_half_ids: set, is_firs
 
 def _do_generate(claim_id: str, db) -> dict:
     """Core document generation logic. Caller is responsible for status checks."""
+    from app.services import pdf as pdf_service  # lazy import — fpdf/google-api-client heavy
     claim = _get_full_claim(claim_id, db)
     finance_director = _get_finance_director(db)
     all_receipts = [r for item in claim.get("line_items", []) for r in item.get("receipts", [])]
@@ -331,6 +330,7 @@ async def upload_screenshot(
     """Upload an email screenshot, convert to PDF, and mark claim as screenshot_uploaded."""
     from PIL import Image as PILImage  # lazy import
     from fpdf import FPDF  # lazy import
+    from app.services import image as image_service  # lazy import
     import gc
 
     raw_bytes = await file.read()

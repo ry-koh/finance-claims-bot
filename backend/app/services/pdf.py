@@ -12,13 +12,7 @@ using fpdf2 and pypdf.  Responsibilities include:
   the resulting ClaimDocument rows in Supabase.
 """
 
-from fpdf import FPDF
-from PIL import Image, ImageOps
 import io, os, tempfile, logging, time
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
 from app.services import r2 as r2_service
 from app.config import settings
 
@@ -37,6 +31,8 @@ def download_drive_file(file_id: str) -> bytes:
     Download file bytes from Google Drive by file ID using user OAuth credentials.
     Raises ValueError if the file is not found or cannot be downloaded.
     """
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
     drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     try:
         request = drive_service.files().get_media(fileId=file_id)
@@ -58,12 +54,13 @@ def _best_fit_area(img_w: int, img_h: int, box_w: float, box_h: float) -> float:
     return img_w * scale * img_h * scale
 
 
-def _add_image_page(pdf: FPDF, drive_id: str, header_label: str) -> None:
+def _add_image_page(pdf, drive_id: str, header_label: str) -> None:
     """Download an R2 image and embed it on a new PDF page.
 
     EXIF orientation is corrected first, then the image is optionally rotated
     90° if that orientation fills more of the A4 content area.
     """
+    from PIL import Image, ImageOps  # lazy import
     try:
         file_bytes = r2_service.download_file(drive_id)
         img = Image.open(io.BytesIO(file_bytes))
@@ -135,6 +132,7 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
     receipts : list[dict]  — each has images list and bank_transaction_id
     bank_transactions : list[dict]  — each has id and images list
     """
+    from fpdf import FPDF  # lazy import
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(False)
 
@@ -186,8 +184,10 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
 # Google Sheets / Docs service helpers (user OAuth, not service account)
 # ---------------------------------------------------------------------------
 
-def _get_user_drive_credentials() -> Credentials:
+def _get_user_drive_credentials():
     """Return refreshed OAuth2 credentials for Drive/Sheets/Docs operations."""
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
     creds = Credentials(
         token=None,
         refresh_token=settings.DRIVE_REFRESH_TOKEN,
@@ -201,16 +201,19 @@ def _get_user_drive_credentials() -> Credentials:
 
 def get_sheets_service():
     """Return an authenticated Google Sheets v4 service using user OAuth."""
+    from googleapiclient.discovery import build
     return build('sheets', 'v4', credentials=_get_user_drive_credentials(), cache_discovery=False)
 
 
 def get_docs_service():
     """Return an authenticated Google Docs v1 service using user OAuth."""
+    from googleapiclient.discovery import build
     return build('docs', 'v1', credentials=_get_user_drive_credentials(), cache_discovery=False)
 
 
 def copy_template(template_id: str, new_name: str) -> str:
     """Copy a Drive template to the user's My Drive root (temporary — trashed after export)."""
+    from googleapiclient.discovery import build
     drive = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     result = drive.files().copy(
         fileId=template_id,
@@ -226,6 +229,8 @@ def export_as_pdf(file_id: str, mime_type: str = 'application/vnd.google-apps.sp
     *mime_type* is unused but kept for API symmetry.
     Returns raw PDF bytes.
     """
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
     drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     request = drive_service.files().export_media(
         fileId=file_id,
@@ -241,6 +246,7 @@ def export_as_pdf(file_id: str, mime_type: str = 'application/vnd.google-apps.sp
 
 def delete_drive_file(file_id: str) -> None:
     """Trash a Drive file (soft delete) using user OAuth."""
+    from googleapiclient.discovery import build
     drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
     drive_service.files().update(fileId=file_id, body={"trashed": True}).execute()
 
