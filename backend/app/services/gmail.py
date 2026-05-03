@@ -73,7 +73,7 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
 
     # --- CC list ---
     other_emails = claim.get("other_emails") or []
-    cc_list = ["68findirector.rh@gmail.com"] + list(other_emails)
+    cc_list = list(other_emails)
     cc_emails_joined = ", ".join(cc_list)
 
     # --- Receipt list HTML ---
@@ -101,7 +101,7 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
   <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.</p>
   <p>
     <strong>To:</strong> rh.finance@u.nus.edu<br>
-    <strong>CC:</strong> {cc_emails_joined}<br>
+    {"<strong>CC:</strong> " + cc_emails_joined + "<br>" if cc_list else ""}
     <strong>Subject:</strong> {reference_code}
   </p>
   <hr style="border: none; border-top: 2px solid #000; margin: 20px 0;">

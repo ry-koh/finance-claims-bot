@@ -75,17 +75,16 @@ def _download_doc(drive_file_id: str) -> bytes:
 
 
 def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, reference_code: str, db) -> str:
-    folder_id = drive_service.get_claim_folder_id(reference_code)
-    file_id = drive_service.upload_file(pdf_bytes, filename, "application/pdf", folder_id)
-    drive_service.set_public_readable(file_id)
+    object_name = r2_service.make_document_object_name(reference_code, filename)
+    r2_service.upload_file(pdf_bytes, object_name, content_type="application/pdf")
     db.table("claim_documents").update({"is_current": False}).eq("claim_id", claim_id).eq("type", doc_type).eq("is_current", True).execute()
     db.table("claim_documents").insert({
         "claim_id": claim_id,
         "type": doc_type,
-        "drive_file_id": file_id,
+        "drive_file_id": object_name,
         "is_current": True,
     }).execute()
-    return file_id
+    return object_name
 
 
 def _do_compile(claim_id: str, reference_code: str, db) -> dict:

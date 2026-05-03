@@ -75,8 +75,9 @@ async def send_claim_email(
         reference_code = claim.get("reference_code") or ""
         msg["To"] = claimer_email
         msg["Subject"] = reference_code
-        cc = ["68findirector.rh@gmail.com"] + (claim.get("other_emails") or [])
-        msg["Cc"] = ", ".join(cc)
+        cc = list(claim.get("other_emails") or [])
+        if cc:
+            msg["Cc"] = ", ".join(cc)
 
         # 7. Send
         message_id = gmail_service.send_email(claimer_email, reference_code, msg)
@@ -163,8 +164,9 @@ async def resend_claim_email(
         reference_code = claim.get("reference_code") or ""
         msg["To"] = claimer_email
         msg["Subject"] = reference_code
-        cc = ["68findirector.rh@gmail.com"] + (claim.get("other_emails") or [])
-        msg["Cc"] = ", ".join(cc)
+        cc = list(claim.get("other_emails") or [])
+        if cc:
+            msg["Cc"] = ", ".join(cc)
 
         # 6. Send
         message_id = gmail_service.send_email(claimer_email, reference_code, msg)
