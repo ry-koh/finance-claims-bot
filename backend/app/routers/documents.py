@@ -213,22 +213,18 @@ def _do_generate(claim_id: str, db) -> dict:
             _save_document(claim_id, "transport", transport_bytes, f"Transport - {claim['reference_code']}.pdf", claim["reference_code"], db)
             generated.append("transport")
 
-        # Auto-generate remarks
-        remarks_lines = []
-        n = 1
+        # Auto-generate remarks (all lines use "- " prefix per spec)
+        auto_remarks: list[str] = []
 
         for bt in bank_transactions:
             if bt.get("refunds"):
                 refund_amounts = [float(r["amount"]) for r in bt["refunds"]]
                 net = float(bt["amount"]) - sum(refund_amounts)
                 for amt in refund_amounts:
-                    remarks_lines.append(f"{n}. An item was refunded and the amount refunded is ${amt:.2f}")
-                    n += 1
-                remarks_lines.append(f"{n}. Initial Bank Transaction is ${float(bt['amount']):.2f}")
-                n += 1
+                    auto_remarks.append(f"- An item was refunded and the amount refunded is ${amt:.2f}")
+                auto_remarks.append(f"- Initial Bank Transaction is ${float(bt['amount']):.2f}")
                 formula = " - ".join([f"${float(bt['amount']):.2f}"] + [f"${a:.2f}" for a in refund_amounts])
-                remarks_lines.append(f"{n}. Total Amount is {formula} = ${net:.2f}")
-                n += 1
+                auto_remarks.append(f"- Total Amount is {formula} = ${net:.2f}")
 
         if len(halves) > 1:
             li_to_suffix = {item["id"]: suf for items, suf in halves for item in items}
@@ -248,18 +244,31 @@ def _do_generate(claim_id: str, db) -> dict:
                         other_parts = [(s, v) for s, v in half_sums.items() if s != suf]
                         other_str = " and ".join(f"Claim ID {base_code}{s} value of ${v:.2f}" for s, v in other_parts)
                         calc_str = " + ".join(f"${v:.2f} ({base_code}{s})" for s, v in sorted(half_sums.items()))
-                        remarks_lines.append(f"{n}. Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well")
-                        n += 1
-                        remarks_lines.append(f"{n}. {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)")
-                        n += 1
+                        auto_remarks.append(f"- Bank Transaction shows ${float(bt['amount']):.2f} as it includes {other_str} as well")
+                        auto_remarks.append(f"- {calc_str} = ${float(bt['amount']):.2f} (Bank Transaction)")
 
-        if remarks_lines:
-            auto_block = "\n".join(remarks_lines)
-            existing = claim.get("remarks") or ""
-            sentinel_re = re.compile(r"<!-- AUTO -->.*?<!-- /AUTO -->", re.DOTALL)
-            new_block = f"<!-- AUTO -->\n{auto_block}\n<!-- /AUTO -->"
-            new_remarks = sentinel_re.sub(new_block, existing) if sentinel_re.search(existing) else (existing + "\n\n" + new_block).strip()
-            db.table("claims").update({"remarks": new_remarks}).eq("id", claim_id).execute()
+        # Counts of receipts and bank transactions attached
+        receipt_count = len(all_receipts)
+        bt_count = len(bank_transactions)
+        if receipt_count:
+            auto_remarks.append(f"- {receipt_count} Receipt{'s' if receipt_count != 1 else ''} Attached")
+        if bt_count:
+            auto_remarks.append(f"- {bt_count} Bank Transaction{'s' if bt_count != 1 else ''} Attached")
+
+        # Always update remarks block (even if empty, to clear stale sentinels)
+        auto_block = "\n".join(auto_remarks)
+        existing = claim.get("remarks") or ""
+        sentinel_re = re.compile(r"<!-- AUTO -->.*?<!-- /AUTO -->", re.DOTALL)
+        new_block = f"<!-- AUTO -->\n{auto_block}\n<!-- /AUTO -->"
+        # Strip old sentinel to get user-written portion
+        user_portion = sentinel_re.sub("", existing).strip()
+        # Prepend "Claimed from Master Fund" for MF claims (once only)
+        mf_line = "- Claimed from Master Fund"
+        if claim.get("wbs_account") == "MF":
+            if not user_portion.startswith(mf_line):
+                user_portion = (mf_line + "\n" + user_portion).strip()
+        new_remarks = (user_portion + "\n\n" + new_block).strip() if user_portion else new_block
+        db.table("claims").update({"remarks": new_remarks}).eq("id", claim_id).execute()
 
     except Exception as e:
         logger.exception("Document generation failed for claim %s: %s", claim_id, e)

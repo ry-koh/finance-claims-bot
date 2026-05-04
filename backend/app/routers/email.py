@@ -71,13 +71,10 @@ async def send_claim_email(
         # 5. Build email
         msg = gmail_service.build_claim_email(claim, receipts_resp.data)
 
-        # 6. Set headers
+        # 6. Set headers — send only to treasurer, no CC
         reference_code = claim.get("reference_code") or ""
         msg["To"] = claimer_email
         msg["Subject"] = reference_code
-        cc = list(claim.get("other_emails") or [])
-        if cc:
-            msg["Cc"] = ", ".join(cc)
 
         # 7. Send
         message_id = gmail_service.send_email(claimer_email, reference_code, msg)
@@ -160,13 +157,10 @@ async def resend_claim_email(
         # 4. Build email
         msg = gmail_service.build_claim_email(claim, receipts_resp.data)
 
-        # 5. Set headers
+        # 5. Set headers — send only to treasurer, no CC
         reference_code = claim.get("reference_code") or ""
         msg["To"] = claimer_email
         msg["Subject"] = reference_code
-        cc = list(claim.get("other_emails") or [])
-        if cc:
-            msg["Cc"] = ", ".join(cc)
 
         # 6. Send
         message_id = gmail_service.send_email(claimer_email, reference_code, msg)

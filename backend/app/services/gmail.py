@@ -71,10 +71,9 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
 
     total_amount = float(claim.get("total_amount") or 0)
 
-    # --- CC list ---
+    # --- Other emails (for reminder only — not used as actual CC headers) ---
     other_emails = claim.get("other_emails") or []
-    cc_list = list(other_emails)
-    cc_emails_joined = ", ".join(cc_list)
+    cc_reminder_emails = list(other_emails)
 
     # --- Receipt list HTML ---
     receipt_lines = []
@@ -96,14 +95,19 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
     else:
         remarks_section = ""
 
+    # --- CC reminder line ---
+    cc_reminder_html = (
+        f"<br><strong>CC:</strong> {', '.join(cc_reminder_emails)}"
+        if cc_reminder_emails else ""
+    )
+
     # --- HTML body ---
     html_body = f"""<div style="font-family: Arial, sans-serif; color: #222; font-size: 14px; line-height: 1.6;">
   <p>Hi {first_name},</p>
   <p>We have received your claim and after sending the following email, this is a confirmation that your claim is being processed. We have also attached the attachments that you have sent for your convenience.</p>
-  <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.</p>
+  <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.{"<br><br><strong>Remember to CC:</strong> " + ", ".join(cc_reminder_emails) if cc_reminder_emails else ""}</p>
   <p>
-    <strong>To:</strong> rh.finance@u.nus.edu<br>
-    {"<strong>CC:</strong> " + cc_emails_joined + "<br>" if cc_list else ""}
+    <strong>To:</strong> rh.finance@u.nus.edu{cc_reminder_html}<br>
     <strong>Subject:</strong> {reference_code}
   </p>
   <hr style="border: none; border-top: 2px solid #000; margin: 20px 0;">

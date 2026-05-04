@@ -154,7 +154,7 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
         amount_raw = receipt.get("amount")
         return f"{desc}  SGD {amount_raw}".strip() if amount_raw is not None else desc
 
-    # For each BT: linked receipt images first, then BT images
+    # For each BT: linked receipt images first, then BT images, then refund images
     for bt in bank_transactions:
         for receipt in receipts_by_bt.get(bt["id"], []):
             for img in (receipt.get("images") or []):
@@ -163,6 +163,10 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
         for img in (bt.get("images") or []):
             if img.get("drive_file_id"):
                 _add_image_page(pdf, img["drive_file_id"], "[Bank Transaction]")
+        for refund in (bt.get("refunds") or []):
+            if refund.get("drive_file_id"):
+                amt = float(refund.get("amount") or 0)
+                _add_image_page(pdf, refund["drive_file_id"], f"[Refund ${amt:.2f}]")
 
     # Unlinked receipts at the end
     for receipt in unlinked_receipts:
@@ -307,7 +311,11 @@ def generate_summary(
         except Exception:
             formatted_date = str(raw_date)
 
-        total_amount = claim.get('total_amount', 0) or 0
+        # Compute total from line item receipts (more reliable than stored total_amount)
+        total_amount = sum(
+            sum(float(r.get('amount', 0) or 0) for r in (item.get('receipts') or []))
+            for item in (line_items or [])
+        ) or float(claim.get('total_amount', 0) or 0)
 
         # --- Fixed cell values ---
         value_ranges = [
