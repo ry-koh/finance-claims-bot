@@ -193,7 +193,7 @@ def _do_generate(claim_id: str, db) -> dict:
             half_receipts = [r for r in all_receipts if r["id"] in half_receipt_ids]
             half_bts = [bt for bt in bank_transactions if _bt_in_half(bt, all_receipts, half_receipt_ids, is_first_half)]
 
-            loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code)
+            loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code, mf_approval_drive_id=claim.get("mf_approval_drive_id"))
             doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db)
             generated.append(doc_key)
@@ -215,6 +215,10 @@ def _do_generate(claim_id: str, db) -> dict:
 
         # Auto-generate remarks (all lines use "- " prefix per spec)
         auto_remarks: list[str] = []
+
+        # Partial claim line goes first in the AUTO block
+        if claim.get("is_partial") and claim.get("partial_amount") is not None:
+            auto_remarks.append(f"- Partial Claim of ${float(claim['partial_amount']):.2f}")
 
         for bt in bank_transactions:
             if bt.get("refunds"):
@@ -412,6 +416,33 @@ async def save_transport_data(
     """Save transport trip data to the claim record."""
     db.table("claims").update({"transport_data": data.model_dump()}).eq("id", claim_id).execute()
     return {"success": True}
+
+
+@router.post("/mf-approval/{claim_id}")
+async def upload_mf_approval(
+    claim_id: str,
+    file: UploadFile = File(...),
+    db=Depends(get_supabase),
+    _auth=Depends(require_auth),
+):
+    """Upload Master's Fund approval screenshot for a claim."""
+    from app.services import image as image_service
+    raw_bytes = await file.read()
+    try:
+        processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
+
+    claim = _get_full_claim(claim_id, db)
+    drive_file_id = r2_service.upload_file(
+        processed,
+        f"mf_approval/{claim_id}.jpg",
+        "image/jpeg",
+    )
+    db.table("claims").update({"mf_approval_drive_id": drive_file_id}).eq("id", claim_id).execute()
+    return {"success": True, "drive_file_id": drive_file_id}
 
 
 @router.post("/send-telegram")

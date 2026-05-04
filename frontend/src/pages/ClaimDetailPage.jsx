@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
-import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot } from '../api/documents'
+import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import {
@@ -311,6 +311,47 @@ function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
           const file = e.target.files?.[0]
           e.target.value = ''
           if (file) onAction('screenshot', file)
+        }}
+      />
+    </div>
+  )
+}
+
+// MF Approval screenshot upload
+function MfApprovalUpload({ claim, onUploaded }) {
+  const fileRef = useRef(null)
+  const upload = useUploadMfApproval()
+  const hasApproval = !!claim.mf_approval_drive_id
+
+  async function handleFile(file) {
+    try {
+      await upload.mutateAsync({ claimId: claim.id, file })
+      onUploaded()
+    } catch {}
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-4">
+      <h2 className="text-sm font-semibold text-amber-700 mb-2">Master's Fund Approval</h2>
+      <p className="text-xs text-gray-500 mb-3">
+        {hasApproval ? 'Approval screenshot uploaded.' : 'Upload the Master\'s approval screenshot for this MF claim.'}
+      </p>
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={upload.isPending}
+        className={`text-sm font-medium px-4 py-2 rounded-lg ${hasApproval ? 'bg-gray-100 text-gray-700' : 'bg-amber-600 text-white'}`}
+      >
+        {upload.isPending ? 'Uploading…' : hasApproval ? 'Re-upload Approval' : 'Upload Approval Screenshot'}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) handleFile(file)
         }}
       />
     </div>
@@ -1223,9 +1264,17 @@ export default function ClaimDetailPage() {
                 label="Transport Form"
                 value={claim.transport_form_needed ? 'Yes' : 'No'}
               />
+              {claim.is_partial && (
+                <InfoRow label="Partial Claim" value={`$${Number(claim.partial_amount ?? 0).toFixed(2)}`} />
+              )}
             </div>
           )}
         </div>
+
+        {/* ── MF Approval Screenshot ── */}
+        {claim.wbs_account === 'MF' && (
+          <MfApprovalUpload claim={claim} onUploaded={() => refetch()} />
+        )}
 
         {/* ── Status Pipeline ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">

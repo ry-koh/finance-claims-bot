@@ -75,6 +75,19 @@ export function useSubmitTransportData(options = {}) {
   })
 }
 
+export const uploadMfApproval = ({ claimId, file }) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/documents/mf-approval/${claimId}`, form).then((r) => r.data)
+}
+
+export function useUploadMfApproval(options = {}) {
+  return useMutation({
+    mutationFn: uploadMfApproval,
+    ...options,
+  })
+}
+
 export const sendToTelegram = ({ claim_ids }) =>
   api.post('/documents/send-telegram', { claim_ids }).then((r) => r.data)
 

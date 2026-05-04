@@ -267,6 +267,8 @@ class ClaimCreate(BaseModel):
     remarks: Optional[str] = None
     other_emails: List[str] = []
     transport_form_needed: bool = False
+    is_partial: bool = False
+    partial_amount: Optional[Decimal] = None
 
 
 class ClaimUpdate(BaseModel):
@@ -283,6 +285,9 @@ class ClaimUpdate(BaseModel):
     status: Optional[ClaimStatus] = None
     error_message: Optional[str] = None
     transport_form_needed: Optional[bool] = None
+    is_partial: Optional[bool] = None
+    partial_amount: Optional[Decimal] = None
+    mf_approval_drive_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -169,6 +169,9 @@ export default function HomePage() {
       } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
         setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted`)
+      } else if (action === 'reimburse') {
+        const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'reimbursed' })
+        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as reimbursed`)
       }
     } catch {
       setActionResult('Action failed. Please try again.')
@@ -190,14 +193,48 @@ export default function HomePage() {
       <div className="bg-white px-4 pt-4 pb-2 border-b border-gray-100">
         {/* Header row */}
         {selectMode ? (
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">{selectedIds.size} selected</span>
-            <div className="flex gap-3">
-              <button onClick={() => setSelectedIds(new Set(claims.map(c => c.id)))}
-                className="text-xs text-blue-600 font-medium">Select All</button>
-              <button onClick={exitSelectMode}
-                className="text-xs text-gray-500 font-medium">Cancel</button>
+          <div className="space-y-2 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">{selectedIds.size} selected</span>
+              <div className="flex gap-3">
+                <button onClick={() => setSelectedIds(new Set(claims.map(c => c.id)))}
+                  className="text-xs text-blue-600 font-medium">Select All</button>
+                <button onClick={exitSelectMode}
+                  className="text-xs text-gray-500 font-medium">Cancel</button>
+              </div>
             </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400"
+              />
+              <button
+                onClick={() => {
+                  if (filterOpen) { setDateFrom(''); setDateTo('') }
+                  setFilterOpen(f => !f)
+                }}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${filterOpen ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600'}`}
+              >
+                Filter
+              </button>
+            </div>
+            {filterOpen && (
+              <div className="flex gap-2">
+                <div className="w-[140px] shrink-0">
+                  <label className="text-xs text-gray-500">From</label>
+                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
+                </div>
+                <div className="w-[140px] shrink-0">
+                  <label className="text-xs text-gray-500">To</label>
+                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-between mb-3">
@@ -274,7 +311,7 @@ export default function HomePage() {
       </div>
 
       {/* Claims list */}
-      <div className={`flex-1 px-4 py-3 space-y-3${selectMode ? ' pb-20' : ''}`}>
+      <div className={`flex-1 px-4 py-3 space-y-3${selectMode ? ' pb-24' : ''}`}>
         {isLoading && (
           <>
             <SkeletonCard />
@@ -373,20 +410,27 @@ export default function HomePage() {
 
       {/* Floating action bar */}
       {selectMode && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-3 shadow-lg z-40">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shadow-lg z-40">
           <button
             disabled={selectedIds.size === 0 || sendMutation.isPending}
             onClick={() => selectedIds.size > 0 && setConfirmAction('send')}
-            className="flex-1 bg-blue-600 disabled:bg-blue-300 text-white text-sm font-semibold py-2.5 rounded-xl"
+            className="flex-1 bg-blue-600 disabled:bg-blue-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
             {sendMutation.isPending ? 'Sending…' : `Send (${selectedIds.size})`}
           </button>
           <button
             disabled={selectedIds.size === 0 || bulkStatusMutation.isPending}
             onClick={() => selectedIds.size > 0 && setConfirmAction('submit')}
-            className="flex-1 bg-green-600 disabled:bg-green-300 text-white text-sm font-semibold py-2.5 rounded-xl"
+            className="flex-1 bg-green-600 disabled:bg-green-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
-            {bulkStatusMutation.isPending ? 'Updating…' : `Mark Submitted (${selectedIds.size})`}
+            {bulkStatusMutation.isPending ? 'Updating…' : `Submitted (${selectedIds.size})`}
+          </button>
+          <button
+            disabled={selectedIds.size === 0 || bulkStatusMutation.isPending}
+            onClick={() => selectedIds.size > 0 && setConfirmAction('reimburse')}
+            className="flex-1 bg-teal-600 disabled:bg-teal-300 text-white text-xs font-semibold py-2.5 rounded-xl"
+          >
+            {bulkStatusMutation.isPending ? 'Updating…' : `Reimbursed (${selectedIds.size})`}
           </button>
         </div>
       )}
@@ -396,12 +440,14 @@ export default function HomePage() {
         <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50">
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl mb-4 mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
-              {confirmAction === 'send' ? 'Send to Telegram?' : 'Mark as Submitted?'}
+              {confirmAction === 'send' ? 'Send to Telegram?' : confirmAction === 'submit' ? 'Mark as Submitted?' : 'Mark as Reimbursed?'}
             </h3>
             <p className="text-sm text-gray-500 mb-5">
               {confirmAction === 'send'
                 ? `Send ${selectedIds.size} compiled PDF${selectedIds.size !== 1 ? 's' : ''} to yourself on Telegram. Claims without a compiled PDF will be skipped.`
-                : `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as submitted.`}
+                : confirmAction === 'submit'
+                ? `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as submitted.`
+                : `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as reimbursed.`}
             </p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmAction(null)}

@@ -120,7 +120,7 @@ def _add_image_page(pdf, drive_id: str, header_label: str) -> None:
         pdf.set_text_color(0, 0, 0)
 
 
-def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, reference_code_override: str = None) -> bytes:
+def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, reference_code_override: str = None, mf_approval_drive_id: str = None) -> bytes:
     """
     Generate image pages for a claim in per-BT order:
       For each BT: receipt images linked to that BT, then BT images.
@@ -173,6 +173,10 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
         for img in (receipt.get("images") or []):
             if img.get("drive_file_id"):
                 _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
+
+    # MF approval screenshot (last page)
+    if mf_approval_drive_id:
+        _add_image_page(pdf, mf_approval_drive_id, "[Master's Fund Approval]")
 
     # Ensure at least one page so pypdf can read the file
     if pdf.page == 0:

@@ -28,6 +28,8 @@ STALE_TRIGGER_FIELDS = {
     "total_amount",
     "claimer_id",
     "transport_form_needed",
+    "is_partial",
+    "partial_amount",
 }
 
 
@@ -376,6 +378,7 @@ async def create_claim(
         "date": payload.date.isoformat(),
         "wbs_account": payload.wbs_account.value,
         "transport_form_needed": payload.transport_form_needed,
+        "is_partial": payload.is_partial,
         "status": ClaimStatus.DRAFT.value,
         "other_emails": payload.other_emails,
     }
@@ -385,6 +388,8 @@ async def create_claim(
         claim_data["wbs_no"] = payload.wbs_no
     if payload.remarks is not None:
         claim_data["remarks"] = payload.remarks
+    if payload.is_partial and payload.partial_amount is not None:
+        claim_data["partial_amount"] = str(payload.partial_amount)
 
     create_resp = db.table("claims").insert(claim_data).execute()
     if not create_resp.data:

@@ -5,6 +5,7 @@ import { useClaimers, useCreateClaimer } from '../api/claimers'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
+import { submitTransportData } from '../api/documents'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -297,6 +298,87 @@ function Step1({ data, onChange }) {
   )
 }
 
+// ─── Transport Trips Input ─────────────────────────────────────────────────────
+
+const TRANSPORT_MODES = [
+  { value: 'taxi', label: 'Taxi' },
+  { value: 'bus_mrt', label: 'Bus / MRT' },
+  { value: 'mileage', label: 'Mileage (private car)' },
+]
+
+const EMPTY_TRIP = { from: '', to: '', purpose: '', mode: 'taxi', amount: '', distance_km: '' }
+
+function TransportTripsInput({ trips, onChange }) {
+  function addTrip() {
+    onChange([...trips, { ...EMPTY_TRIP }])
+  }
+  function removeTrip(i) {
+    onChange(trips.filter((_, idx) => idx !== i))
+  }
+  function updateTrip(i, field, value) {
+    onChange(trips.map((t, idx) => idx === i ? { ...t, [field]: value } : t))
+  }
+
+  return (
+    <div className="space-y-3 bg-blue-50 rounded-xl p-3">
+      <p className="text-xs font-medium text-blue-700">Transport Trips</p>
+      {trips.length === 0 && (
+        <p className="text-xs text-gray-400">No trips added yet.</p>
+      )}
+      {trips.map((trip, i) => (
+        <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-600">Trip {i + 1}</span>
+            <button type="button" onClick={() => removeTrip(i)} className="text-gray-400 hover:text-red-500 text-sm">✕</button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">From</label>
+              <Input value={trip.from} onChange={(v) => updateTrip(i, 'from', v)} placeholder="Origin" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">To</label>
+              <Input value={trip.to} onChange={(v) => updateTrip(i, 'to', v)} placeholder="Destination" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Purpose</label>
+            <Input value={trip.purpose} onChange={(v) => updateTrip(i, 'purpose', v)} placeholder="Purpose of trip" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Mode</label>
+              <Select
+                value={trip.mode}
+                onChange={(v) => updateTrip(i, 'mode', v)}
+                options={TRANSPORT_MODES}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Amount ($)</label>
+              <Input type="number" step="0.01" min="0" value={trip.amount} onChange={(v) => updateTrip(i, 'amount', v)} placeholder="0.00" />
+            </div>
+          </div>
+          {trip.mode === 'mileage' && (
+            <div>
+              <label className="text-xs text-gray-500">Distance (km)</label>
+              <Input type="number" step="0.1" min="0" value={trip.distance_km} onChange={(v) => updateTrip(i, 'distance_km', v)} placeholder="0.0" />
+            </div>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addTrip}
+        className="w-full py-2 rounded-lg border border-dashed border-blue-400 text-blue-600 text-sm font-medium"
+      >
+        + Add Trip
+      </button>
+    </div>
+  )
+}
+
+
 // ─── Step 2: What ─────────────────────────────────────────────────────────────
 
 function Step2({ data, onChange }) {
@@ -359,26 +441,64 @@ function Step2({ data, onChange }) {
       {/* Remarks */}
       <div>
         <Label>Remarks</Label>
+        <p className="text-xs text-gray-400 mb-1">Write each remark starting with "- " e.g. - Bought for event</p>
         <Textarea
           value={data.remarks}
           onChange={(v) => onChange({ remarks: v })}
-          placeholder="Optional remarks…"
+          placeholder="- Optional remark…"
           rows={2}
         />
       </div>
 
+      {/* Partial Claim */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            id="is-partial"
+            type="checkbox"
+            checked={data.isPartial}
+            onChange={(e) => onChange({ isPartial: e.target.checked, partialAmount: '' })}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+          />
+          <label htmlFor="is-partial" className="text-sm text-gray-700">
+            Partial claim (amount claimed is less than receipt total)
+          </label>
+        </div>
+        {data.isPartial && (
+          <div>
+            <Label required>Amount Claimed ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={data.partialAmount}
+              onChange={(v) => onChange({ partialAmount: v })}
+              placeholder="0.00"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Transport Form Needed */}
-      <div className="flex items-center gap-2">
-        <input
-          id="transport-form"
-          type="checkbox"
-          checked={data.transportFormNeeded}
-          onChange={(e) => onChange({ transportFormNeeded: e.target.checked })}
-          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
-        />
-        <label htmlFor="transport-form" className="text-sm text-gray-700">
-          Transport form needed
-        </label>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <input
+            id="transport-form"
+            type="checkbox"
+            checked={data.transportFormNeeded}
+            onChange={(e) => onChange({ transportFormNeeded: e.target.checked, transportTrips: e.target.checked ? data.transportTrips : [] })}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+          />
+          <label htmlFor="transport-form" className="text-sm text-gray-700">
+            Transport form needed
+          </label>
+        </div>
+        {data.transportFormNeeded && (
+          <TransportTripsInput
+            trips={data.transportTrips}
+            onChange={(trips) => onChange({ transportTrips: trips })}
+          />
+        )}
       </div>
 
       {/* Other Emails */}
@@ -1069,6 +1189,9 @@ const DEFAULT_STEP2 = {
   wbsAccount: '',
   remarks: '',
   transportFormNeeded: false,
+  transportTrips: [],
+  isPartial: false,
+  partialAmount: '',
   otherEmails: [],
 }
 
@@ -1191,10 +1314,29 @@ export default function NewClaimPage() {
         remarks: step2.remarks.trim() || undefined,
         other_emails: step2.otherEmails,
         transport_form_needed: step2.transportFormNeeded,
+        is_partial: step2.isPartial,
+        partial_amount: step2.isPartial && step2.partialAmount ? Number(step2.partialAmount) : undefined,
       })
 
       claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
+
+      // 1b. Save transport trip data if needed
+      if (step2.transportFormNeeded && step2.transportTrips.length > 0) {
+        try {
+          await submitTransportData({
+            claimId,
+            trips: step2.transportTrips.map(t => ({
+              from_location: t.from,
+              to_location: t.to,
+              purpose: t.purpose,
+              mode: t.mode,
+              amount: Number(t.amount) || 0,
+              distance_km: t.distance_km ? Number(t.distance_km) : undefined,
+            }))
+          })
+        } catch {}
+      }
 
       // 2. Create bank transactions, upload screenshots + refunds, build local → real ID map
       const btIdMap = {}
