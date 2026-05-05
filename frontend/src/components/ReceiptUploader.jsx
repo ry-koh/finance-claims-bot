@@ -8,6 +8,8 @@ const STATE_IDLE = 'idle'
 const STATE_PROCESSING = 'processing'
 const STATE_CROP = 'crop'
 
+const A4_RATIO = 210 / 297 // portrait A4
+
 export default function ReceiptUploader({
   claimId,
   imageType = 'receipt',
@@ -17,43 +19,64 @@ export default function ReceiptUploader({
   existingDriveId,
 }) {
   const [uiState, setUiState] = useState(STATE_IDLE)
-  const [processedImage, setProcessedImage] = useState(null) // base64 data URL
+  const [processedImage, setProcessedImage] = useState(null)
   const [processError, setProcessError] = useState(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [a4Locked, setA4Locked] = useState(false)
   const fileInputRef = useRef(null)
   const cropperRef = useRef(null)
 
   const processImageMutation = useProcessReceiptImage()
   const uploadImageMutation = useUploadReceiptImage()
 
-  // ── State 1: Idle / already uploaded ────────────────────────────────────────
+  // ── State 1: Idle ────────────────────────────────────────────────────────────
 
   function handleFileChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    // Reset file input so re-selecting the same file triggers onChange again
     e.target.value = ''
     startProcessing(file)
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) startProcessing(file)
   }
 
   // ── State 2: Processing ──────────────────────────────────────────────────────
 
   function startProcessing(file) {
     setProcessError(null)
+    setA4Locked(false)
     setUiState(STATE_PROCESSING)
     processImageMutation.mutate(file, {
       onSuccess(data) {
         const { processed_image, content_type } = data
         const mimeType = content_type || 'image/jpeg'
-        const dataUrl = `data:${mimeType};base64,${processed_image}`
-        setProcessedImage(dataUrl)
+        setProcessedImage(`data:${mimeType};base64,${processed_image}`)
         setUiState(STATE_CROP)
       },
       onError(err) {
-        const msg =
+        setProcessError(
           err?.response?.data?.detail ||
-          err?.message ||
-          'Failed to process image. Please try again.'
-        setProcessError(msg)
+            err?.message ||
+            'Failed to process image. Please try again.'
+        )
         setUiState(STATE_IDLE)
       },
     })
@@ -71,6 +94,18 @@ export default function ReceiptUploader({
 
   function handleRotateRight() {
     cropperRef.current?.cropper.rotate(90)
+  }
+
+  function toggleA4() {
+    const cropper = cropperRef.current?.cropper
+    if (!cropper) return
+    if (a4Locked) {
+      cropper.setAspectRatio(NaN)
+      setA4Locked(false)
+    } else {
+      cropper.setAspectRatio(A4_RATIO)
+      setA4Locked(true)
+    }
   }
 
   function handleCancel() {
@@ -101,7 +136,6 @@ export default function ReceiptUploader({
               onUploaded?.(data.drive_file_id)
             },
             onError(err) {
-              // Error message rendered inline; stay in crop state
               console.error('Upload failed', err)
             },
           }
@@ -114,56 +148,70 @@ export default function ReceiptUploader({
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  // Processing state
   if (uiState === STATE_PROCESSING) {
     return (
-      <div className="flex flex-col items-center gap-2 py-4">
+      <div className="flex flex-col items-center gap-2 py-6">
         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-gray-600">Processing image...</p>
       </div>
     )
   }
 
-  // Crop state
   if (uiState === STATE_CROP && processedImage) {
     const isUploading = uploadImageMutation.isPending
     const uploadError = uploadImageMutation.error
 
     return (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-gray-700">{label}</p>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-semibold text-gray-600">{label}</p>
+
+        {/* A4 portrait frame hint */}
+        <p className="text-xs text-gray-400">
+          Check orientation and crop area. Use A4 Fit to match the page.
+        </p>
 
         <Cropper
           ref={cropperRef}
           src={processedImage}
-          aspectRatio={NaN} // intentional: NaN = free-form (no fixed aspect ratio)
+          aspectRatio={NaN}
           viewMode={1}
-          autoCropArea={0.9}
+          autoCropArea={0.95}
           responsive
-          style={{ maxHeight: '60vh', width: '100%' }}
+          style={{ maxHeight: '65vh', width: '100%' }}
         />
 
-        {/* Rotate controls */}
-        <div className="flex gap-2 justify-center">
+        {/* Controls row */}
+        <div className="flex gap-2 flex-wrap justify-center">
           <button
             type="button"
             onClick={handleRotateLeft}
             disabled={isUploading}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
+            className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
           >
-            ↺ Rotate Left
+            ↺ Left
           </button>
           <button
             type="button"
             onClick={handleRotateRight}
             disabled={isUploading}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
+            className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
           >
-            ↻ Rotate Right
+            ↻ Right
+          </button>
+          <button
+            type="button"
+            onClick={toggleA4}
+            disabled={isUploading}
+            className={`px-3 py-1.5 text-sm rounded-lg disabled:opacity-50 transition-colors ${
+              a4Locked
+                ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                : 'bg-gray-100 text-gray-700'
+            }`}
+          >
+            A4 Fit {a4Locked ? '✓' : ''}
           </button>
         </div>
 
-        {/* Upload error */}
         {uploadError && (
           <p className="text-xs text-red-500 text-center">
             {uploadError?.response?.data?.detail ||
@@ -172,7 +220,6 @@ export default function ReceiptUploader({
           </p>
         )}
 
-        {/* Confirm / Cancel */}
         <div className="flex gap-2">
           <button
             type="button"
@@ -202,14 +249,12 @@ export default function ReceiptUploader({
     )
   }
 
-  // Idle state (with or without existing upload)
+  // Idle state
   return (
     <div className="flex flex-col gap-1">
       {existingDriveId ? (
         <div className="flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-          <span className="text-sm text-green-700 font-medium">
-            {label} — Uploaded ✓
-          </span>
+          <span className="text-sm text-green-700 font-medium">{label} — Uploaded ✓</span>
           {onClear && (
             <button
               type="button"
@@ -222,15 +267,25 @@ export default function ReceiptUploader({
         </div>
       ) : (
         <>
-          <button
-            type="button"
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full py-2 px-3 text-sm bg-gray-100 border border-dashed border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 active:bg-gray-200"
+            className={`w-full border-2 border-dashed rounded-xl py-5 px-3 text-center cursor-pointer transition-colors select-none ${
+              isDragging
+                ? 'border-blue-400 bg-blue-50'
+                : 'border-gray-300 bg-gray-50 hover:bg-gray-100 active:bg-gray-200'
+            }`}
           >
-            Upload {label}
-          </button>
+            <p className="text-2xl mb-1">{isDragging ? '📂' : '🖼️'}</p>
+            <p className="text-sm font-medium text-gray-700">
+              {isDragging ? 'Drop to upload' : `Upload ${label}`}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
+          </div>
           {processError && (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 mt-1">
               <p className="text-xs text-red-500">{processError}</p>
               <button
                 type="button"
@@ -244,7 +299,6 @@ export default function ReceiptUploader({
         </>
       )}
 
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
