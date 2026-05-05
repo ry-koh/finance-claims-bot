@@ -88,9 +88,9 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
     receipt_list_html = "\n  ".join(receipt_lines)
 
     # --- Remarks section ---
-    if remarks.strip():
-        cleaned = re.sub(r'<!--\s*/?AUTO\s*-->', '', remarks).strip()
-        cleaned_html = cleaned.replace('\n', '<br>')
+    cleaned_remarks = re.sub(r'<!--\s*/?AUTO\s*-->', '', remarks).strip()
+    if cleaned_remarks:
+        cleaned_html = cleaned_remarks.replace('\n', '<br>')
         remarks_section = f"<p><strong>Remarks:</strong><br>{cleaned_html}</p>"
     else:
         remarks_section = ""
