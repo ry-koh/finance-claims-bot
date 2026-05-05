@@ -272,6 +272,28 @@ def upload_to_drive(file_bytes: bytes, filename: str, folder_id: str = None) -> 
     return result['id']
 
 
+def get_or_create_drive_folder(name: str, parent_id: str) -> str:
+    """Return the Drive folder ID with the given name under parent_id, creating it if absent."""
+    from googleapiclient.discovery import build
+    drive = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
+    safe_name = name.replace("'", "\\'")
+    query = (
+        f"name = '{safe_name}' "
+        f"and mimeType = 'application/vnd.google-apps.folder' "
+        f"and '{parent_id}' in parents "
+        f"and trashed = false"
+    )
+    result = drive.files().list(q=query, fields='files(id)', pageSize=1).execute()
+    files = result.get('files', [])
+    if files:
+        return files[0]['id']
+    folder = drive.files().create(
+        body={'name': name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_id]},
+        fields='id',
+    ).execute()
+    return folder['id']
+
+
 # ---------------------------------------------------------------------------
 # Summary Sheet generation
 # ---------------------------------------------------------------------------

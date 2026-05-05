@@ -75,9 +75,15 @@ def _download_doc(drive_file_id: str) -> bytes:
     return pdf_service.download_drive_file(drive_file_id)
 
 
-def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, reference_code: str, db) -> str:
+def _get_claim_folder(reference_code: str) -> str:
+    """Get or create a Drive subfolder named after the claim reference code."""
     from app.services import pdf as pdf_service
-    drive_file_id = pdf_service.upload_to_drive(pdf_bytes, filename, settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
+    return pdf_service.get_or_create_drive_folder(reference_code, settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
+
+
+def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, reference_code: str, db, folder_id: str = None) -> str:
+    from app.services import pdf as pdf_service
+    drive_file_id = pdf_service.upload_to_drive(pdf_bytes, filename, folder_id or settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
     db.table("claim_documents").update({"is_current": False}).eq("claim_id", claim_id).eq("type", doc_type).eq("is_current", True).execute()
     db.table("claim_documents").insert({
         "claim_id": claim_id,
@@ -125,7 +131,8 @@ def _do_compile(claim_id: str, reference_code: str, db) -> dict:
     writer.write(output)
     compiled_bytes = output.getvalue()
 
-    _save_document(claim_id, "compiled", compiled_bytes, f"Compiled - {reference_code}.pdf", reference_code, db)
+    folder_id = _get_claim_folder(reference_code)
+    _save_document(claim_id, "compiled", compiled_bytes, f"Compiled - {reference_code}.pdf", reference_code, db, folder_id=folder_id)
     db.table("claims").update({"status": "compiled", "error_message": None}).eq("id", claim_id).execute()
     return {"page_count": total_pages}
 
@@ -190,6 +197,7 @@ def _do_generate(claim_id: str, db) -> dict:
         halves = [(chunk, suffixes[idx]) for idx, chunk in enumerate(chunks) if chunk]
 
     generated = []
+    claim_folder_id = _get_claim_folder(base_code)
 
     try:
         for half_idx, (half_items, suffix) in enumerate(halves):
@@ -202,22 +210,22 @@ def _do_generate(claim_id: str, db) -> dict:
 
             loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code, mf_approval_drive_id=claim.get("mf_approval_drive_id"))
             doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
-            _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db)
+            _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(doc_key)
 
             summary_bytes = pdf_service.generate_summary(claim, half_items, finance_director, reference_code_override=ref_code)
             summary_key = f"summary{'_' + suffix.lower() if suffix else ''}"
-            _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", ref_code, db)
+            _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(summary_key)
 
             rfp_bytes = pdf_service.generate_rfp(claim, half_items, finance_director, reference_code_override=ref_code)
             rfp_key = f"rfp{'_' + suffix.lower() if suffix else ''}"
-            _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", ref_code, db)
+            _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(rfp_key)
 
         if claim.get("transport_form_needed") and claim.get("transport_data"):
             transport_bytes = pdf_service.generate_transport(claim, claim["transport_data"], finance_director)
-            _save_document(claim_id, "transport", transport_bytes, f"Transport - {claim['reference_code']}.pdf", claim["reference_code"], db)
+            _save_document(claim_id, "transport", transport_bytes, f"Transport - {base_code}.pdf", base_code, db, folder_id=claim_folder_id)
             generated.append("transport")
 
         # Auto-generate remarks (all lines use "- " prefix per spec)
@@ -398,9 +406,11 @@ async def upload_screenshot(
     del pdf
     gc.collect()
 
+    claim_folder_id = _get_claim_folder(claim["reference_code"])
     _save_document(
         claim_id, "email_screenshot", screenshot_pdf_bytes,
-        f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db
+        f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db,
+        folder_id=claim_folder_id,
     )
     del screenshot_pdf_bytes
     db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
