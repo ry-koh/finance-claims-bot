@@ -259,6 +259,19 @@ def delete_drive_file(file_id: str) -> None:
     drive_service.files().update(fileId=file_id, body={"trashed": True}).execute()
 
 
+def upload_to_drive(file_bytes: bytes, filename: str, folder_id: str = None) -> str:
+    """Upload bytes to Google Drive using user OAuth. Returns the Drive file ID."""
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseUpload
+    drive = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
+    file_metadata: dict = {'name': filename}
+    if folder_id:
+        file_metadata['parents'] = [folder_id]
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype='application/pdf')
+    result = drive.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    return result['id']
+
+
 # ---------------------------------------------------------------------------
 # Summary Sheet generation
 # ---------------------------------------------------------------------------

@@ -6,6 +6,8 @@ from app.database import get_supabase
 from app.auth import require_auth
 from app.services import r2 as r2_service
 from app.config import settings
+from telegram import Bot
+from telegram.request import HTTPXRequest
 import io, tempfile, os, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -66,24 +68,24 @@ def _get_finance_director(db) -> dict:
 
 
 def _download_doc(drive_file_id: str) -> bytes:
-    """Download a claim document from R2 (path contains '/') or Drive (legacy)."""
+    """Download a claim document from R2 (path contains '/') or Drive."""
     if '/' in drive_file_id:
         return r2_service.download_file(drive_file_id)
-    from app.services import drive as drive_service
-    return drive_service.download_file(drive_file_id)
+    from app.services import pdf as pdf_service
+    return pdf_service.download_drive_file(drive_file_id)
 
 
 def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str, reference_code: str, db) -> str:
-    object_name = r2_service.make_document_object_name(reference_code, filename)
-    r2_service.upload_file(pdf_bytes, object_name, content_type="application/pdf")
+    from app.services import pdf as pdf_service
+    drive_file_id = pdf_service.upload_to_drive(pdf_bytes, filename, settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
     db.table("claim_documents").update({"is_current": False}).eq("claim_id", claim_id).eq("type", doc_type).eq("is_current", True).execute()
     db.table("claim_documents").insert({
         "claim_id": claim_id,
         "type": doc_type,
-        "drive_file_id": object_name,
+        "drive_file_id": drive_file_id,
         "is_current": True,
     }).execute()
-    return object_name
+    return drive_file_id
 
 
 def _do_compile(claim_id: str, reference_code: str, db) -> dict:
