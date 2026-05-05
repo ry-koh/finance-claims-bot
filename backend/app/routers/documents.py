@@ -286,17 +286,20 @@ def _do_generate(claim_id: str, db) -> dict:
         db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
         raise HTTPException(500, f"Document generation failed: {e}")
 
-    db.table("claims").update({"status": "docs_generated", "error_message": None}).eq("id", claim_id).execute()
+    # Determine fallback status based on whether a screenshot already exists
+    screenshot_check = db.table("claim_documents").select("id").eq("claim_id", claim_id).eq("type", "email_screenshot").eq("is_current", True).execute()
+    fallback_status = "screenshot_uploaded" if screenshot_check.data else "docs_generated"
+    db.table("claims").update({"status": fallback_status, "error_message": None}).eq("id", claim_id).execute()
 
     # Auto-compile (screenshot must already be present for this to succeed)
     try:
         compile_result = _do_compile(claim_id, claim["reference_code"], db)
         return {"success": True, "documents": generated, "claim_status": "compiled", "page_count": compile_result["page_count"]}
     except ValueError:
-        return {"success": True, "documents": generated, "claim_status": "docs_generated"}
+        return {"success": True, "documents": generated, "claim_status": fallback_status}
     except Exception as e:
         logger.exception("Auto-compile failed for claim %s: %s", claim_id, e)
-        return {"success": True, "documents": generated, "claim_status": "docs_generated"}
+        return {"success": True, "documents": generated, "claim_status": fallback_status}
 
 
 @router.post("/generate/{claim_id}")
