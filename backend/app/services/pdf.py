@@ -154,6 +154,10 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
         amount_raw = receipt.get("amount")
         return f"{desc}  SGD {amount_raw}".strip() if amount_raw is not None else desc
 
+    # MF approval as first page
+    if mf_approval_drive_id:
+        _add_image_page(pdf, mf_approval_drive_id, "[Master's Fund Approval]")
+
     # For each BT: linked receipt images first, then BT images, then refund images
     for bt in bank_transactions:
         for receipt in receipts_by_bt.get(bt["id"], []):
@@ -173,10 +177,6 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
         for img in (receipt.get("images") or []):
             if img.get("drive_file_id"):
                 _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
-
-    # MF approval screenshot (last page)
-    if mf_approval_drive_id:
-        _add_image_page(pdf, mf_approval_drive_id, "[Master's Fund Approval]")
 
     # Ensure at least one page so pypdf can read the file
     if pdf.page == 0:

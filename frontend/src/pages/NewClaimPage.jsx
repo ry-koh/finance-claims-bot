@@ -5,7 +5,7 @@ import { useClaimers, useCreateClaimer } from '../api/claimers'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
-import { submitTransportData } from '../api/documents'
+import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -435,6 +435,36 @@ function Step2({ data, onChange }) {
         />
       </div>
 
+      {/* MF Approval upload — shown only when WBS Account is Master's Fund */}
+      {data.wbsAccount === 'MF' && (
+        <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-800">Master's Fund Approval <span className="text-red-500">*</span></p>
+          <p className="text-xs text-amber-700">Attach the approval document before submitting.</p>
+          {data.mfApprovalFile ? (
+            <div className="flex items-center justify-between px-3 py-2 bg-white border border-amber-200 rounded-lg">
+              <span className="text-sm text-amber-800 font-medium truncate">{data.mfApprovalFile.name}</span>
+              <button type="button" onClick={() => onChange({ mfApprovalFile: null })} className="text-xs text-red-500 underline ml-2 shrink-0">Remove</button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center gap-1 border-2 border-dashed border-amber-300 rounded-xl py-4 cursor-pointer hover:bg-amber-100 active:bg-amber-200">
+              <span className="text-xl">📎</span>
+              <span className="text-sm font-medium text-amber-700">Upload approval</span>
+              <span className="text-xs text-amber-500">Tap to browse</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) onChange({ mfApprovalFile: file })
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
+        </div>
+      )}
+
       {/* Remarks */}
       <div>
         <Label>Remarks</Label>
@@ -576,6 +606,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)
       e.amount = 'Enter a valid amount > 0'
     if (!form.category) e.category = 'Required'
+    if (!form.date) e.date = 'Required'
     return e
   }
 
@@ -714,12 +745,13 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
       </div>
 
       <div>
-        <Label>Receipt Date</Label>
+        <Label required>Receipt Date</Label>
         <Input
           type="date"
           value={form.date}
           onChange={(v) => set('date', v)}
         />
+        {errors.date && <p className="text-xs text-red-500 mt-0.5">{errors.date}</p>}
       </div>
 
       <button
@@ -1187,6 +1219,7 @@ const DEFAULT_STEP2 = {
   remarks: '',
   transportFormNeeded: false,
   transportTrips: [],
+  mfApprovalFile: null,
   isPartial: false,
   partialAmount: '',
   otherEmails: [],
@@ -1318,7 +1351,12 @@ export default function NewClaimPage() {
       claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
 
-      // 1b. Save transport trip data if needed
+      // 1b. Upload MF approval if present
+      if (step2.wbsAccount === 'MF' && step2.mfApprovalFile) {
+        try { await uploadMfApproval({ claimId, file: step2.mfApprovalFile }) } catch {}
+      }
+
+      // 1c. Save transport trip data if needed
       if (step2.transportFormNeeded && step2.transportTrips.length > 0) {
         try {
           await submitTransportData({

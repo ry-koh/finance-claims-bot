@@ -83,10 +83,19 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
         amount = float(receipt.get("amount") or 0)
         company = receipt.get("company") or ""
         description = receipt.get("description") or ""
-        date = receipt.get("date") or ""
-        receipt_lines.append(
-            f"<div>#{n}: ${amount:.2f}, {company}, {description}, {date}</div>"
-        )
+        raw_date = receipt.get("date") or ""
+        try:
+            from datetime import datetime as _dt
+            formatted_date = _dt.fromisoformat(str(raw_date)).strftime('%d/%m/%Y') if raw_date else ""
+        except Exception:
+            formatted_date = raw_date
+        parts = [f"${amount:.2f}"]
+        if company:
+            parts.append(company)
+        parts.append(description)
+        if formatted_date:
+            parts.append(formatted_date)
+        receipt_lines.append(f"<div>#{n}: {', '.join(parts)}</div>")
     receipt_list_html = "\n  ".join(receipt_lines)
 
     # --- Remarks: user-written portion (strip any stored AUTO block) ---
