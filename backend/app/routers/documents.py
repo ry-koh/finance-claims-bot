@@ -25,7 +25,7 @@ class TransportTrip(BaseModel):
     date: Optional[str] = None   # YYYY-MM-DD
     time: Optional[str] = None   # HH:MM
     distance_km: Optional[float] = None
-    mode: str  # taxi, bus_mrt, mileage
+    mode: Optional[str] = None
     amount: float
 
 

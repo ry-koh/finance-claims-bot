@@ -368,6 +368,10 @@ def generate_summary(
                 "range": cell("B36"),
                 "values": [[claim.get('wbs_no', '')]],
             },
+            {
+                "range": cell("I36"),
+                "values": [[f"${total_amount:.2f}"]],
+            },
         ]
 
         # --- Line item rows (starting at row 31) ---
@@ -515,14 +519,27 @@ def generate_transport(
         trips = transport_data.get("trips", [])
         total_amount = sum(float(t.get("amount") or 0) for t in trips)
 
+        _WBS_LABELS = {"SA": "Student Account", "MF": "Master Fund"}
+        wbs_label = _WBS_LABELS.get(claim.get("wbs_account", ""), claim.get("wbs_account", ""))
+
         replacements: dict[str, str] = {
             "<<FD_NAME>>": finance_director.get("name", ""),
             "<<FD_PHONE_NUMBER>>": finance_director.get("phone", ""),
             "<<FD_PERSONAL_EMAIL_ADDRESS>>": finance_director.get("email", ""),
             "<<TOTAL>>": f"{total_amount:.2f}",
-            "<<WBS_ACCOUNT>>": claim.get("wbs_account", ""),
+            "<<WBS_ACCOUNT>>": wbs_label,
             "<<WBS_NUMBER>>": claim.get("wbs_no", ""),
         }
+
+        def _fmt_date(d: str) -> str:
+            if not d:
+                return ""
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.strptime(d, "%Y-%m-%d")
+                return f"{dt.day} {dt.strftime('%B %Y')}"
+            except Exception:
+                return d
 
         # Per-trip placeholders (template supports up to 3 trips)
         for i in range(1, 4):
@@ -530,7 +547,7 @@ def generate_transport(
                 trip = trips[i - 1]
                 dist = trip.get("distance_km")
                 replacements.update({
-                    f"<<DATE_{i}>>": str(trip.get("date", "")),
+                    f"<<DATE_{i}>>": _fmt_date(str(trip.get("date", ""))),
                     f"<<TIME_{i}>>": str(trip.get("time", "")),
                     f"<<FROM_{i}>>": str(trip.get("from_location", "")),
                     f"<<TO_{i}>>": str(trip.get("to_location", "")),

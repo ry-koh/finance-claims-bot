@@ -300,13 +300,7 @@ function Step1({ data, onChange }) {
 
 // ─── Transport Trips Input ─────────────────────────────────────────────────────
 
-const TRANSPORT_MODES = [
-  { value: 'taxi', label: 'Taxi' },
-  { value: 'bus_mrt', label: 'Bus / MRT' },
-  { value: 'mileage', label: 'Mileage (private car)' },
-]
-
-const EMPTY_TRIP = { from: '', to: '', purpose: '', date: '', time: '', mode: 'taxi', amount: '', distance_km: '' }
+const EMPTY_TRIP = { from: '', to: '', purpose: '', date: '', time: '', amount: '', distance_km: '' }
 
 function TransportTripsInput({ trips, onChange }) {
   function addTrip() {
@@ -358,24 +352,14 @@ function TransportTripsInput({ trips, onChange }) {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs text-gray-500">Mode</label>
-              <Select
-                value={trip.mode}
-                onChange={(v) => updateTrip(i, 'mode', v)}
-                options={TRANSPORT_MODES}
-              />
-            </div>
-            <div>
               <label className="text-xs text-gray-500">Amount ($)</label>
               <Input type="number" step="0.01" min="0" value={trip.amount} onChange={(v) => updateTrip(i, 'amount', v)} placeholder="0.00" />
             </div>
-          </div>
-          {trip.mode === 'mileage' && (
             <div>
               <label className="text-xs text-gray-500">Distance (km)</label>
               <Input type="number" step="0.1" min="0" value={trip.distance_km} onChange={(v) => updateTrip(i, 'distance_km', v)} placeholder="0.0" />
             </div>
-          )}
+          </div>
         </div>
       ))}
       {trips.length < 3 && (
@@ -1345,7 +1329,6 @@ export default function NewClaimPage() {
               purpose: t.purpose,
               date: t.date || undefined,
               time: t.time || undefined,
-              mode: t.mode,
               amount: Number(t.amount) || 0,
               distance_km: t.distance_km ? Number(t.distance_km) : undefined,
             }))
