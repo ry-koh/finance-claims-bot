@@ -231,7 +231,11 @@ def _do_generate(claim_id: str, db) -> dict:
         # Auto-generate remarks (all lines use "- " prefix per spec)
         auto_remarks: list[str] = []
 
-        # Partial claim line goes first in the AUTO block
+        # MF line is always first in the AUTO block
+        if claim.get("wbs_account") == "MF":
+            auto_remarks.append("- Claimed from Master Fund")
+
+        # Partial claim line next
         if claim.get("is_partial") and claim.get("partial_amount") is not None:
             auto_remarks.append(f"- Partial Claim of ${float(claim['partial_amount']):.2f}")
 
@@ -279,14 +283,12 @@ def _do_generate(claim_id: str, db) -> dict:
         existing = claim.get("remarks") or ""
         sentinel_re = re.compile(r"<!-- AUTO -->.*?<!-- /AUTO -->", re.DOTALL)
         new_block = f"<!-- AUTO -->\n{auto_block}\n<!-- /AUTO -->"
-        # Strip old sentinel to get user-written portion
+        # Strip old sentinel and any legacy MF line to get clean user-written portion
         user_portion = sentinel_re.sub("", existing).strip()
-        # Prepend "Claimed from Master Fund" for MF claims (once only)
         mf_line = "- Claimed from Master Fund"
-        if claim.get("wbs_account") == "MF":
-            if not user_portion.startswith(mf_line):
-                user_portion = (mf_line + "\n" + user_portion).strip()
-        new_remarks = (user_portion + "\n\n" + new_block).strip() if user_portion else new_block
+        if user_portion.startswith(mf_line):
+            user_portion = user_portion[len(mf_line):].strip()
+        new_remarks = (user_portion + "\n" + new_block).strip() if user_portion else new_block
         db.table("claims").update({"remarks": new_remarks}).eq("id", claim_id).execute()
 
     except Exception as e:

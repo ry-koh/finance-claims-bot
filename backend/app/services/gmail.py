@@ -33,7 +33,7 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
-def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
+def build_claim_email(claim: dict, receipts: list, bank_transactions: list = None) -> MIMEMultipart:
     """
     Build a MIMEMultipart email for a claim submission.
 
@@ -43,8 +43,9 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
         Full claim dict with nested ``claimer`` (name, matric_no, phone, email)
         and ``claimer.cca.name``.
     receipts : list[dict]
-        Flat list of receipt dicts.  Each receipt may have
-        ``receipt_image_drive_id`` and ``bank_screenshot_drive_id``.
+        Flat list of receipt dicts.
+    bank_transactions : list[dict]
+        Bank transactions with nested ``refunds`` list.
 
     Returns
     -------
@@ -53,6 +54,8 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
         The caller is responsible for setting To/Subject/Cc headers.
     """
     from app.services import pdf as pdf_service
+
+    bank_transactions = bank_transactions or []
 
     claimer = claim.get("claimer") or {}
     cca = claimer.get("cca") or {}
@@ -67,7 +70,6 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
     claim_description = claim.get("claim_description") or ""
     claim_description_upper = claim_description.upper()
     reference_code = claim.get("reference_code") or ""
-    remarks = claim.get("remarks") or ""
 
     total_amount = float(claim.get("total_amount") or 0)
 
@@ -87,11 +89,46 @@ def build_claim_email(claim: dict, receipts: list) -> MIMEMultipart:
         )
     receipt_list_html = "\n  ".join(receipt_lines)
 
-    # --- Remarks section ---
-    cleaned_remarks = re.sub(r'<!--\s*/?AUTO\s*-->', '', remarks).strip()
-    if cleaned_remarks:
-        cleaned_html = cleaned_remarks.replace('\n', '<br>')
-        remarks_section = f"<p><strong>Remarks:</strong><br>{cleaned_html}</p>"
+    # --- Remarks: user-written portion (strip any stored AUTO block) ---
+    raw_remarks = claim.get("remarks") or ""
+    user_remarks = re.sub(r'<!-- AUTO -->.*?<!-- /AUTO -->', '', raw_remarks, flags=re.DOTALL).strip()
+    # Also strip MF line if it was previously saved in the user portion (now lives in auto block)
+    mf_line = "- Claimed from Master Fund"
+    if user_remarks.startswith(mf_line):
+        user_remarks = user_remarks[len(mf_line):].strip()
+
+    # --- Auto-remarks computed fresh from current claim state ---
+    auto_remarks: list[str] = []
+    if claim.get("wbs_account") == "MF":
+        auto_remarks.append(mf_line)
+    if claim.get("is_partial") and claim.get("partial_amount") is not None:
+        auto_remarks.append(f"- Partial Claim of ${float(claim['partial_amount']):.2f}")
+    for bt in bank_transactions:
+        if bt.get("refunds"):
+            refund_amounts = [float(r["amount"]) for r in bt["refunds"]]
+            net = float(bt["amount"]) - sum(refund_amounts)
+            for amt in refund_amounts:
+                auto_remarks.append(f"- An item was refunded and the amount refunded is ${amt:.2f}")
+            auto_remarks.append(f"- Initial Bank Transaction is ${float(bt['amount']):.2f}")
+            formula = " - ".join([f"${float(bt['amount']):.2f}"] + [f"${a:.2f}" for a in refund_amounts])
+            auto_remarks.append(f"- Total Amount is {formula} = ${net:.2f}")
+    receipt_count = len(receipts)
+    bt_count = len(bank_transactions)
+    if receipt_count:
+        auto_remarks.append(f"- {receipt_count} Receipt{'s' if receipt_count != 1 else ''} Attached")
+    if bt_count:
+        auto_remarks.append(f"- {bt_count} Bank Transaction{'s' if bt_count != 1 else ''} Attached")
+
+    # Combine: user remarks then auto remarks, single newline between them
+    parts = []
+    if user_remarks:
+        parts.append(user_remarks)
+    if auto_remarks:
+        parts.append("\n".join(auto_remarks))
+    combined_remarks = "\n".join(parts)
+
+    if combined_remarks:
+        remarks_section = f"<p><strong>Remarks:</strong><br>{combined_remarks.replace(chr(10), '<br>')}</p>"
     else:
         remarks_section = ""
 

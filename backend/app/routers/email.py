@@ -46,7 +46,15 @@ async def send_claim_email(
         .execute()
     )
 
-    # 3. Validate claimer email
+    # 3. Fetch bank transactions with refunds
+    bt_resp = (
+        db.table("bank_transactions")
+        .select("*, refunds:bank_transaction_refunds(*)")
+        .eq("claim_id", claim_id)
+        .execute()
+    )
+
+    # 4. Validate claimer email
     claimer = claim.get("claimer") or {}
     claimer_email = claimer.get("email") or ""
     if not claimer_email:
@@ -55,7 +63,7 @@ async def send_claim_email(
             detail="Claimer does not have an email address",
         )
 
-    # 4. Validate claim status
+    # 5. Validate claim status
     allowed_statuses = {"draft", "email_sent"}
     current_status = claim.get("status") or ""
     if current_status not in allowed_statuses:
@@ -68,8 +76,8 @@ async def send_claim_email(
         )
 
     try:
-        # 5. Build email
-        msg = gmail_service.build_claim_email(claim, receipts_resp.data)
+        # 6. Build email
+        msg = gmail_service.build_claim_email(claim, receipts_resp.data, bt_resp.data)
 
         # 6. Set headers — send only to treasurer, no CC
         reference_code = claim.get("reference_code") or ""
@@ -144,7 +152,15 @@ async def resend_claim_email(
         .execute()
     )
 
-    # 3. Validate claimer email
+    # 3. Fetch bank transactions with refunds
+    bt_resp = (
+        db.table("bank_transactions")
+        .select("*, refunds:bank_transaction_refunds(*)")
+        .eq("claim_id", claim_id)
+        .execute()
+    )
+
+    # 4. Validate claimer email
     claimer = claim.get("claimer") or {}
     claimer_email = claimer.get("email") or ""
     if not claimer_email:
@@ -154,8 +170,8 @@ async def resend_claim_email(
         )
 
     try:
-        # 4. Build email
-        msg = gmail_service.build_claim_email(claim, receipts_resp.data)
+        # 5. Build email
+        msg = gmail_service.build_claim_email(claim, receipts_resp.data, bt_resp.data)
 
         # 5. Set headers — send only to treasurer, no CC
         reference_code = claim.get("reference_code") or ""
