@@ -198,8 +198,6 @@ POST /documents/send_telegram/{claim_id}
 
 * Cloud Run free tier (512 MB RAM)
 * Supabase pauses after inactivity → kept alive via cron
-* Memory constraints due to Google + AWS SDKs (~160 MB usage)
-* Planned optimization: replace SDKs with direct HTTP calls
 
 ---
 
