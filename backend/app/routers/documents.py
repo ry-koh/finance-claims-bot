@@ -20,6 +20,8 @@ class TransportTrip(BaseModel):
     from_location: str
     to_location: str
     purpose: str
+    date: Optional[str] = None   # YYYY-MM-DD
+    time: Optional[str] = None   # HH:MM
     distance_km: Optional[float] = None
     mode: str  # taxi, bus_mrt, mileage
     amount: float
@@ -53,11 +55,14 @@ def _get_finance_director(db) -> dict:
             "name": settings.FD_NAME,
             "matric_no": settings.FD_MATRIC_NO,
             "phone": settings.FD_PHONE,
+            "email": settings.FD_EMAIL,
         }
     result = db.table("finance_team").select("*").eq("role", "director").limit(1).execute()
     if not result.data:
         raise HTTPException(500, "No Finance Director configured — set FD_NAME/FD_MATRIC_NO/FD_PHONE env vars")
-    return result.data[0]
+    fd = result.data[0]
+    fd.setdefault("email", settings.FD_EMAIL)
+    return fd
 
 
 def _download_doc(drive_file_id: str) -> bytes:

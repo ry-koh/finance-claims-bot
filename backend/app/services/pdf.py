@@ -489,68 +489,60 @@ def generate_transport(
     transport_data: dict,
     finance_director: dict,
 ) -> bytes:
-    """Generate a transport claim form PDF from the Google Sheets template."""
+    """Generate a transport claim form PDF from the Google Sheets template.
+
+    Template uses <<PLACEHOLDER>> style find/replace for header fields and
+    per-trip placeholders <<DATE_N>>, <<TIME_N>>, <<FROM_N>>, <<TO_N>>,
+    <<PURPOSE_N>>, <<DIST_N>>, <<AMOUNT_N>> for up to 3 trips (rows 22-24).
+    """
     copied_id = copy_template(settings.TRANSPORT_TEMPLATE_ID, f"Transport - {claim['reference_code']}")
     try:
         sheets = get_sheets_service()
 
-        # Retrieve the first sheet name
-        spreadsheet = sheets.spreadsheets().get(
-            spreadsheetId=copied_id,
-            fields="sheets.properties.title",
-        ).execute()
-        sheet_name = spreadsheet["sheets"][0]["properties"]["title"]
-
-        # Build trip rows.
-        # Column layout (A–I): From | gap | To | gap | Purpose | gap | Distance | Taxi/Mileage | Bus/MRT
         trips = transport_data.get("trips", [])
-        trip_rows = []
-        for trip in trips:
-            mode = trip.get("mode", "")
-            amount = trip.get("amount", "")
+        total_amount = sum(float(t.get("amount") or 0) for t in trips)
 
-            # Taxi and mileage (private car) amounts go in the Taxi column (col H).
-            # Bus/MRT amounts go in the Bus/MRT column (col I).
-            taxi_col = amount if mode in ("taxi", "mileage") else ""
-            bus_mrt_col = amount if mode == "bus_mrt" else ""
+        replacements: dict[str, str] = {
+            "<<FD_NAME>>": finance_director.get("name", ""),
+            "<<FD_PHONE_NUMBER>>": finance_director.get("phone", ""),
+            "<<FD_PERSONAL_EMAIL_ADDRESS>>": finance_director.get("email", ""),
+            "<<TOTAL>>": f"{total_amount:.2f}",
+            "<<WBS_ACCOUNT>>": claim.get("wbs_account", ""),
+            "<<WBS_NUMBER>>": claim.get("wbs_no", ""),
+        }
 
-            distance = trip.get("distance_km")
-            trip_rows.append([
-                trip.get("from", ""),   # A
-                "",                      # B (gap)
-                trip.get("to", ""),      # C
-                "",                      # D (gap)
-                trip.get("purpose", ""), # E
-                "",                      # F (gap)
-                distance if distance is not None else "",  # G
-                taxi_col,                # H
-                bus_mrt_col,             # I
-            ])
+        # Per-trip placeholders (template supports up to 3 trips)
+        for i in range(1, 4):
+            if i <= len(trips):
+                trip = trips[i - 1]
+                dist = trip.get("distance_km")
+                replacements.update({
+                    f"<<DATE_{i}>>": str(trip.get("date", "")),
+                    f"<<TIME_{i}>>": str(trip.get("time", "")),
+                    f"<<FROM_{i}>>": str(trip.get("from_location", "")),
+                    f"<<TO_{i}>>": str(trip.get("to_location", "")),
+                    f"<<PURPOSE_{i}>>": str(trip.get("purpose", "")),
+                    f"<<DIST_{i}>>": str(dist) if dist is not None else "",
+                    f"<<AMOUNT_{i}>>": f"{float(trip.get('amount') or 0):.2f}",
+                })
+            else:
+                # Clear unused trip rows
+                for field in ["DATE", "TIME", "FROM", "TO", "PURPOSE", "DIST", "AMOUNT"]:
+                    replacements[f"<<{field}_{i}>>"] = ""
 
-        if trip_rows:
-            sheets.spreadsheets().values().update(
-                spreadsheetId=copied_id,
-                range=f"{sheet_name}!A2",
-                valueInputOption="USER_ENTERED",
-                body={"values": trip_rows},
-            ).execute()
-
-        # Substitute {{WBS_NO}} placeholder in the financial table (and anywhere
-        # else it appears) using Sheets findReplace.
-        wbs_no = claim.get("wbs_no", "")
+        requests = [
+            {
+                "findReplace": {
+                    "find": find,
+                    "replacement": replacement,
+                    "allSheets": True,
+                }
+            }
+            for find, replacement in replacements.items()
+        ]
         sheets.spreadsheets().batchUpdate(
             spreadsheetId=copied_id,
-            body={
-                "requests": [
-                    {
-                        "findReplace": {
-                            "find": "{{WBS_NO}}",
-                            "replacement": wbs_no,
-                            "allSheets": True,
-                        }
-                    }
-                ]
-            },
+            body={"requests": requests},
         ).execute()
 
         return export_as_pdf(copied_id, mime_type="application/vnd.google-apps.spreadsheet")

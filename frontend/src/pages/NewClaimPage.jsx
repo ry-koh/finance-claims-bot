@@ -306,10 +306,11 @@ const TRANSPORT_MODES = [
   { value: 'mileage', label: 'Mileage (private car)' },
 ]
 
-const EMPTY_TRIP = { from: '', to: '', purpose: '', mode: 'taxi', amount: '', distance_km: '' }
+const EMPTY_TRIP = { from: '', to: '', purpose: '', date: '', time: '', mode: 'taxi', amount: '', distance_km: '' }
 
 function TransportTripsInput({ trips, onChange }) {
   function addTrip() {
+    if (trips.length >= 3) return
     onChange([...trips, { ...EMPTY_TRIP }])
   }
   function removeTrip(i) {
@@ -321,7 +322,7 @@ function TransportTripsInput({ trips, onChange }) {
 
   return (
     <div className="space-y-3 bg-blue-50 rounded-xl p-3">
-      <p className="text-xs font-medium text-blue-700">Transport Trips</p>
+      <p className="text-xs font-medium text-blue-700">Transport Trips (max 3)</p>
       {trips.length === 0 && (
         <p className="text-xs text-gray-400">No trips added yet.</p>
       )}
@@ -330,6 +331,16 @@ function TransportTripsInput({ trips, onChange }) {
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-600">Trip {i + 1}</span>
             <button type="button" onClick={() => removeTrip(i)} className="text-gray-400 hover:text-red-500 text-sm">✕</button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Date</label>
+              <Input type="date" value={trip.date} onChange={(v) => updateTrip(i, 'date', v)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Time Started</label>
+              <Input type="time" value={trip.time} onChange={(v) => updateTrip(i, 'time', v)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -367,13 +378,15 @@ function TransportTripsInput({ trips, onChange }) {
           )}
         </div>
       ))}
-      <button
-        type="button"
-        onClick={addTrip}
-        className="w-full py-2 rounded-lg border border-dashed border-blue-400 text-blue-600 text-sm font-medium"
-      >
-        + Add Trip
-      </button>
+      {trips.length < 3 && (
+        <button
+          type="button"
+          onClick={addTrip}
+          className="w-full py-2 rounded-lg border border-dashed border-blue-400 text-blue-600 text-sm font-medium"
+        >
+          + Add Trip
+        </button>
+      )}
     </div>
   )
 }
@@ -1330,6 +1343,8 @@ export default function NewClaimPage() {
               from_location: t.from,
               to_location: t.to,
               purpose: t.purpose,
+              date: t.date || undefined,
+              time: t.time || undefined,
               mode: t.mode,
               amount: Number(t.amount) || 0,
               distance_km: t.distance_km ? Number(t.distance_km) : undefined,
