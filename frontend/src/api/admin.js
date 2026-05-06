@@ -37,7 +37,11 @@ export function useApproveRegistration(options = {}) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: approveRegistration,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: PENDING_KEYS.all }),
+    onSuccess: () => {
+      // Invalidate list; prefix match also refreshes the count badge
+      queryClient.invalidateQueries({ queryKey: PENDING_KEYS.all })
+      queryClient.invalidateQueries({ queryKey: PENDING_KEYS.count })
+    },
     ...options,
   })
 }
@@ -46,7 +50,10 @@ export function useRejectRegistration(options = {}) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: rejectRegistration,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: PENDING_KEYS.all }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PENDING_KEYS.all })
+      queryClient.invalidateQueries({ queryKey: PENDING_KEYS.count })
+    },
     ...options,
   })
 }
