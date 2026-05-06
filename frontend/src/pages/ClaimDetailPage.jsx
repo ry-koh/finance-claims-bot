@@ -576,6 +576,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
                   label={file.name}
                   onRemove={() => setBtImages((prev) => prev.filter((_, j) => j !== i))}
                   onCropped={(f) => setBtImages((prev) => prev.map((x, j) => j === i ? f : x))}
+                  onCroppedMany={(fs) => setBtImages((prev) => [...prev.slice(0, i), ...fs, ...prev.slice(i + 1)])}
                 />
               ))}
             </div>

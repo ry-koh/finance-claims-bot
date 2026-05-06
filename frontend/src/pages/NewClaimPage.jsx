@@ -652,6 +652,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
                 label={file.name}
                 onRemove={() => setForm((prev) => ({ ...prev, files: prev.files.filter((_, j) => j !== i) }))}
                 onCropped={(f) => setForm((prev) => ({ ...prev, files: prev.files.map((x, j) => j === i ? f : x) }))}
+                onCroppedMany={(fs) => setForm((prev) => ({ ...prev, files: [...prev.files.slice(0, i), ...fs, ...prev.files.slice(i + 1)] }))}
               />
             ))}
           </div>
@@ -924,6 +925,7 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
                   label={file.name}
                   onRemove={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
                   onCropped={(f) => setFiles((prev) => prev.map((x, j) => j === i ? f : x))}
+                  onCroppedMany={(fs) => setFiles((prev) => [...prev.slice(0, i), ...fs, ...prev.slice(i + 1)])}
                 />
               ))}
             </div>

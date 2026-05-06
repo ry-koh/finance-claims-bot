@@ -6,18 +6,23 @@ import { pdfToImageFiles, isPdfFile } from '../utils/pdfToImages'
 /**
  * Square thumbnail with tap-to-recrop.
  *
- *   file   — File object (in-memory, not yet uploaded)
- *   src    — URL string (already uploaded image)
- *   onRemove()         — called when × is tapped
- *   onCropped(file)    — called once per confirmed cropped page
- *   reuploading        — shows spinner overlay while parent is re-uploading
+ *   file             — File object (in-memory, not yet uploaded)
+ *   src              — URL string (already uploaded image)
+ *   onRemove()       — called when × is tapped
+ *   onCropped(file)  — called with a single cropped file (single-page / stored-URL flow)
+ *   onCroppedMany(files[]) — called instead of onCropped when a PDF expands to >1 page;
+ *                            receives all confirmed pages as an array so callers can
+ *                            insert them all (rather than overwriting a single slot).
+ *                            Falls back to onCropped(files[0]) if not provided.
+ *   reuploading      — shows spinner overlay while parent is re-uploading
  */
-export default function CroppableThumb({ file, src, label = 'image', onRemove, onCropped, reuploading = false }) {
+export default function CroppableThumb({ file, src, label = 'image', onRemove, onCropped, onCroppedMany, reuploading = false }) {
   const [thumbSrc, setThumbSrc] = useState(null)
   const [cropQueue, setCropQueue] = useState([])  // File[] — pages waiting to crop
   const [cropSrc, setCropSrc] = useState(null)    // URL — for non-PDF uploaded images
   const [converting, setConverting] = useState(false)
-  const pendingConfirmsRef = useRef(0)            // tracks how many pages still to confirm
+  const pendingConfirmsRef = useRef(0)            // total pages queued
+  const confirmedPagesRef = useRef([])            // accumulates cropped pages until queue clears
 
   useEffect(() => {
     if (file) {
@@ -38,6 +43,7 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
         try {
           const pages = await pdfToImageFiles(file)
           pendingConfirmsRef.current = pages.length
+          confirmedPagesRef.current = []
           setCropQueue(pages)
         } catch (err) {
           // Conversion failed — skip crop and send the raw PDF straight to the caller;
@@ -49,6 +55,7 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
         }
       } else {
         pendingConfirmsRef.current = 1
+        confirmedPagesRef.current = []
         setCropQueue([file])
       }
     } else if (src) {
@@ -58,12 +65,25 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
   }
 
   function handleCropConfirm(croppedFile) {
-    // Emit immediately — caller handles each page independently
-    onCropped?.(croppedFile)
-    setCropQueue((prev) => prev.slice(1))
+    const allConfirmed = [...confirmedPagesRef.current, croppedFile]
+    confirmedPagesRef.current = allConfirmed
+    setCropQueue((prev) => {
+      const remaining = prev.slice(1)
+      if (remaining.length === 0) {
+        confirmedPagesRef.current = []
+        if (allConfirmed.length > 1 && onCroppedMany) {
+          onCroppedMany(allConfirmed)
+        } else {
+          // Single page or no onCroppedMany — emit each page individually
+          allConfirmed.forEach((f) => onCropped?.(f))
+        }
+      }
+      return remaining
+    })
   }
 
   function handleCropCancel() {
+    confirmedPagesRef.current = []
     setCropQueue([])
     setCropSrc(null)
   }
