@@ -26,10 +26,15 @@ async def get_me(
     {...member, "ccas": [...]} if active treasurer.
     {...member} if active member/director.
     """
+    try:
+        tg_id = int(telegram_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid Telegram user ID")
+
     response = (
         db.table("finance_team")
         .select("*")
-        .eq("telegram_id", telegram_id)
+        .eq("telegram_id", tg_id)
         .execute()
     )
     if not response.data:
@@ -57,6 +62,11 @@ async def register(
     db: Client = Depends(get_supabase),
 ):
     """Create a pending finance_team registration."""
+    try:
+        tg_id = int(telegram_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid Telegram user ID")
+
     if payload.role not in ("member", "treasurer"):
         raise HTTPException(400, "role must be 'member' or 'treasurer'")
     if payload.role == "member" and not payload.email.endswith("@u.nus.edu"):
@@ -69,14 +79,14 @@ async def register(
     existing = (
         db.table("finance_team")
         .select("id")
-        .eq("telegram_id", telegram_id)
+        .eq("telegram_id", tg_id)
         .execute()
     )
     if existing.data:
         raise HTTPException(409, "Already registered")
 
     result = db.table("finance_team").insert({
-        "telegram_id": int(telegram_id),
+        "telegram_id": tg_id,
         "name": payload.name.strip(),
         "email": payload.email.strip().lower(),
         "role": payload.role,
@@ -84,7 +94,7 @@ async def register(
     }).execute()
     member = result.data[0]
 
-    if payload.role == "treasurer" and payload.cca_ids:
+    if payload.role == "treasurer":
         db.table("treasurer_ccas").insert([
             {"finance_team_id": member["id"], "cca_id": cca_id}
             for cca_id in payload.cca_ids
@@ -100,10 +110,15 @@ async def update_registration(
     db: Client = Depends(get_supabase),
 ):
     """Update a pending registration (allows editing before approval)."""
+    try:
+        tg_id = int(telegram_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid Telegram user ID")
+
     existing = (
         db.table("finance_team")
         .select("*")
-        .eq("telegram_id", telegram_id)
+        .eq("telegram_id", tg_id)
         .eq("status", "pending")
         .execute()
     )
@@ -111,6 +126,8 @@ async def update_registration(
         raise HTTPException(404, "No pending registration found")
     member = existing.data[0]
 
+    if payload.role not in ("member", "treasurer"):
+        raise HTTPException(400, "role must be 'member' or 'treasurer'")
     if payload.role == "member" and not payload.email.endswith("@u.nus.edu"):
         raise HTTPException(400, "Finance members must use an @u.nus.edu email address")
     if payload.role == "treasurer" and not payload.cca_ids:
@@ -130,4 +147,20 @@ async def update_registration(
             for cca_id in payload.cca_ids
         ]).execute()
 
-    return {"success": True}
+    updated = (
+        db.table("finance_team")
+        .select("*")
+        .eq("id", member["id"])
+        .single()
+        .execute()
+    )
+    result = updated.data
+    if result.get("role") == "treasurer":
+        cca_links = (
+            db.table("treasurer_ccas")
+            .select("cca_id, ccas(id, name)")
+            .eq("finance_team_id", result["id"])
+            .execute()
+        )
+        result["ccas"] = [row["ccas"] for row in (cca_links.data or []) if row.get("ccas")]
+    return result
