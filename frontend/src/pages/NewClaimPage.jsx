@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '../context/AuthContext'
 import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
-import { useClaimers, useCreateClaimer } from '../api/claimers'
+import { useClaimers, useCreateClaimer, fetchClaimers } from '../api/claimers'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
@@ -380,7 +382,7 @@ function TransportTripsInput({ trips, onChange }) {
 
 // ─── Step 2: What ─────────────────────────────────────────────────────────────
 
-function Step2({ data, onChange }) {
+function Step2({ data, onChange, isTreasurer, wbsOptions }) {
   const [emailInput, setEmailInput] = useState('')
   const [emailError, setEmailError] = useState('')
 
@@ -433,7 +435,7 @@ function Step2({ data, onChange }) {
           value={data.wbsAccount}
           onChange={(v) => onChange({ wbsAccount: v })}
           placeholder="Select WBS account…"
-          options={WBS_ACCOUNTS}
+          options={wbsOptions ?? WBS_ACCOUNTS}
         />
       </div>
 
@@ -467,17 +469,19 @@ function Step2({ data, onChange }) {
         </div>
       )}
 
-      {/* Remarks */}
-      <div>
-        <Label>Remarks</Label>
-        <p className="text-xs text-gray-400 mb-1">Write each remark starting with "- " e.g. - Bought for event</p>
-        <Textarea
-          value={data.remarks}
-          onChange={(v) => onChange({ remarks: v })}
-          placeholder="- Optional remark…"
-          rows={2}
-        />
-      </div>
+      {/* Remarks — hidden for treasurers */}
+      {!isTreasurer && (
+        <div>
+          <Label>Remarks</Label>
+          <p className="text-xs text-gray-400 mb-1">Write each remark starting with "- " e.g. - Bought for event</p>
+          <Textarea
+            value={data.remarks}
+            onChange={(v) => onChange({ remarks: v })}
+            placeholder="- Optional remark…"
+            rows={2}
+          />
+        </div>
+      )}
 
       {/* Partial Claim */}
       <div className="space-y-2">
@@ -593,7 +597,7 @@ const EMPTY_RECEIPT = {
   fx_screenshot_files: [],
 }
 
-function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
+function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer }) {
   const [form, setForm] = useState(
     initial ? { ...initial, amount: String(initial.amount) } : EMPTY_RECEIPT
   )
@@ -609,7 +613,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
     if (!form.description.trim()) e.description = 'Required'
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)
       e.amount = 'Enter a valid amount > 0'
-    if (!form.category) e.category = 'Required'
+    if (!isTreasurer && !form.category) e.category = 'Required'
     if (!form.date) e.date = 'Required'
     return e
   }
@@ -629,7 +633,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
       }
     }
 
-    const result = { ...form, amount: Number(form.amount) }
+    const result = { ...form, amount: Number(form.amount), category: isTreasurer ? (form.category || 'N/A') : form.category }
     if (onEdit) {
       onEdit(result)
     } else {
@@ -691,36 +695,40 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
           />
           {errors.amount && <p className="text-xs text-red-500 mt-0.5">{errors.amount}</p>}
         </div>
-        <div>
-          <Label required>Category</Label>
-          <Select
-            value={form.category}
-            onChange={(v) => set('category', v)}
-            placeholder="Select…"
-            options={CATEGORIES}
-          />
-          {errors.category && <p className="text-xs text-red-500 mt-0.5">{errors.category}</p>}
-        </div>
+        {!isTreasurer && (
+          <div>
+            <Label required>Category</Label>
+            <Select
+              value={form.category}
+              onChange={(v) => set('category', v)}
+              placeholder="Select…"
+              options={CATEGORIES}
+            />
+            {errors.category && <p className="text-xs text-red-500 mt-0.5">{errors.category}</p>}
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label required>GST Code</Label>
-          <Select
-            value={form.gst_code}
-            onChange={(v) => set('gst_code', v)}
-            options={GST_CODES}
-          />
+      {!isTreasurer && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label required>GST Code</Label>
+            <Select
+              value={form.gst_code}
+              onChange={(v) => set('gst_code', v)}
+              options={GST_CODES}
+            />
+          </div>
+          <div>
+            <Label required>DR / CR</Label>
+            <Select
+              value={form.dr_cr}
+              onChange={(v) => set('dr_cr', v)}
+              options={DR_CR_OPTIONS}
+            />
+          </div>
         </div>
-        <div>
-          <Label required>DR / CR</Label>
-          <Select
-            value={form.dr_cr}
-            onChange={(v) => set('dr_cr', v)}
-            options={DR_CR_OPTIONS}
-          />
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <div>
@@ -809,7 +817,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
 
 // ─── DraftReceiptRow ──────────────────────────────────────────────────────────
 
-function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories }) {
+function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTreasurer }) {
   const [editing, setEditing] = useState(false)
 
   if (editing) {
@@ -819,6 +827,7 @@ function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories }) {
           initial={receipt}
           onEdit={(updated) => { onEdit(receipt.localId, updated); setEditing(false) }}
           existingCategories={existingCategories.filter((c) => c !== receipt.category)}
+          isTreasurer={isTreasurer}
         />
         <button
           type="button"
@@ -1019,7 +1028,7 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
 function BtDraftCard({
   bt, btIndex, linkedReceipts, expanded, onToggle, onRemove, onEdit,
   onAddReceipt, onRemoveReceipt, onEditReceipt, existingCategories,
-  onAddBtFiles, onRemoveBtFile,
+  onAddBtFiles, onRemoveBtFile, isTreasurer,
 }) {
   const [showReceiptForm, setShowReceiptForm] = useState(false)
   const receiptSum = linkedReceipts.reduce((s, r) => s + r.amount, 0)
@@ -1077,6 +1086,7 @@ function BtDraftCard({
                   onEdit={onEditReceipt}
                   onRemove={onRemoveReceipt}
                   existingCategories={existingCategories}
+                  isTreasurer={isTreasurer}
                 />
               ))}
             </div>
@@ -1095,6 +1105,7 @@ function BtDraftCard({
               <ReceiptForm
                 onAdd={(r) => { onAddReceipt(r); setShowReceiptForm(false) }}
                 existingCategories={existingCategories}
+                isTreasurer={isTreasurer}
               />
               <button
                 type="button"
@@ -1116,7 +1127,7 @@ function BtDraftCard({
 function Step3({
   bankTransactions, onAddBt, onRemoveBt, onEditBt,
   receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
-  expandedBtId, onSetExpandedBtId,
+  expandedBtId, onSetExpandedBtId, isTreasurer,
 }) {
   const [showBtModal, setShowBtModal] = useState(false)
   const [editingBt, setEditingBt] = useState(null)
@@ -1159,6 +1170,7 @@ function Step3({
                 existingCategories={allCategories}
                 onAddBtFiles={() => {}}
                 onRemoveBtFile={() => {}}
+                isTreasurer={isTreasurer}
               />
             )
           })}
@@ -1195,6 +1207,7 @@ function Step3({
                 onEdit={onEditReceipt}
                 onRemove={onRemoveReceipt}
                 existingCategories={allCategories}
+                isTreasurer={isTreasurer}
               />
             ))}
           </div>
@@ -1205,6 +1218,7 @@ function Step3({
             <ReceiptForm
               onAdd={(r) => { onAddReceipt(r); setShowUnlinkedForm(false) }}
               existingCategories={allCategories}
+              isTreasurer={isTreasurer}
             />
             <button type="button" onClick={() => setShowUnlinkedForm(false)} className="w-full mt-2 text-xs text-gray-500 py-1">
               Cancel
@@ -1257,6 +1271,56 @@ function Step3({
   )
 }
 
+// ─── Treasurer CCA / Claimer Picker ──────────────────────────────────────────
+
+function TreasurerClaimerPicker({ user, value, onChange }) {
+  const ccaIds = (user?.ccas || []).map((c) => c.id)
+
+  const { data: claimers = [] } = useQuery({
+    queryKey: ['claimers', 'treasurer', ccaIds.join(',')],
+    queryFn: () =>
+      Promise.all(ccaIds.map((id) => fetchClaimers({ cca_id: id }))).then((results) => results.flat()),
+    enabled: ccaIds.length > 0,
+  })
+
+  useEffect(() => {
+    if (claimers.length === 1 && !value) {
+      onChange(claimers[0].id)
+    }
+  }, [claimers, value, onChange])
+
+  if (ccaIds.length === 0) return <p className="text-sm text-gray-400">No CCAs assigned to your account.</p>
+  if (claimers.length === 0) return <p className="text-sm text-gray-400">Loading your CCA info…</p>
+
+  if (claimers.length === 1) {
+    return (
+      <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
+        Claiming as: <strong>{claimers[0].name}</strong> ({user?.ccas?.[0]?.name})
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-700 mb-1">
+        Which CCA is this claim for? <span className="text-red-500">*</span>
+      </label>
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+      >
+        <option value="" disabled>Select CCA</option>
+        {claimers.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name} — {user?.ccas?.find((cca) => cca.id === c.cca_id)?.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const DRAFT_KEY = 'new_claim_draft'
@@ -1280,6 +1344,10 @@ export default function NewClaimPage() {
   const createClaim = useCreateClaim()
   const createReceipt = useCreateReceipt()
   const savedSuccessfully = useRef(false)
+
+  const { user } = useAuth()
+  const isTreasurer = user?.role === 'treasurer'
+  const availableWbsAccounts = isTreasurer ? ['SA', 'MF'] : WBS_ACCOUNTS
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
@@ -1333,7 +1401,7 @@ export default function NewClaimPage() {
 
   // ── Step validation ──────────────────────────────────────────────────────
 
-  const step1Valid = step1.portfolioId && step1.ccaId && step1.claimerId
+  const step1Valid = isTreasurer ? !!step1.claimerId : step1.portfolioId && step1.ccaId && step1.claimerId
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -1521,8 +1589,15 @@ export default function NewClaimPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <StepIndicator current={step} />
 
-        {step === 1 && <Step1 data={step1} onChange={updateStep1} />}
-        {step === 2 && <Step2 data={step2} onChange={updateStep2} />}
+        {step === 1 && !isTreasurer && <Step1 data={step1} onChange={updateStep1} />}
+        {step === 1 && isTreasurer && (
+          <TreasurerClaimerPicker
+            user={user}
+            value={step1.claimerId}
+            onChange={(claimerId) => updateStep1({ claimerId })}
+          />
+        )}
+        {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} wbsOptions={availableWbsAccounts} />}
         {step === 3 && (
           <Step3
             bankTransactions={bankTransactions}
@@ -1535,6 +1610,7 @@ export default function NewClaimPage() {
             onEditReceipt={editReceipt}
             expandedBtId={expandedBtId}
             onSetExpandedBtId={setExpandedBtId}
+            isTreasurer={isTreasurer}
           />
         )}
 

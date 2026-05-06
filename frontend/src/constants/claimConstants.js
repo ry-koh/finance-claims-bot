@@ -13,3 +13,5 @@ export const CATEGORIES = [
 
 export const GST_CODES = ['IE', 'I9', 'L9']
 export const DR_CR_OPTIONS = ['DR', 'CR']
+
+export const TREASURER_WBS_ACCOUNTS = ['SA', 'MF']
