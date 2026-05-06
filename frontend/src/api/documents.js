@@ -14,9 +14,10 @@ export const generateDocuments = (claimId) =>
 export const compileDocuments = (claimId) =>
   api.post(`/documents/compile/${claimId}`).then((r) => r.data)
 
-export const uploadScreenshot = ({ claimId, file }) => {
+export const uploadScreenshot = ({ claimId, files }) => {
   const form = new FormData()
-  form.append('file', file)
+  const fileList = Array.isArray(files) ? files : [files]
+  fileList.forEach((f) => form.append('files', f))
   return api.post(`/documents/upload-screenshot/${claimId}`, form).then((r) => r.data)
 }
 

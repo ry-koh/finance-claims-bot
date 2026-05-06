@@ -208,6 +208,7 @@ class ReceiptCreate(BaseModel):
     bank_transaction_drive_ids: Optional[List[str]] = None  # creates new BT if set
     is_foreign_currency: bool = False
     exchange_rate_screenshot_drive_id: Optional[str] = None
+    exchange_rate_screenshot_drive_ids: Optional[List[str]] = None
 
 
 class ReceiptUpdate(BaseModel):
@@ -227,6 +228,7 @@ class ReceiptUpdate(BaseModel):
     clear_bank_transaction: Optional[bool] = None  # set True to explicitly unlink
     is_foreign_currency: Optional[bool] = None
     exchange_rate_screenshot_drive_id: Optional[str] = None
+    exchange_rate_screenshot_drive_ids: Optional[List[str]] = None
 
 
 class SplitCheckResponse(BaseModel):

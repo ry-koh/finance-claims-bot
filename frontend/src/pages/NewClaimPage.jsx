@@ -442,25 +442,28 @@ function Step2({ data, onChange }) {
         <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
           <p className="text-xs font-semibold text-amber-800">Master's Fund Approval <span className="text-red-500">*</span></p>
           <p className="text-xs text-amber-700">Attach the approval document before submitting.</p>
-          {data.mfApprovalFile ? (
-            <div className="flex items-center gap-3">
-              <CroppableThumb
-                file={data.mfApprovalFile}
-                label="MF approval"
-                onRemove={() => onChange({ mfApprovalFile: null })}
-                onCropped={(f) => onChange({ mfApprovalFile: f })}
-              />
-              <p className="text-xs text-amber-800 font-medium">Tap to crop/rotate</p>
+          {data.mfApprovalFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {data.mfApprovalFiles.map((f, i) => (
+                <CroppableThumb
+                  key={i}
+                  file={f}
+                  label={f.name}
+                  onRemove={() => onChange({ mfApprovalFiles: data.mfApprovalFiles.filter((_, j) => j !== i) })}
+                  onCropped={(cf) => onChange({ mfApprovalFiles: data.mfApprovalFiles.map((x, j) => j === i ? cf : x) })}
+                  onCroppedMany={(cfs) => onChange({ mfApprovalFiles: [...data.mfApprovalFiles.slice(0, i), ...cfs, ...data.mfApprovalFiles.slice(i + 1)] })}
+                />
+              ))}
             </div>
-          ) : (
-            <DragDropZone
-              label="Upload approval"
-              onFile={(file) => onChange({ mfApprovalFile: file })}
-              dragBorder="border-amber-400 bg-amber-50"
-              idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
-              withCrop
-            />
           )}
+          <DragDropZone
+            label={data.mfApprovalFiles.length > 0 ? '+ Add more pages' : 'Upload approval'}
+            onFiles={(files) => onChange({ mfApprovalFiles: [...data.mfApprovalFiles, ...files] })}
+            multiple
+            dragBorder="border-amber-400 bg-amber-50"
+            idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
+            withCrop
+          />
         </div>
       )}
 
@@ -587,7 +590,7 @@ const EMPTY_RECEIPT = {
   date: '',
   files: [],
   is_foreign_currency: false,
-  fx_screenshot_file: null,
+  fx_screenshot_files: [],
 }
 
 function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
@@ -757,7 +760,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
             checked={form.is_foreign_currency}
             onChange={(e) => {
               set('is_foreign_currency', e.target.checked)
-              if (!e.target.checked) set('fx_screenshot_file', null)
+              if (!e.target.checked) set('fx_screenshot_files', [])
             }}
             className="w-4 h-4 text-orange-500 border-gray-300 rounded"
           />
@@ -766,21 +769,29 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
         {form.is_foreign_currency && (
           <div className="pl-6">
             <Label>Exchange Rate Screenshot</Label>
-            {form.fx_screenshot_file ? (
-              <div className="flex items-center justify-between px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-lg">
-                <span className="text-xs text-orange-700 truncate">{form.fx_screenshot_file.name}</span>
-                <button type="button" onClick={() => set('fx_screenshot_file', null)} className="text-xs text-red-500 ml-2 shrink-0">Remove</button>
+            {form.fx_screenshot_files?.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {form.fx_screenshot_files.map((f, i) => (
+                  <CroppableThumb
+                    key={i}
+                    file={f}
+                    label={f.name}
+                    onRemove={() => set('fx_screenshot_files', form.fx_screenshot_files.filter((_, j) => j !== i))}
+                    onCropped={(cf) => set('fx_screenshot_files', form.fx_screenshot_files.map((x, j) => j === i ? cf : x))}
+                    onCroppedMany={(cfs) => set('fx_screenshot_files', [...form.fx_screenshot_files.slice(0, i), ...cfs, ...form.fx_screenshot_files.slice(i + 1)])}
+                  />
+                ))}
               </div>
-            ) : (
-              <DragDropZone
-                label="+ Add exchange rate screenshot"
-                onFile={(file) => set('fx_screenshot_file', file)}
-                compact
-                withCrop
-                dragBorder="border-orange-400 bg-orange-50"
-                idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
-              />
             )}
+            <DragDropZone
+              label="+ Add exchange rate screenshot"
+              onFiles={(files) => set('fx_screenshot_files', [...(form.fx_screenshot_files ?? []), ...files])}
+              multiple
+              compact
+              withCrop
+              dragBorder="border-orange-400 bg-orange-50"
+              idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
+            />
           </div>
         )}
       </div>
@@ -862,7 +873,7 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
   const netAmount = Number(amount || 0) - refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
 
   function addRefund() {
-    setRefunds((prev) => [...prev, { localId: generateId(), amount: '', file: null }])
+    setRefunds((prev) => [...prev, { localId: generateId(), amount: '', files: [] }])
   }
 
   function updateRefund(localId, patch) {
@@ -880,10 +891,10 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
       return
     }
     for (const r of refunds) {
-      if (r.amount && !r.file) { setErr('Each refund needs a file'); return }
-      if (!r.amount && r.file) { setErr('Each refund needs an amount'); return }
+      if (r.amount && !r.files?.length) { setErr('Each refund needs a file'); return }
+      if (!r.amount && r.files?.length) { setErr('Each refund needs an amount'); return }
     }
-    onSave({ amount: val, files, refunds: refunds.filter((r) => r.amount && r.file) })
+    onSave({ amount: val, files, refunds: refunds.filter((r) => r.amount && r.files?.length) })
   }
 
   const inputCls = 'w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
@@ -956,22 +967,28 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
                 onChange={(e) => updateRefund(refund.localId, { amount: e.target.value })}
                 className="w-24 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                {refund.file ? (
-                  <CroppableThumb
-                    file={refund.file}
-                    label={refund.file.name}
-                    onRemove={() => updateRefund(refund.localId, { file: null })}
-                    onCropped={(f) => updateRefund(refund.localId, { file: f })}
-                  />
-                ) : (
-                  <DragDropZone
-                    label="+ Attach File"
-                    onFile={(file) => updateRefund(refund.localId, { file })}
-                    compact
-                    withCrop
-                  />
+              <div className="flex-1 min-w-0">
+                {refund.files?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1">
+                    {refund.files.map((f, fi) => (
+                      <CroppableThumb
+                        key={fi}
+                        file={f}
+                        label={f.name}
+                        onRemove={() => updateRefund(refund.localId, { files: refund.files.filter((_, j) => j !== fi) })}
+                        onCropped={(cf) => updateRefund(refund.localId, { files: refund.files.map((x, j) => j === fi ? cf : x) })}
+                        onCroppedMany={(cfs) => updateRefund(refund.localId, { files: [...refund.files.slice(0, fi), ...cfs, ...refund.files.slice(fi + 1)] })}
+                      />
+                    ))}
+                  </div>
                 )}
+                <DragDropZone
+                  label="+ Attach File"
+                  onFiles={(fs) => updateRefund(refund.localId, { files: [...(refund.files ?? []), ...fs] })}
+                  multiple
+                  compact
+                  withCrop
+                />
               </div>
               <button type="button" onClick={() => removeRefund(refund.localId)} className="text-red-400 text-sm">×</button>
             </div>
@@ -1252,7 +1269,7 @@ const DEFAULT_STEP2 = {
   remarks: '',
   transportFormNeeded: false,
   transportTrips: [],
-  mfApprovalFile: null,
+  mfApprovalFiles: [],
   isPartial: false,
   partialAmount: '',
   otherEmails: [],
@@ -1302,7 +1319,7 @@ export default function NewClaimPage() {
         ...bt,
         refunds: (bt.refunds ?? []).map(({ file: _rf, ...r }) => r),
       }))
-      const receiptsForDraft = receipts.map(({ files: _f, fx_screenshot_file: _fx, ...r }) => r)
+      const receiptsForDraft = receipts.map(({ files: _f, fx_screenshot_files: _fx, ...r }) => r)
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId }))
     } catch {}
   }, [step, step1, step2, receipts, bankTransactions, expandedBtId])
@@ -1394,9 +1411,11 @@ export default function NewClaimPage() {
       claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
 
-      // 1b. Upload MF approval if present
-      if (step2.wbsAccount === 'MF' && step2.mfApprovalFile) {
-        try { await uploadMfApproval({ claimId, file: step2.mfApprovalFile }) } catch {}
+      // 1b. Upload MF approval if present (one call per page)
+      if (step2.wbsAccount === 'MF' && step2.mfApprovalFiles?.length) {
+        for (const file of step2.mfApprovalFiles) {
+          try { await uploadMfApproval({ claimId, file }) } catch {}
+        }
       }
 
       // 1c. Save transport trip data if needed
@@ -1426,8 +1445,9 @@ export default function NewClaimPage() {
           try { await uploadBankTransactionImage({ btId: created.id, file }) } catch {}
         }
         for (const refund of (bt.refunds ?? [])) {
-          if (!refund.amount || !refund.file) continue
-          try { await createBtRefund({ btId: created.id, amount: Number(refund.amount), file: refund.file }) } catch {}
+          if (!refund.amount || !refund.files?.length) continue
+          // First file creates the refund; subsequent files are extra attachments
+          try { await createBtRefund({ btId: created.id, amount: Number(refund.amount), files: refund.files }) } catch {}
         }
       }
 
@@ -1442,12 +1462,14 @@ export default function NewClaimPage() {
             // Non-fatal: Drive unavailable, continue saving
           }
         }
-        let fxDriveId = null
-        if (r.is_foreign_currency && r.fx_screenshot_file) {
-          try {
-            const data = await uploadReceiptImage({ file: r.fx_screenshot_file, claim_id: claimId, image_type: 'exchange_rate' })
-            fxDriveId = data.drive_file_id
-          } catch {}
+        const fxDriveIds = []
+        if (r.is_foreign_currency && r.fx_screenshot_files?.length) {
+          for (const file of r.fx_screenshot_files) {
+            try {
+              const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'exchange_rate' })
+              fxDriveIds.push(data.drive_file_id)
+            } catch {}
+          }
         }
         await createReceipt.mutateAsync({
           claim_id: claimId,
@@ -1462,7 +1484,8 @@ export default function NewClaimPage() {
           dr_cr: r.dr_cr,
           receipt_image_drive_ids: driveIds.length > 0 ? driveIds : undefined,
           is_foreign_currency: r.is_foreign_currency,
-          exchange_rate_screenshot_drive_id: fxDriveId || undefined,
+          exchange_rate_screenshot_drive_id: fxDriveIds[0] || undefined,
+          exchange_rate_screenshot_drive_ids: fxDriveIds.length > 1 ? fxDriveIds : undefined,
         })
       }
 

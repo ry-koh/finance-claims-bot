@@ -208,7 +208,8 @@ def _do_generate(claim_id: str, db) -> dict:
             half_receipts = [r for r in all_receipts if r["id"] in half_receipt_ids]
             half_bts = [bt for bt in bank_transactions if _bt_in_half(bt, all_receipts, half_receipt_ids, is_first_half)]
 
-            loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code, mf_approval_drive_id=claim.get("mf_approval_drive_id"))
+            mf_ids = claim.get("mf_approval_drive_ids") or ([claim["mf_approval_drive_id"]] if claim.get("mf_approval_drive_id") else [])
+            loa_bytes = pdf_service.generate_loa(claim, half_receipts, half_bts, reference_code_override=ref_code, mf_approval_drive_ids=mf_ids)
             doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(doc_key)
@@ -356,54 +357,62 @@ async def compile_documents(
 @router.post("/upload-screenshot/{claim_id}")
 async def upload_screenshot(
     claim_id: str,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     db=Depends(get_supabase),
     _auth=Depends(require_auth),
 ):
-    """Upload an email screenshot, convert to PDF, and mark claim as screenshot_uploaded."""
+    """Upload one or more email screenshots, create a multi-page A4 PDF, and mark claim as screenshot_uploaded."""
     from PIL import Image as PILImage  # lazy import
     from fpdf import FPDF  # lazy import
     from app.services import image as image_service  # lazy import
     import gc
 
-    raw_bytes = await file.read()
-    try:
-        processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
-    finally:
-        del raw_bytes
-
-    claim = _get_full_claim(claim_id, db)
-
-    # Convert processed JPEG to single-page A4 PDF, filling as much of the page as possible
-    img_info = PILImage.open(io.BytesIO(processed))
-    img_w, img_h = img_info.size
-    img_info.close()
-
     A4_W, A4_H = 210.0, 297.0
     MARGIN = 5.0
     avail_w = A4_W - 2 * MARGIN
     avail_h = A4_H - 2 * MARGIN
-    scale = min(avail_w / img_w, avail_h / img_h)
-    render_w = img_w * scale
-    render_h = img_h * scale
-    x_pos = (A4_W - render_w) / 2
-    y_pos = (A4_H - render_h) / 2
+
+    claim = _get_full_claim(claim_id, db)
 
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(False)
-    pdf.add_page()
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-        tmp.write(processed)
-        tmp_path = tmp.name
-    del processed
+
+    tmp_paths = []
     try:
-        pdf.image(tmp_path, x=x_pos, y=y_pos, w=render_w, h=render_h)
+        for file in files:
+            raw_bytes = await file.read()
+            try:
+                processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
+            finally:
+                del raw_bytes
+
+            img_info = PILImage.open(io.BytesIO(processed))
+            img_w, img_h = img_info.size
+            img_info.close()
+
+            scale = min(avail_w / img_w, avail_h / img_h)
+            render_w = img_w * scale
+            render_h = img_h * scale
+            x_pos = (A4_W - render_w) / 2
+            y_pos = (A4_H - render_h) / 2
+
+            pdf.add_page()
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                tmp.write(processed)
+                tmp_paths.append(tmp.name)
+            del processed
+            pdf.image(tmp_paths[-1], x=x_pos, y=y_pos, w=render_w, h=render_h)
     finally:
-        os.unlink(tmp_path)
+        for p in tmp_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
     screenshot_pdf_bytes = bytes(pdf.output())
     del pdf
     gc.collect()
@@ -458,12 +467,18 @@ async def upload_mf_approval(
         raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
 
     claim = _get_full_claim(claim_id, db)
-    drive_file_id = r2_service.upload_file(
-        processed,
-        f"mf_approval/{claim_id}.jpg",
-        "image/jpeg",
-    )
-    db.table("claims").update({"mf_approval_drive_id": drive_file_id}).eq("id", claim_id).execute()
+    from datetime import datetime as _dt
+    timestamp = _dt.now().strftime("%Y%m%d_%H%M%S_%f")
+    object_name = f"mf_approval/{claim_id}_{timestamp}.jpg"
+    drive_file_id = r2_service.upload_file(processed, object_name, "image/jpeg")
+
+    # Append to the array column; also keep legacy single-ID column as first entry
+    existing = claim.get("mf_approval_drive_ids") or []
+    new_ids = existing + [drive_file_id]
+    db.table("claims").update({
+        "mf_approval_drive_id": new_ids[0],
+        "mf_approval_drive_ids": new_ids,
+    }).eq("id", claim_id).execute()
     return {"success": True, "drive_file_id": drive_file_id}
 
 

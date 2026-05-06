@@ -1,5 +1,6 @@
 import logging
 
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from supabase import Client
 from datetime import datetime
@@ -96,17 +97,24 @@ async def delete_bank_transaction_image(
 async def create_bt_refund(
     bt_id: str,
     amount: float = Form(...),
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    """Create a refund for a bank transaction with receipt image."""
-    _bt, drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "refund")
+    """Create a refund for a bank transaction. Accepts one or more image files."""
+    if not files:
+        raise HTTPException(status_code=422, detail="At least one file is required")
+
+    drive_file_ids = []
+    for f in files:
+        _, fid = await _get_bt_and_upload_file(bt_id, f, db, "refund")
+        drive_file_ids.append(fid)
 
     refund_resp = db.table("bank_transaction_refunds").insert({
         "bank_transaction_id": bt_id,
         "amount": amount,
-        "drive_file_id": drive_file_id,
+        "drive_file_id": drive_file_ids[0],
+        "extra_drive_file_ids": drive_file_ids[1:] if len(drive_file_ids) > 1 else [],
     }).execute()
     if not refund_resp.data:
         raise HTTPException(status_code=500, detail="Failed to create refund")

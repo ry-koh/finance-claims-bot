@@ -27,10 +27,11 @@ export const updateBankTransaction = ({ btId, amount }) => {
   return api.patch(`/bank-transactions/${btId}`, form).then((r) => r.data)
 }
 
-export const createBtRefund = ({ btId, amount, file }) => {
+export const createBtRefund = ({ btId, amount, files }) => {
   const form = new FormData()
   form.append('amount', String(amount))
-  form.append('file', file)
+  const fileList = Array.isArray(files) ? files : [files]
+  fileList.forEach((f) => form.append('files', f))
   return api.post(`/bank-transactions/${btId}/refunds`, form).then((r) => r.data)
 }
 

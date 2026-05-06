@@ -296,7 +296,8 @@ function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
     <div className="flex flex-col gap-1 w-full">
       <DragDropZone
         label={variant === 'secondary' ? 'Re-upload Screenshot' : 'Upload Screenshot'}
-        onFile={(file) => onAction('screenshot', file)}
+        onFiles={(files) => onAction('screenshot', files)}
+        multiple
         loading={loading}
         compact
         withCrop
@@ -311,7 +312,12 @@ function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
 // MF Approval screenshot upload — drag-drop zone
 function MfApprovalUpload({ claim, onUploaded }) {
   const upload = useUploadMfApproval()
-  const hasApproval = !!claim.mf_approval_drive_id
+  // Support both old single-ID field and new array field
+  const approvalIds = claim.mf_approval_drive_ids?.length
+    ? claim.mf_approval_drive_ids
+    : claim.mf_approval_drive_id
+      ? [claim.mf_approval_drive_id]
+      : []
 
   async function handleFile(file) {
     try {
@@ -320,23 +326,34 @@ function MfApprovalUpload({ claim, onUploaded }) {
     } catch {}
   }
 
+  async function handleFiles(files) {
+    for (const file of files) {
+      try { await upload.mutateAsync({ claimId: claim.id, file }) } catch {}
+    }
+    onUploaded()
+  }
+
   return (
     <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-4">
       <h2 className="text-sm font-semibold text-amber-700 mb-2">Master's Fund Approval</h2>
-      {hasApproval && (
-        <div className="flex items-center gap-3 mb-2">
-          <CroppableThumb
-            src={imageUrl(claim.mf_approval_drive_id)}
-            label="MF approval"
-            reuploading={upload.isPending}
-            onCropped={handleFile}
-          />
-          <p className="text-xs text-green-700 font-medium">✓ Uploaded — tap to crop/rotate</p>
+      {approvalIds.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {approvalIds.map((id, i) => (
+            <CroppableThumb
+              key={id}
+              src={imageUrl(id)}
+              label={`MF approval page ${i + 1}`}
+              reuploading={upload.isPending}
+              onCropped={handleFile}
+            />
+          ))}
+          <p className="text-xs text-green-700 font-medium self-center">✓ Uploaded — tap to crop/rotate</p>
         </div>
       )}
       <DragDropZone
-        label={hasApproval ? 'Replace Approval' : 'Upload Approval Screenshot'}
-        onFile={handleFile}
+        label={approvalIds.length > 0 ? '+ Add more pages' : 'Upload Approval Screenshot'}
+        onFiles={handleFiles}
+        multiple
         loading={upload.isPending}
         dragBorder="border-amber-400 bg-amber-50"
         idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
@@ -405,7 +422,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
   const queryClient = useQueryClient()
   const [amount, setAmount] = useState(initial ? String(initial.amount ?? '') : '')
   const [btImages, setBtImages] = useState([]) // queued File objects
-  const [refunds, setRefunds] = useState([]) // [{ amount: '', file: null, uploading: false }]
+  const [refunds, setRefunds] = useState([]) // [{ amount: '', files: [], uploading: false }]
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [err, setErr] = useState(null)
@@ -417,7 +434,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
   const busy = saving || deleting
 
   function addRefund() {
-    setRefunds((prev) => [...prev, { amount: '', file: null, uploading: false }])
+    setRefunds((prev) => [...prev, { amount: '', files: [], uploading: false }])
   }
 
   function removeRefund(idx) {
@@ -491,7 +508,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
     }
     for (let i = 0; i < refunds.length; i++) {
       const r = refunds[i]
-      if (r.amount && !r.file) {
+      if (r.amount && !r.files?.length) {
         setErr(`Refund #${i + 1} requires a file.`)
         return
       }
@@ -513,8 +530,8 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
       }
 
       for (const refund of refunds) {
-        if (!refund.amount || !refund.file) continue
-        await createBtRefund({ btId, amount: Number(refund.amount), file: refund.file })
+        if (!refund.amount || !refund.files?.length) continue
+        await createBtRefund({ btId, amount: Number(refund.amount), files: refund.files })
       }
 
       onSaved()
@@ -626,22 +643,28 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
                 value={refund.amount}
                 onChange={(e) => updateRefund(idx, { amount: e.target.value })}
               />
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                {refund.file ? (
-                  <CroppableThumb
-                    file={refund.file}
-                    label={refund.file.name}
-                    onRemove={() => updateRefund(idx, { file: null })}
-                    onCropped={(f) => updateRefund(idx, { file: f })}
-                  />
-                ) : (
-                  <DragDropZone
-                    label="+ Attach File"
-                    onFile={(file) => updateRefund(idx, { file })}
-                    compact
-                    withCrop
-                  />
+              <div className="flex-1 min-w-0">
+                {refund.files?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1">
+                    {refund.files.map((f, fi) => (
+                      <CroppableThumb
+                        key={fi}
+                        file={f}
+                        label={f.name}
+                        onRemove={() => updateRefund(idx, { files: refund.files.filter((_, j) => j !== fi) })}
+                        onCropped={(cf) => updateRefund(idx, { files: refund.files.map((x, j) => j === fi ? cf : x) })}
+                        onCroppedMany={(cfs) => updateRefund(idx, { files: [...refund.files.slice(0, fi), ...cfs, ...refund.files.slice(fi + 1)] })}
+                      />
+                    ))}
+                  </div>
                 )}
+                <DragDropZone
+                  label="+ Attach File"
+                  onFiles={(fs) => updateRefund(idx, { files: [...(refund.files ?? []), ...fs] })}
+                  multiple
+                  compact
+                  withCrop
+                />
               </div>
               <button
                 type="button"
@@ -959,8 +982,9 @@ export default function ClaimDetailPage() {
     } else if (type === 'resend') {
       resendEmailMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
     } else if (type === 'screenshot') {
+      const files = Array.isArray(payload) ? payload : [payload]
       uploadScreenshotMut.mutate(
-        { claimId: id, file: payload },
+        { claimId: id, files },
         { onSuccess: invalidateClaim, onError: errHandler }
       )
     } else if (type === 'generate') {
@@ -1628,13 +1652,25 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   const [reuploadingFx, setReuploadingFx] = useState(false)
   const [fxUploadErr, setFxUploadErr] = useState(null)
 
-  async function handleFxFile(file) {
+  async function handleFxFiles(files) {
     if (!claimId) return
     setFxUploadErr(null)
     setUploadingFx(true)
     try {
-      const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'exchange_rate' })
-      setF(p => ({ ...p, exchange_rate_screenshot_drive_id: data.drive_file_id }))
+      const newIds = []
+      for (const file of files) {
+        const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'exchange_rate' })
+        newIds.push(data.drive_file_id)
+      }
+      setF(p => {
+        const existing = p.exchange_rate_screenshot_drive_ids?.length
+          ? p.exchange_rate_screenshot_drive_ids
+          : p.exchange_rate_screenshot_drive_id
+            ? [p.exchange_rate_screenshot_drive_id]
+            : []
+        const all = [...existing, ...newIds]
+        return { ...p, exchange_rate_screenshot_drive_ids: all, exchange_rate_screenshot_drive_id: all[0] ?? null }
+      })
     } catch (e) {
       setFxUploadErr(extractError(e, 'Screenshot upload failed. Please try again.'))
     } finally {
@@ -1655,12 +1691,18 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
     }
   }
 
-  async function handleReuploadFxImage(croppedFile) {
+  async function handleReuploadFxImage(croppedFile, replacingId) {
     if (!claimId) return
     setReuploadingFx(true)
     try {
       const data = await uploadReceiptImage({ file: croppedFile, claim_id: claimId, image_type: 'exchange_rate' })
-      setF(p => ({ ...p, exchange_rate_screenshot_drive_id: data.drive_file_id }))
+      setF(p => {
+        const existing = p.exchange_rate_screenshot_drive_ids?.length
+          ? p.exchange_rate_screenshot_drive_ids
+          : p.exchange_rate_screenshot_drive_id ? [p.exchange_rate_screenshot_drive_id] : []
+        const next = existing.map(id => id === replacingId ? data.drive_file_id : id)
+        return { ...p, exchange_rate_screenshot_drive_ids: next, exchange_rate_screenshot_drive_id: next[0] ?? null }
+      })
     } catch {
       // silently ignore
     } finally {
@@ -1769,25 +1811,44 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
       {f.is_foreign_currency && (
         <div className="pl-6">
           <p className="text-xs text-gray-500 mb-1">Exchange Rate Screenshot</p>
-          {f.exchange_rate_screenshot_drive_id ? (
-            <CroppableThumb
-              src={imageUrl(f.exchange_rate_screenshot_drive_id)}
-              label="Exchange rate screenshot"
-              reuploading={reuploadingFx}
-              onRemove={() => setF(p => ({ ...p, exchange_rate_screenshot_drive_id: null }))}
-              onCropped={handleReuploadFxImage}
-            />
-          ) : (
-            <DragDropZone
-              label={uploadingFx ? 'Uploading…' : '+ Add exchange rate screenshot'}
-              onFile={handleFxFile}
-              loading={uploadingFx}
-              compact
-              withCrop
-              dragBorder="border-orange-400 bg-orange-50"
-              idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
-            />
-          )}
+          {(() => {
+            const fxIds = f.exchange_rate_screenshot_drive_ids?.length
+              ? f.exchange_rate_screenshot_drive_ids
+              : f.exchange_rate_screenshot_drive_id
+                ? [f.exchange_rate_screenshot_drive_id]
+                : []
+            return (
+              <>
+                {fxIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-1">
+                    {fxIds.map((id, i) => (
+                      <CroppableThumb
+                        key={id}
+                        src={imageUrl(id)}
+                        label="Exchange rate screenshot"
+                        reuploading={reuploadingFx}
+                        onRemove={() => setF(p => {
+                          const next = fxIds.filter((_, j) => j !== i)
+                          return { ...p, exchange_rate_screenshot_drive_ids: next, exchange_rate_screenshot_drive_id: next[0] ?? null }
+                        })}
+                        onCropped={(cf) => handleReuploadFxImage(cf, id)}
+                      />
+                    ))}
+                  </div>
+                )}
+                <DragDropZone
+                  label={uploadingFx ? 'Uploading…' : '+ Add exchange rate screenshot'}
+                  onFiles={handleFxFiles}
+                  multiple
+                  loading={uploadingFx}
+                  compact
+                  withCrop
+                  dragBorder="border-orange-400 bg-orange-50"
+                  idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
+                />
+              </>
+            )
+          })()}
           {fxUploadErr && <p className="text-xs text-red-500 mt-0.5">{fxUploadErr}</p>}
         </div>
       )}
