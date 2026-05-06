@@ -45,22 +45,18 @@ async def _get_member(db, telegram_id: int) -> dict | None:
 
 async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> None:
     member = await _get_member(db, telegram_id)
-    if not member:
-        await _send_message(
-            bot,
-            chat_id,
-            "You are not registered. Ask the Finance Director to add you.\n\n"
-            f"Your Telegram ID is: <code>{telegram_id}</code>\n"
-            "Share this with the director so they can run:\n"
-            f"<code>/confirm_member {telegram_id} YourName your@email.com member</code>",
-            parse_mode="HTML",
-        )
-        return
-
     from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # lazy import
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
     )
+    if not member:
+        await _send_message(
+            bot,
+            chat_id,
+            "Welcome! Tap below to open the Claims App and complete your registration.",
+            reply_markup=keyboard,
+        )
+        return
     await _send_message(
         bot,
         chat_id,
