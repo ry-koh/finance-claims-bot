@@ -27,7 +27,26 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
   }, [file, srcProp])
 
   function rotate(deg) {
-    cropperInstance?.rotate(deg)
+    if (!cropperInstance) return
+    cropperInstance.rotate(deg)
+
+    // After rotation the canvas may overflow the container (portrait→landscape or vice versa).
+    // Re-fit it so the whole image stays visible without zooming in.
+    requestAnimationFrame(() => {
+      if (!cropperInstance) return
+      const container = cropperInstance.getContainerData()
+      const canvas = cropperInstance.getCanvasData()
+
+      const fit = Math.min(container.width / canvas.width, container.height / canvas.height)
+      const newW = Math.floor(canvas.width * fit)
+      const newH = Math.floor(canvas.height * fit)
+      const newLeft = Math.floor((container.width - newW) / 2)
+      const newTop = Math.floor((container.height - newH) / 2)
+
+      cropperInstance.setCanvasData({ left: newLeft, top: newTop, width: newW, height: newH })
+      // Expand crop box to fill the newly fitted canvas
+      cropperInstance.setCropBoxData({ left: newLeft, top: newTop, width: newW, height: newH })
+    })
   }
 
   function confirm() {
@@ -79,8 +98,8 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
         <div className="w-14" />
       </div>
 
-      {/* Cropper */}
-      <div style={{ height: `calc(100vh - ${CHROME_HEIGHT}px)` }}>
+      {/* Cropper — touch-action:none stops the browser hijacking swipe/pinch gestures */}
+      <div style={{ height: `calc(100vh - ${CHROME_HEIGHT}px)`, touchAction: 'none' }}>
         <Cropper
           src={src}
           style={{ height: '100%', width: '100%' }}
@@ -95,6 +114,10 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
           cropBoxMovable
           cropBoxResizable
           toggleDragModeOnDblclick={false}
+          zoomOnTouch
+          zoomOnWheel={false}
+          minCropBoxWidth={20}
+          minCropBoxHeight={20}
         />
       </div>
 
