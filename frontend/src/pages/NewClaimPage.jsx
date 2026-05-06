@@ -579,6 +579,8 @@ const EMPTY_RECEIPT = {
   company: '',
   date: '',
   files: [],
+  is_foreign_currency: false,
+  fx_screenshot_file: null,
 }
 
 function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
@@ -738,6 +740,42 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
         {errors.date && <p className="text-xs text-red-500 mt-0.5">{errors.date}</p>}
       </div>
 
+      {/* Foreign currency */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            id="fx-check"
+            type="checkbox"
+            checked={form.is_foreign_currency}
+            onChange={(e) => {
+              set('is_foreign_currency', e.target.checked)
+              if (!e.target.checked) set('fx_screenshot_file', null)
+            }}
+            className="w-4 h-4 text-orange-500 border-gray-300 rounded"
+          />
+          <label htmlFor="fx-check" className="text-sm text-gray-700">Charged in foreign currency</label>
+        </div>
+        {form.is_foreign_currency && (
+          <div className="pl-6">
+            <Label>Exchange Rate Screenshot</Label>
+            {form.fx_screenshot_file ? (
+              <div className="flex items-center justify-between px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-lg">
+                <span className="text-xs text-orange-700 truncate">{form.fx_screenshot_file.name}</span>
+                <button type="button" onClick={() => set('fx_screenshot_file', null)} className="text-xs text-red-500 ml-2 shrink-0">Remove</button>
+              </div>
+            ) : (
+              <DragDropZone
+                label="+ Add exchange rate screenshot"
+                onFile={(file) => set('fx_screenshot_file', file)}
+                compact
+                dragBorder="border-orange-400 bg-orange-50"
+                idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
+              />
+            )}
+          </div>
+        )}
+      </div>
+
       <button
         type="button"
         onClick={handleAdd}
@@ -780,6 +818,7 @@ function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories }) {
         <p className="text-xs text-gray-500">
           {receipt.category}{receipt.company ? ` · ${receipt.company}` : ''}
           {receipt.files?.length > 0 && ` · ${receipt.files.length} photo${receipt.files.length !== 1 ? 's' : ''}`}
+          {receipt.is_foreign_currency && <span className="ml-1 text-orange-600 font-semibold">FX</span>}
         </p>
       </div>
       <div className="flex items-center gap-2 ml-2 shrink-0">
@@ -1227,7 +1266,7 @@ export default function NewClaimPage() {
         const { step: s, step1: s1, step2: s2, receipts: r, bankTransactions: bt, expandedBtId: eid } = JSON.parse(saved)
         if (s1) setStep1(s1)
         if (s2) setStep2(s2)
-        if (r) setReceipts(r.map((rec) => ({ ...rec, files: [] })))
+        if (r) setReceipts(r.map((rec) => ({ ...rec, files: [], fx_screenshot_file: null })))
         if (bt) setBankTransactions(bt.map((b) => ({ files: [], ...b, refunds: (b.refunds ?? []).map((r) => ({ ...r, file: null })) })))
         if (eid) setExpandedBtId(eid)
         if (s) setStep(s)
@@ -1242,7 +1281,7 @@ export default function NewClaimPage() {
         ...bt,
         refunds: (bt.refunds ?? []).map(({ file: _rf, ...r }) => r),
       }))
-      const receiptsForDraft = receipts.map(({ files: _f, ...r }) => r)
+      const receiptsForDraft = receipts.map(({ files: _f, fx_screenshot_file: _fx, ...r }) => r)
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId }))
     } catch {}
   }, [step, step1, step2, receipts, bankTransactions, expandedBtId])
@@ -1307,6 +1346,16 @@ export default function NewClaimPage() {
     try {
       const totalAmount = receipts.reduce((s, r) => s + r.amount, 0)
 
+      // Auto-append remarks for FX receipts and MF approval
+      let autoRemarks = step2.remarks.trim()
+      const hasFxReceipt = receipts.some(r => r.is_foreign_currency && r.fx_screenshot_file)
+      const FX_REMARK = '- Exchange Rate Screenshot is Attached'
+      const MF_REMARK = "- Master's Approval Screenshot is attached"
+      if (hasFxReceipt && !autoRemarks.includes(FX_REMARK))
+        autoRemarks = autoRemarks ? `${autoRemarks}\n${FX_REMARK}` : FX_REMARK
+      if (step2.wbsAccount === 'MF' && step2.mfApprovalFile && !autoRemarks.includes(MF_REMARK))
+        autoRemarks = autoRemarks ? `${autoRemarks}\n${MF_REMARK}` : MF_REMARK
+
       // 1. Create the claim
       const claim = await createClaim.mutateAsync({
         claimer_id: step1.claimerId,
@@ -1314,7 +1363,7 @@ export default function NewClaimPage() {
         total_amount: totalAmount,
         date: step2.date,
         wbs_account: step2.wbsAccount,
-        remarks: step2.remarks.trim() || undefined,
+        remarks: autoRemarks || undefined,
         other_emails: step2.otherEmails,
         transport_form_needed: step2.transportFormNeeded,
         is_partial: step2.isPartial,
@@ -1372,6 +1421,13 @@ export default function NewClaimPage() {
             // Non-fatal: Drive unavailable, continue saving
           }
         }
+        let fxDriveId = null
+        if (r.is_foreign_currency && r.fx_screenshot_file) {
+          try {
+            const data = await uploadReceiptImage({ file: r.fx_screenshot_file, claim_id: claimId, image_type: 'exchange_rate' })
+            fxDriveId = data.drive_file_id
+          } catch {}
+        }
         await createReceipt.mutateAsync({
           claim_id: claimId,
           bank_transaction_id: r.btLocalId ? btIdMap[r.btLocalId] : undefined,
@@ -1384,6 +1440,8 @@ export default function NewClaimPage() {
           gst_code: r.gst_code,
           dr_cr: r.dr_cr,
           receipt_image_drive_ids: driveIds.length > 0 ? driveIds : undefined,
+          is_foreign_currency: r.is_foreign_currency,
+          exchange_rate_screenshot_drive_id: fxDriveId || undefined,
         })
       }
 

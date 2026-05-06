@@ -336,6 +336,9 @@ async def create_receipt(
         receipt_data["receipt_image_drive_id"] = payload.receipt_image_drive_id
     if payload.bank_screenshot_drive_id is not None:
         receipt_data["bank_screenshot_drive_id"] = payload.bank_screenshot_drive_id
+    receipt_data["is_foreign_currency"] = payload.is_foreign_currency
+    if payload.exchange_rate_screenshot_drive_id is not None:
+        receipt_data["exchange_rate_screenshot_drive_id"] = payload.exchange_rate_screenshot_drive_id
 
     insert_resp = db.table("receipts").insert(receipt_data).execute()
     if not insert_resp.data:
@@ -510,6 +513,12 @@ async def update_receipt(
             update_data[field] = value
     if payload.date:  # treat empty string as absent
         update_data["date"] = payload.date
+    if payload.is_foreign_currency is not None:
+        update_data["is_foreign_currency"] = payload.is_foreign_currency
+        if not payload.is_foreign_currency:
+            update_data["exchange_rate_screenshot_drive_id"] = None
+    if payload.exchange_rate_screenshot_drive_id is not None:
+        update_data["exchange_rate_screenshot_drive_id"] = payload.exchange_rate_screenshot_drive_id
 
     if category_changing and new_category is not None:
         claim_id: str = receipt["claim_id"]

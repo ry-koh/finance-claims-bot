@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
-import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt } from '../api/receipts'
+import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import {
   createBankTransaction, uploadBankTransactionImage, updateBankTransaction, createBtRefund,
   deleteBankTransactionImage, deleteBtRefund,
@@ -979,6 +979,18 @@ export default function ClaimDetailPage() {
 
   // ─── Receipt helpers ─────────────────────────────────────────────────────────
 
+  function appendRemark(existing, line) {
+    const base = (existing ?? '').trim()
+    return base ? `${base}\n${line}` : line
+  }
+
+  function appendFxRemark() {
+    const FX_REMARK = '- Exchange Rate Screenshot is Attached'
+    const current = claim.remarks ?? ''
+    if (current.includes(FX_REMARK)) return
+    updateClaimMut.mutate({ id, remarks: appendRemark(current, FX_REMARK) }, { onSuccess: invalidateClaim })
+  }
+
   function recalcAndUpdateTotal(updatedReceipts) {
     const total = updatedReceipts.reduce((s, r) => s + Number(r.amount), 0)
     updateClaimMut.mutate({ id, total_amount: total }, { onSuccess: invalidateClaim })
@@ -991,6 +1003,7 @@ export default function ClaimDetailPage() {
         onSuccess: (created) => {
           const updated = [...(claim.receipts ?? []), created]
           recalcAndUpdateTotal(updated)
+          if (fields.is_foreign_currency && fields.exchange_rate_screenshot_drive_id) appendFxRemark()
         },
         onError: (err) => setActionError(extractError(err, 'Failed to add receipt.')),
       }
@@ -1006,6 +1019,7 @@ export default function ClaimDetailPage() {
             r.id === receipt.id ? { ...r, ...fields } : r
           )
           recalcAndUpdateTotal(updated)
+          if (fields.is_foreign_currency && fields.exchange_rate_screenshot_drive_id) appendFxRemark()
         },
         onError: (err) => setActionError(extractError(err, 'Failed to update receipt.')),
       }
@@ -1312,7 +1326,21 @@ export default function ClaimDetailPage() {
 
         {/* ── MF Approval Screenshot ── */}
         {claim.wbs_account === 'MF' && (
-          <MfApprovalUpload claim={claim} onUploaded={() => refetch()} />
+          <MfApprovalUpload
+            claim={claim}
+            onUploaded={() => {
+              const MF_REMARK = "- Master's Approval Screenshot is attached"
+              const current = claim.remarks ?? ''
+              if (!current.includes(MF_REMARK)) {
+                updateClaimMut.mutate(
+                  { id, remarks: appendRemark(current, MF_REMARK) },
+                  { onSuccess: invalidateClaim }
+                )
+              } else {
+                refetch()
+              }
+            }}
+          />
         )}
 
         {/* ── Status Pipeline ── */}
@@ -1508,6 +1536,7 @@ function InfoRow({ label, value, bold }) {
 const EMPTY_RECEIPT_FIELDS = {
   description: '', amount: '', category: '', gst_code: 'IE',
   dr_cr: 'DR', receipt_no: '', company: '', date: '',
+  is_foreign_currency: false, exchange_rate_screenshot_drive_id: null,
 }
 
 function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId }) {
@@ -1516,6 +1545,22 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   const [err, setErr] = useState({})
 
   const [receiptImageDriveIds, setReceiptImageDriveIds] = useState(initial?.receipt_image_drive_ids ?? [])
+  const [uploadingFx, setUploadingFx] = useState(false)
+  const [fxUploadErr, setFxUploadErr] = useState(null)
+
+  async function handleFxFile(file) {
+    if (!claimId) return
+    setFxUploadErr(null)
+    setUploadingFx(true)
+    try {
+      const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'exchange_rate' })
+      setF(p => ({ ...p, exchange_rate_screenshot_drive_id: data.drive_file_id }))
+    } catch (e) {
+      setFxUploadErr(extractError(e, 'Screenshot upload failed. Please try again.'))
+    } finally {
+      setUploadingFx(false)
+    }
+  }
 
   function handleSave() {
     const e = {}
@@ -1594,6 +1639,51 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
         onChange={set('date')}
       />
 
+      {/* Foreign currency */}
+      <div className="flex items-center gap-2">
+        <input
+          id={`fx-${bankTransactionId ?? 'unlinked'}`}
+          type="checkbox"
+          checked={f.is_foreign_currency}
+          onChange={(e) => {
+            const checked = e.target.checked
+            setF(p => ({ ...p, is_foreign_currency: checked, exchange_rate_screenshot_drive_id: checked ? p.exchange_rate_screenshot_drive_id : null }))
+            if (!checked) setFxUploadErr(null)
+          }}
+          className="w-4 h-4 text-orange-500 border-gray-300 rounded"
+        />
+        <label htmlFor={`fx-${bankTransactionId ?? 'unlinked'}`} className="text-xs text-gray-700">
+          Charged in foreign currency
+        </label>
+      </div>
+      {f.is_foreign_currency && (
+        <div className="pl-6">
+          <p className="text-xs text-gray-500 mb-1">Exchange Rate Screenshot</p>
+          {f.exchange_rate_screenshot_drive_id ? (
+            <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
+              <a href={imageUrl(f.exchange_rate_screenshot_drive_id)} target="_blank" rel="noreferrer"
+                className="text-xs text-orange-700 font-medium underline flex-1">
+                ✓ Screenshot uploaded
+              </a>
+              <button type="button" onClick={() => setF(p => ({ ...p, exchange_rate_screenshot_drive_id: null }))}
+                className="text-xs text-red-500 shrink-0">
+                Remove
+              </button>
+            </div>
+          ) : (
+            <DragDropZone
+              label={uploadingFx ? 'Uploading…' : '+ Add exchange rate screenshot'}
+              onFile={handleFxFile}
+              loading={uploadingFx}
+              compact
+              dragBorder="border-orange-400 bg-orange-50"
+              idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
+            />
+          )}
+          {fxUploadErr && <p className="text-xs text-red-500 mt-0.5">{fxUploadErr}</p>}
+        </div>
+      )}
+
       <div className="flex gap-2 pt-1">
         <button onClick={handleSave} disabled={saving}
           className="flex-1 bg-blue-600 text-white text-xs font-medium py-1.5 rounded disabled:opacity-50">
@@ -1626,6 +1716,8 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
             company: receipt.company ?? '',
             date: receipt.date ?? '',
             receipt_image_drive_ids: receipt.images?.map(img => img.drive_file_id) ?? [],
+            is_foreign_currency: receipt.is_foreign_currency ?? false,
+            exchange_rate_screenshot_drive_id: receipt.exchange_rate_screenshot_drive_id ?? null,
           }}
           bankTransactionId={receipt.bank_transaction_id ?? null}
           onSave={(fields) => { onEdit(fields); setEditing(false) }}
@@ -1649,6 +1741,9 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
             {receipt.company ? ` · ${receipt.company}` : ''}
           </p>
           <p className="text-xs text-gray-400">{receipt.gst_code} · {receipt.dr_cr}</p>
+          {receipt.is_foreign_currency && (
+            <span className="inline-block text-xs text-orange-600 font-semibold bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded mt-0.5">FX</span>
+          )}
           {receipt.images?.length > 0 && (
             <p className="text-xs text-gray-400 mt-0.5">
               {receipt.images.length} receipt photo{receipt.images.length !== 1 ? 's' : ''}
