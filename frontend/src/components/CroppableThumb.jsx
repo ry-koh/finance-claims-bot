@@ -67,19 +67,18 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
   function handleCropConfirm(croppedFile) {
     const allConfirmed = [...confirmedPagesRef.current, croppedFile]
     confirmedPagesRef.current = allConfirmed
-    setCropQueue((prev) => {
-      const remaining = prev.slice(1)
-      if (remaining.length === 0) {
-        confirmedPagesRef.current = []
-        if (allConfirmed.length > 1 && onCroppedMany) {
-          onCroppedMany(allConfirmed)
-        } else {
-          // Single page or no onCroppedMany — emit each page individually
-          allConfirmed.forEach((f) => onCropped?.(f))
-        }
+    // Advance the queue — side effects run OUTSIDE the updater to avoid Strict Mode double-invoke
+    setCropQueue((prev) => prev.slice(1))
+
+    if (allConfirmed.length === pendingConfirmsRef.current) {
+      // All pages confirmed — emit results
+      confirmedPagesRef.current = []
+      if (allConfirmed.length > 1 && onCroppedMany) {
+        onCroppedMany(allConfirmed)
+      } else {
+        allConfirmed.forEach((f) => onCropped?.(f))
       }
-      return remaining
-    })
+    }
   }
 
   function handleCropCancel() {
@@ -97,6 +96,7 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
     <>
       {showModal && createPortal(
         <ImageCropModal
+          key={cropSrc ? 'src-modal' : queueDone}
           file={cropQueue[0] || undefined}
           src={cropSrc || undefined}
           fileNumber={cropSrc ? 1 : queueDone + 1}
