@@ -579,7 +579,7 @@ async def submit_for_review(
     if claim.get("status") != ClaimStatus.DRAFT.value:
         raise HTTPException(400, f"Claim must be in draft status, currently: {claim.get('status')}")
     resp = db.table("claims").update({
-        "status": "pending_review",
+        "status": ClaimStatus.PENDING_REVIEW.value,
         "rejection_comment": None,
     }).eq("id", claim_id).execute()
     if not resp.data:
@@ -603,7 +603,7 @@ async def reject_review(
     if claim.get("status") != ClaimStatus.PENDING_REVIEW.value:
         raise HTTPException(400, "Claim is not in pending_review status")
     resp = db.table("claims").update({
-        "status": "draft",
+        "status": ClaimStatus.DRAFT.value,
         "rejection_comment": payload.comment,
     }).eq("id", claim_id).execute()
     if not resp.data:

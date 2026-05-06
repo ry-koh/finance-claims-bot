@@ -22,7 +22,7 @@ async def send_claim_email(
 
     - Fetches claim with nested claimer + cca data.
     - Validates claimer has an email address.
-    - Validates claim status is 'draft' or 'email_sent' (allows re-send).
+    - Validates claim status is 'draft', 'pending_review', or 'email_sent' (allows re-send).
     - Sends email with receipt image attachments.
     - Updates claim status to 'email_sent'.
     """
