@@ -16,6 +16,14 @@ export default function PendingApprovalPage() {
 
   const { data: allCcas = [] } = useAllCcas()
 
+  function openEdit() {
+    setName(user?.name || '')
+    setEmail(user?.email || '')
+    setSelectedCcaIds((user?.ccas || []).map((c) => c.id))
+    setError('')
+    setEditing(true)
+  }
+
   function toggleCca(id) {
     setSelectedCcaIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -69,7 +77,7 @@ export default function PendingApprovalPage() {
               )}
             </div>
             <button
-              onClick={() => setEditing(true)}
+              onClick={openEdit}
               className="w-full py-2 border border-gray-300 rounded-xl text-sm text-gray-600 font-medium"
             >
               Edit Registration
@@ -118,6 +126,7 @@ export default function PendingApprovalPage() {
                         className="rounded"
                       />
                       <span className="text-sm">{cca.name}</span>
+                      <span className="text-xs text-gray-400 ml-auto">{cca.portfolio?.name}</span>
                     </label>
                   ))}
                 </div>
@@ -127,7 +136,7 @@ export default function PendingApprovalPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || !name.trim() || !email.trim() || (user?.role === 'treasurer' && selectedCcaIds.length === 0)}
                 className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save'}
