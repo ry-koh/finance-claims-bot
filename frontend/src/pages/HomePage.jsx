@@ -7,6 +7,7 @@ import { useSendToTelegram } from '../api/documents'
 const STATUSES = [
   { label: 'All',                  value: null,                  badge: 'bg-gray-100 text-gray-700' },
   { label: 'Draft',                value: 'draft',               badge: 'bg-gray-200 text-gray-800' },
+  { label: 'Pending Review',       value: 'pending_review',      badge: 'bg-amber-100 text-amber-800' },
   { label: 'Email Sent',           value: 'email_sent',          badge: 'bg-blue-100 text-blue-800' },
   { label: 'Screenshot Pending',   value: 'screenshot_pending',  badge: 'bg-amber-100 text-amber-800' },
   { label: 'Screenshot Uploaded',  value: 'screenshot_uploaded', badge: 'bg-orange-100 text-orange-800' },
@@ -20,6 +21,7 @@ const STATUS_BADGE = Object.fromEntries(
   STATUSES.filter(s => s.value).map(s => [s.value, s.badge])
 )
 STATUS_BADGE['error'] = 'bg-red-100 text-red-800'
+STATUS_BADGE['pending_review'] = 'bg-amber-100 text-amber-800'
 
 function badgeClasses(status) {
   return STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'

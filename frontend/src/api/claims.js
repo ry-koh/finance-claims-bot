@@ -118,3 +118,27 @@ export function useBulkUpdateStatus(options = {}) {
     ...options,
   })
 }
+
+export const submitForReview = (claimId) =>
+  api.post(`/claims/${claimId}/submit-review`).then((r) => r.data)
+
+export const rejectReview = ({ claimId, comment }) =>
+  api.post(`/claims/${claimId}/reject-review`, { comment }).then((r) => r.data)
+
+export function useSubmitForReview(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitForReview,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all }),
+    ...options,
+  })
+}
+
+export function useRejectReview(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: rejectReview,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all }),
+    ...options,
+  })
+}

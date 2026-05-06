@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
+import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
@@ -10,10 +10,12 @@ import {
   deleteBankTransactionImage, deleteBtRefund, updateBtRefundFile,
   useDeleteBankTransaction,
 } from '../api/bankTransactions'
+import { useAuth, useIsFinanceTeam, useIsTreasurer } from '../context/AuthContext'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+import ImageCropModal from '../components/ImageCropModal'
 
 // ─── Error helper ────────────────────────────────────────────────────────────
 
@@ -30,6 +32,7 @@ function extractError(err, fallback = 'An error occurred.') {
 
 const STATUS_ORDER = [
   'draft',
+  'pending_review',
   'email_sent',
   'screenshot_pending',
   'screenshot_uploaded',
@@ -919,6 +922,123 @@ function BtCard({
   )
 }
 
+// ─── Review Panel (finance team, pending_review status) ──────────────────────
+
+function AttachmentThumb({ driveId, label, onRecrop }) {
+  const url = imageUrl(driveId)
+  return (
+    <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
+      <img src={url} alt={label} className="w-full h-full object-cover" />
+      <button
+        onClick={onRecrop}
+        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 active:opacity-100 transition-opacity"
+      >
+        <span className="text-white text-xs font-medium">Re-crop</span>
+      </button>
+    </div>
+  )
+}
+
+function ReviewPanel({ claim, onApprove, onReject, approving }) {
+  const [rejectComment, setRejectComment] = useState('')
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [cropTarget, setCropTarget] = useState(null)
+
+  const receipts = claim.receipts ?? []
+  const bankTransactions = claim.bank_transactions ?? []
+
+  const allImages = [
+    ...receipts.flatMap((r) =>
+      (r.images ?? []).map((img) => ({ key: img.drive_file_id, label: r.description, driveId: img.drive_file_id }))
+    ),
+    ...bankTransactions.flatMap((bt) =>
+      (bt.images ?? []).map((img) => ({ key: img.drive_file_id, label: 'Bank Transaction', driveId: img.drive_file_id }))
+    ),
+  ]
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <h2 className="text-sm font-bold text-amber-900 mb-3">Review Submission</h2>
+
+      {allImages.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-gray-600 mb-2">Attachments</p>
+          <div className="grid grid-cols-3 gap-2">
+            {allImages.map((img) => (
+              <AttachmentThumb
+                key={img.key}
+                driveId={img.driveId}
+                label={img.label}
+                onRecrop={() => setCropTarget(img)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-500 mb-4">Fill in category, GST, and DR/CR for each receipt below before approving.</p>
+
+      <div className="flex gap-2">
+        <button
+          onClick={onApprove}
+          disabled={approving}
+          className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
+        >
+          {approving && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+          {approving ? 'Sending…' : 'Approve & Send Email'}
+        </button>
+        <button
+          onClick={() => setShowRejectModal(true)}
+          className="flex-1 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-semibold"
+        >
+          Reject
+        </button>
+      </div>
+
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end p-4">
+          <div className="bg-white rounded-2xl w-full p-4 max-w-sm mx-auto">
+            <h3 className="font-bold text-gray-900 mb-2">Reject Submission</h3>
+            <p className="text-sm text-gray-500 mb-3">Tell the treasurer what needs to be fixed:</p>
+            <textarea
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
+              rows={3}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 mb-3 resize-none"
+              placeholder="e.g. Missing receipt for the $50 item, please reattach."
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { onReject(rejectComment); setShowRejectModal(false) }}
+                disabled={!rejectComment.trim()}
+                className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                Send Rejection
+              </button>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cropTarget && (
+        <ImageCropModal
+          src={imageUrl(cropTarget.driveId)}
+          fileNumber={1}
+          fileTotal={1}
+          onConfirm={() => setCropTarget(null)}
+          onCancel={() => setCropTarget(null)}
+        />
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ClaimDetailPage() {
@@ -929,9 +1049,15 @@ export default function ClaimDetailPage() {
   // Queries
   const { data: claim, isLoading, isError, refetch } = useClaim(id)
 
+  // Role
+  const isTreasurer = useIsTreasurer()
+  const isFinanceTeam = useIsFinanceTeam()
+
   // Mutations
   const sendEmailMut = useSendEmail()
   const resendEmailMut = useResendEmail()
+  const submitForReviewMut = useSubmitForReview()
+  const rejectReviewMut = useRejectReview()
   const uploadScreenshotMut = useUploadScreenshot()
   const generateDocsMut = useGenerateDocuments()
   const compileDocsMut = useCompileDocuments()
@@ -1252,6 +1378,25 @@ export default function ClaimDetailPage() {
           </div>
         )}
 
+        {/* ── Rejection banner — shown on DRAFT claims returned with feedback ── */}
+        {claim.status === 'draft' && claim.rejection_comment && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+            <p className="text-xs font-semibold text-red-700 mb-1">Action Required — Finance Team Feedback:</p>
+            <p className="text-sm text-red-800">{claim.rejection_comment}</p>
+          </div>
+        )}
+
+        {/* ── Submit for Review — treasurer DRAFT claims only ── */}
+        {isTreasurer && claim.status === 'draft' && (
+          <button
+            onClick={() => submitForReviewMut.mutate(claim.id, { onSuccess: invalidateClaim })}
+            disabled={submitForReviewMut.isPending}
+            className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50"
+          >
+            {submitForReviewMut.isPending ? 'Submitting…' : 'Submit for Review'}
+          </button>
+        )}
+
         {/* ── Claim info card ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
@@ -1442,6 +1587,21 @@ export default function ClaimDetailPage() {
                 refetch()
               }
             }}
+          />
+        )}
+
+        {/* ── Finance Review Panel — shown when claim is pending_review ── */}
+        {isFinanceTeam && claim.status === 'pending_review' && (
+          <ReviewPanel
+            claim={claim}
+            approving={sendEmailMut.isPending}
+            onApprove={() => sendEmailMut.mutate(id, { onSuccess: invalidateClaim, onError: (err) => setActionError(extractError(err, 'Failed to send email.')) })}
+            onReject={(comment) =>
+              rejectReviewMut.mutate(
+                { claimId: id, comment },
+                { onSuccess: invalidateClaim, onError: (err) => setActionError(extractError(err, 'Failed to reject submission.')) }
+              )
+            }
           />
         )}
 
