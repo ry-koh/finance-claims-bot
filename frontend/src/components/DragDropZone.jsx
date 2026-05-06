@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import ImageCropModal from './ImageCropModal'
+import { processReceiptImage } from '../api/receipts'
 
 export default function DragDropZone({
   label = 'Drop file here',
@@ -15,25 +16,43 @@ export default function DragDropZone({
 }) {
   const [isDragging, setIsDragging] = useState(false)
   const [cropQueue, setCropQueue] = useState([])
+  const [converting, setConverting] = useState(false)
   const cropResultsRef = useRef([])
   const fileRef = useRef(null)
 
-  function dispatch(files) {
+  async function toImageFile(file) {
+    if (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) {
+      const data = await processReceiptImage(file)
+      const mimeType = data.content_type || 'image/jpeg'
+      const byteStr = atob(data.processed_image)
+      const arr = new Uint8Array(byteStr.length)
+      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i)
+      const ext = mimeType === 'image/png' ? '.png' : '.jpg'
+      return new File([arr], file.name.replace(/\.pdf$/i, ext), { type: mimeType })
+    }
+    return file
+  }
+
+  async function dispatch(files) {
     if (!files?.length) return
     const fileArray = Array.from(files)
-    if (withCrop) {
-      const croppable = fileArray.filter((f) => f.type.startsWith('image/'))
-      if (croppable.length === 0) {
-        // No images (e.g. PDF), pass through directly
-        if (multiple && onFiles) onFiles(fileArray)
-        else if (onFile) onFile(fileArray[0])
-        return
-      }
-      cropResultsRef.current = []
-      setCropQueue(croppable)
-    } else {
+    if (!withCrop) {
       if (multiple && onFiles) onFiles(fileArray)
       else if (onFile) onFile(fileArray[0])
+      return
+    }
+
+    setConverting(true)
+    try {
+      const converted = await Promise.all(fileArray.map(toImageFile))
+      cropResultsRef.current = []
+      setCropQueue(converted)
+    } catch {
+      // If conversion fails, pass through as-is
+      if (multiple && onFiles) onFiles(fileArray)
+      else if (onFile) onFile(fileArray[0])
+    } finally {
+      setConverting(false)
     }
   }
 
@@ -56,6 +75,8 @@ export default function DragDropZone({
     setCropQueue([])
   }
 
+  const busy = loading || converting
+
   return (
     <>
       {withCrop && cropQueue.length > 0 && (
@@ -71,16 +92,16 @@ export default function DragDropZone({
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true) }}
         onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false) }}
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); dispatch(e.dataTransfer.files) }}
-        onClick={() => !loading && fileRef.current?.click()}
+        onClick={() => !busy && fileRef.current?.click()}
         className={[
           'w-full border-2 border-dashed rounded-xl text-center cursor-pointer transition-colors select-none',
           compact ? 'py-2 px-2' : 'py-4 px-3',
           isDragging ? dragBorder : idleBorder,
-          loading ? 'opacity-50 cursor-not-allowed' : '',
+          busy ? 'opacity-50 cursor-not-allowed' : '',
         ].filter(Boolean).join(' ')}
       >
         <p className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-gray-700`}>
-          {loading ? 'Uploading…' : isDragging ? 'Drop to upload' : label}
+          {converting ? 'Converting…' : busy ? 'Uploading…' : isDragging ? 'Drop to upload' : label}
         </p>
         <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
       </div>

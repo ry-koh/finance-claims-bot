@@ -37,6 +37,12 @@ export const createBtRefund = ({ btId, amount, file }) => {
 export const deleteBtRefund = ({ btId, refundId }) =>
   api.delete(`/bank-transactions/${btId}/refunds/${refundId}`).then((r) => r.data)
 
+export const updateBtRefundFile = ({ btId, refundId, file }) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.patch(`/bank-transactions/${btId}/refunds/${refundId}`, form).then((r) => r.data)
+}
+
 export function useCreateBankTransaction(claimId) {
   const queryClient = useQueryClient()
   return useMutation({

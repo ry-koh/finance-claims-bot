@@ -113,6 +113,33 @@ async def create_bt_refund(
     return refund_resp.data[0]
 
 
+@router.patch("/{bt_id}/refunds/{refund_id}")
+async def update_bt_refund_file(
+    bt_id: str,
+    refund_id: str,
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Replace the file attached to a refund."""
+    resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    old_file_id = resp.data[0].get("drive_file_id")
+
+    _bt, new_drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "refund")
+
+    db.table("bank_transaction_refunds").update({"drive_file_id": new_drive_file_id}).eq("id", refund_id).execute()
+
+    if old_file_id:
+        try:
+            r2.delete_file(old_file_id)
+        except Exception:
+            pass
+
+    return {"drive_file_id": new_drive_file_id}
+
+
 @router.delete("/{bt_id}/refunds/{refund_id}")
 async def delete_bt_refund(
     bt_id: str,

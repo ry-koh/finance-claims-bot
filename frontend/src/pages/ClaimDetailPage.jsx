@@ -7,7 +7,7 @@ import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import {
   createBankTransaction, uploadBankTransactionImage, updateBankTransaction, createBtRefund,
-  deleteBankTransactionImage, deleteBtRefund,
+  deleteBankTransactionImage, deleteBtRefund, updateBtRefundFile,
   useDeleteBankTransaction,
 } from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
@@ -412,6 +412,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
   const [existingImages, setExistingImages] = useState(initial?.images ?? [])
   const [existingRefunds, setExistingRefunds] = useState(initial?.refunds ?? [])
   const [reuploadingImageId, setReuploadingImageId] = useState(null)
+  const [reuploadingRefundId, setReuploadingRefundId] = useState(null)
 
   const busy = saving || deleting
 
@@ -452,6 +453,20 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
       setErr('Failed to delete refund. Please try again.')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleReuploadExistingRefund(refundId, croppedFile) {
+    if (!initial?.id) return
+    setReuploadingRefundId(refundId)
+    try {
+      const result = await updateBtRefundFile({ btId: initial.id, refundId, file: croppedFile })
+      setExistingRefunds(prev => prev.map(r => r.id === refundId ? { ...r, drive_file_id: result.drive_file_id } : r))
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch {
+      setErr('Failed to re-upload refund file. Please try again.')
+    } finally {
+      setReuploadingRefundId(null)
     }
   }
 
@@ -588,9 +603,15 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
           </div>
           {existingRefunds.map(ref => (
             <div key={ref.id} className="flex items-center gap-2 text-xs bg-gray-50 rounded p-1.5 mb-1">
-              <a href={imageUrl(ref.drive_file_id)} target="_blank" rel="noreferrer" className="text-blue-600 underline">
-                Refund ${Number(ref.amount).toFixed(2)}
-              </a>
+              <span className="text-gray-700 shrink-0">${Number(ref.amount).toFixed(2)}</span>
+              {ref.drive_file_id && (
+                <CroppableThumb
+                  src={imageUrl(ref.drive_file_id)}
+                  label={`Refund $${Number(ref.amount).toFixed(2)}`}
+                  reuploading={reuploadingRefundId === ref.id}
+                  onCropped={(f) => handleReuploadExistingRefund(ref.id, f)}
+                />
+              )}
               <button type="button" disabled={deleting} onClick={() => handleDeleteExistingRefund(ref.id)} className="text-red-400 ml-auto disabled:opacity-40">×</button>
             </div>
           ))}
@@ -661,7 +682,30 @@ function BtCard({
   bt, btIndex, claimId, linkedReceipts, expanded, onToggle, onEdit, onDelete, onAddReceipt,
   saving, addingReceipt, onReceiptSaved, onReceiptCancelled, onEditReceipt, onDeleteReceipt, receiptSaving,
 }) {
+  const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [reuploadingBtImg, setReuploadingBtImg] = useState(null)
+  const [reuploadingRefundId, setReuploadingRefundId] = useState(null)
+
+  async function handleReuploadBtImage(imgId, driveFileId, croppedFile) {
+    setReuploadingBtImg(imgId)
+    try {
+      await uploadBankTransactionImage({ btId: bt.id, file: croppedFile })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch { /* silently ignore */ } finally {
+      setReuploadingBtImg(null)
+    }
+  }
+
+  async function handleReuploadRefund(refundId, croppedFile) {
+    setReuploadingRefundId(refundId)
+    try {
+      await updateBtRefundFile({ btId: bt.id, refundId, file: croppedFile })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch { /* silently ignore */ } finally {
+      setReuploadingRefundId(null)
+    }
+  }
 
   const netAmount = bt.net_amount != null ? bt.net_amount : bt.amount
   const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
@@ -730,32 +774,36 @@ function BtCard({
         <div className="px-3 py-2.5 flex flex-col gap-2">
           {/* Images row */}
           {bt.images?.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {bt.images.map((img, i) => (
-                <a
+            <div className="flex flex-wrap gap-3">
+              {bt.images.map((img) => (
+                <CroppableThumb
                   key={img.id}
-                  href={imageUrl(img.drive_file_id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-blue-600 underline"
-                >
-                  Screenshot {i + 1}
-                </a>
+                  src={imageUrl(img.drive_file_id)}
+                  label="BT screenshot"
+                  reuploading={reuploadingBtImg === img.id}
+                  onCropped={(f) => handleReuploadBtImage(img.id, img.drive_file_id, f)}
+                />
               ))}
             </div>
           )}
 
           {/* Refunds row */}
           {bt.refunds?.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-1.5">
               {bt.refunds.map((ref, i) => (
-                <span key={ref.id ?? i} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                  Refund {i + 1}: {formatAmount(ref.amount)}
+                <div key={ref.id ?? i} className="flex items-center gap-2 text-xs text-gray-600">
+                  <span className="bg-gray-100 px-2 py-0.5 rounded shrink-0">
+                    Refund {i + 1}: {formatAmount(ref.amount)}
+                  </span>
                   {ref.drive_file_id && (
-                    <a href={imageUrl(ref.drive_file_id)} target="_blank" rel="noreferrer"
-                      className="ml-1 text-blue-600 underline">file</a>
+                    <CroppableThumb
+                      src={imageUrl(ref.drive_file_id)}
+                      label={`Refund ${i + 1} file`}
+                      reuploading={reuploadingRefundId === ref.id}
+                      onCropped={(f) => handleReuploadRefund(ref.id, f)}
+                    />
                   )}
-                </span>
+                </div>
               ))}
             </div>
           )}
@@ -1758,8 +1806,31 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
 }
 
 function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
+  const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [reuploadingImgIdx, setReuploadingImgIdx] = useState(null)
+  const [reuploadingFx, setReuploadingFxRow] = useState(false)
+
+  async function handleReuploadReceiptImg(imgDriveId, idx, croppedFile) {
+    setReuploadingImgIdx(idx)
+    try {
+      await uploadReceiptImage({ file: croppedFile, claim_id: claimId, image_type: 'receipt' })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch { /* silently ignore */ } finally {
+      setReuploadingImgIdx(null)
+    }
+  }
+
+  async function handleReuploadFxRow(croppedFile) {
+    setReuploadingFxRow(true)
+    try {
+      await uploadReceiptImage({ file: croppedFile, claim_id: claimId, image_type: 'exchange_rate' })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch { /* silently ignore */ } finally {
+      setReuploadingFxRow(false)
+    }
+  }
 
   if (editing) {
     return (
@@ -1804,16 +1875,28 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
             <span className="inline-block text-xs text-orange-600 font-semibold bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded mt-0.5">FX</span>
           )}
           {receipt.images?.length > 0 && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              {receipt.images.length} receipt photo{receipt.images.length !== 1 ? 's' : ''}
-            </p>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {receipt.images.map((img, i) => (
+                <CroppableThumb
+                  key={img.id}
+                  src={imageUrl(img.drive_file_id)}
+                  label={`Photo ${i + 1}`}
+                  reuploading={reuploadingImgIdx === i}
+                  onCropped={(f) => handleReuploadReceiptImg(img.drive_file_id, i, f)}
+                />
+              ))}
+              {receipt.exchange_rate_screenshot_drive_id && (
+                <CroppableThumb
+                  src={imageUrl(receipt.exchange_rate_screenshot_drive_id)}
+                  label="Exchange rate"
+                  reuploading={reuploadingFx}
+                  onCropped={handleReuploadFxRow}
+                />
+              )}
+            </div>
           )}
         </div>
-        <div className="flex gap-1.5 shrink-0 items-center">
-          {receipt.receipt_image_drive_id && (
-            <a href={imageUrl(receipt.receipt_image_drive_id)} target="_blank" rel="noreferrer"
-              className="text-xs text-blue-600 underline">Receipt</a>
-          )}
+        <div className="flex gap-1.5 shrink-0 items-start">
           <button onClick={() => setEditing(true)}
             className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded hover:bg-blue-50">
             Edit
