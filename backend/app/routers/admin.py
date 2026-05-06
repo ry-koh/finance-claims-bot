@@ -80,12 +80,16 @@ async def approve_registration(
             .eq("finance_team_id", member_id)
             .execute()
         )
-        for row in (cca_resp.data or []):
-            db.table("claimers").insert({
-                "cca_id": row["cca_id"],
-                "name": member["name"],
-                "email": member["email"],
-            }).execute()
+        try:
+            for row in (cca_resp.data or []):
+                db.table("claimers").insert({
+                    "cca_id": row["cca_id"],
+                    "name": member["name"],
+                    "email": member["email"],
+                }).execute()
+        except Exception:
+            db.table("finance_team").update({"status": "pending"}).eq("id", member_id).execute()
+            raise HTTPException(500, "Failed to create claimer records; registration reverted to pending")
 
     return {"success": True}
 
@@ -97,5 +101,7 @@ async def reject_registration(
     db: Client = Depends(get_supabase),
 ):
     """Reject and delete a pending registration."""
-    db.table("finance_team").delete().eq("id", member_id).eq("status", "pending").execute()
+    resp = db.table("finance_team").delete().eq("id", member_id).eq("status", "pending").execute()
+    if not resp.data:
+        raise HTTPException(404, "Pending registration not found")
     return {"success": True}
