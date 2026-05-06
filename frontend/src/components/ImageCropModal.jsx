@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef } from 'react'
 import Cropper from 'react-cropper'
 import 'cropperjs/dist/cropper.css'
 
+// Header ~52px + footer ~80px
+const CHROME_HEIGHT = 132
+
 export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm, onCancel }) {
   const cropperRef = useRef(null)
   const src = useMemo(() => URL.createObjectURL(file), [file])
@@ -30,75 +33,87 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
     )
   }
 
+  const isLast = fileNumber >= fileTotal
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
-      <div className="bg-white rounded-t-2xl w-full shadow-xl flex flex-col" style={{ maxHeight: '92vh' }}>
-        <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
-          <h3 className="font-semibold text-gray-800 text-sm">
-            Crop & Rotate
-            {fileTotal > 1 && (
-              <span className="ml-2 text-xs text-gray-400 font-normal">
-                {fileNumber} of {fileTotal}
-              </span>
-            )}
-          </h3>
-          <button type="button" onClick={onCancel} className="text-gray-400 text-xl leading-none p-1">
-            ✕
+    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-white/70 text-sm font-medium px-1 py-1 active:text-white"
+        >
+          Cancel
+        </button>
+
+        <div className="text-center">
+          <p className="text-white text-sm font-semibold">Crop & Rotate</p>
+          {fileTotal > 1 && (
+            <div className="flex justify-center gap-1.5 mt-1">
+              {Array.from({ length: fileTotal }).map((_, i) => (
+                <span
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                    i < fileNumber ? 'bg-white' : 'bg-white/25'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Balance the cancel button */}
+        <div className="w-14" />
+      </div>
+
+      {/* Cropper — fills all space between header and footer */}
+      <div style={{ height: `calc(100vh - ${CHROME_HEIGHT}px)` }}>
+        <Cropper
+          ref={cropperRef}
+          src={src}
+          style={{ height: '100%', width: '100%' }}
+          viewMode={1}
+          dragMode="move"
+          autoCropArea={0.95}
+          responsive
+          guides
+          center={false}
+          highlight={false}
+          cropBoxMovable
+          cropBoxResizable
+          toggleDragModeOnDblclick={false}
+        />
+      </div>
+
+      {/* Footer controls */}
+      <div className="flex-shrink-0 flex items-center justify-between px-5 py-4">
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => rotate(-90)}
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+            title="Rotate left"
+          >
+            <span className="text-white text-2xl leading-none select-none">↺</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => rotate(90)}
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+            title="Rotate right"
+          >
+            <span className="text-white text-2xl leading-none select-none">↻</span>
           </button>
         </div>
 
-        <div className="bg-black flex-shrink-0" style={{ height: '55vh' }}>
-          <Cropper
-            ref={cropperRef}
-            src={src}
-            style={{ height: '55vh', width: '100%' }}
-            viewMode={1}
-            dragMode="move"
-            autoCropArea={0.95}
-            responsive
-            guides
-            center={false}
-            highlight={false}
-            cropBoxMovable
-            cropBoxResizable
-            toggleDragModeOnDblclick={false}
-          />
-        </div>
-
-        <div className="px-3 py-3 flex items-center justify-between gap-2 flex-shrink-0">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => rotate(-90)}
-              className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg text-gray-700"
-            >
-              ↺ Left
-            </button>
-            <button
-              type="button"
-              onClick={() => rotate(90)}
-              className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg text-gray-700"
-            >
-              ↻ Right
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirm}
-              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg font-medium"
-            >
-              {fileNumber < fileTotal ? 'Next →' : 'Done'}
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={confirm}
+          className="px-6 py-2.5 bg-white text-black rounded-full font-semibold text-sm active:bg-white/80 transition-colors"
+        >
+          {isLast ? 'Use Photo' : 'Next →'}
+        </button>
       </div>
     </div>
   )
