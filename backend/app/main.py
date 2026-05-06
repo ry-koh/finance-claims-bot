@@ -10,6 +10,7 @@ from app.config import settings
 from app.routers import bot, claimers, claims, documents, email as email_router, images as images_router, portfolios, receipts
 from app.routers import bank_transactions as bank_transactions_router
 from app.routers import registration as registration_router
+from app.routers import admin as admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ app.include_router(email_router.router)
 app.include_router(bank_transactions_router.router)
 app.include_router(images_router.router)
 app.include_router(registration_router.router)
+app.include_router(admin_router.router)
 
 
 # ---------------------------------------------------------------------------
