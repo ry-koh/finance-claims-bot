@@ -15,6 +15,12 @@ export const processReceiptImage = (file) => {
   return api.post('/receipts/process-image', form).then((r) => r.data)
 }
 
+export const processPdfPages = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/receipts/process-pdf-pages', form).then((r) => r.data)
+}
+
 export const uploadReceiptImage = ({ file, claim_id, image_type }) => {
   const form = new FormData()
   form.append('file', file)

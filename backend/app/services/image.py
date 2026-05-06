@@ -121,3 +121,33 @@ def process_receipt_image(file_bytes: bytes, content_type: str, filename: str) -
     validate_mime_type(content_type, filename)
     jpeg_bytes = convert_to_jpeg(file_bytes, content_type)
     return normalise_to_a4(jpeg_bytes)
+
+
+def process_pdf_pages(file_bytes: bytes) -> list[bytes]:
+    """Convert every page of a PDF to a normalised JPEG. Returns a list of JPEG bytes."""
+    from PIL import Image  # lazy import
+    try:
+        from pdf2image import convert_from_bytes as pdf_convert
+    except ImportError:
+        raise ValueError("PDF conversion unavailable on this server.")
+
+    try:
+        pages = pdf_convert(file_bytes)
+    except Exception:
+        raise ValueError("Could not convert PDF pages.")
+
+    if not pages:
+        raise ValueError("PDF contained no pages.")
+
+    results = []
+    for page_img in pages:
+        if page_img.mode == 'RGBA':
+            bg = Image.new('RGB', page_img.size, (255, 255, 255))
+            bg.paste(page_img, mask=page_img.split()[3])
+            page_img = bg
+        elif page_img.mode != 'RGB':
+            page_img = page_img.convert('RGB')
+        buf = io.BytesIO()
+        page_img.save(buf, format='JPEG', quality=85)
+        results.append(normalise_to_a4(buf.getvalue()))
+    return results

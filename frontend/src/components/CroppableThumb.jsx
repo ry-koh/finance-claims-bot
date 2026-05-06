@@ -1,21 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ImageCropModal from './ImageCropModal'
-import { processReceiptImage } from '../api/receipts'
+import { pdfToImageFiles, isPdfFile } from '../utils/pdfToImages'
 
 /**
  * Square thumbnail with tap-to-recrop.
  *
  *   file   — File object (in-memory, not yet uploaded)
- *   src    — URL string (already uploaded image or PDF)
- *   onRemove()          — called when × is tapped
- *   onCropped(newFile)  — called after crop is confirmed
- *   reuploading         — shows spinner overlay while parent is re-uploading
+ *   src    — URL string (already uploaded image)
+ *   onRemove()         — called when × is tapped
+ *   onCropped(file)    — called once per confirmed cropped page
+ *   reuploading        — shows spinner overlay while parent is re-uploading
  */
 export default function CroppableThumb({ file, src, label = 'image', onRemove, onCropped, reuploading = false }) {
   const [thumbSrc, setThumbSrc] = useState(null)
-  const [cropFile, setCropFile] = useState(null)  // File to hand to ImageCropModal
-  const [cropSrc, setCropSrc] = useState(null)    // URL to hand to ImageCropModal
+  const [cropQueue, setCropQueue] = useState([])  // File[] — pages waiting to crop
+  const [cropSrc, setCropSrc] = useState(null)    // URL — for non-PDF uploaded images
   const [converting, setConverting] = useState(false)
+  const pendingConfirmsRef = useRef(0)            // tracks how many pages still to confirm
 
   useEffect(() => {
     if (file) {
@@ -27,79 +29,57 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
     }
   }, [file, src])
 
-  const isPdf = (f, s) =>
-    f?.type === 'application/pdf' || f?.name?.toLowerCase().endsWith('.pdf') ||
-    s?.toLowerCase().includes('.pdf') || s?.toLowerCase().includes('pdf')
-
   async function handleTap() {
     if (reuploading || converting) return
 
     if (file) {
-      if (isPdf(file, null)) {
-        // Convert PDF File to image first
+      if (isPdfFile(file)) {
         setConverting(true)
         try {
-          const data = await processReceiptImage(file)
-          const mimeType = data.content_type || 'image/jpeg'
-          const byteStr = atob(data.processed_image)
-          const arr = new Uint8Array(byteStr.length)
-          for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i)
-          const ext = mimeType === 'image/png' ? '.png' : '.jpg'
-          setCropFile(new File([arr], file.name.replace(/\.pdf$/i, ext), { type: mimeType }))
-        } catch {
-          // fall back to passing src
-        } finally {
+          const pages = await pdfToImageFiles(file)
+          pendingConfirmsRef.current = pages.length
+          setCropQueue(pages)
+        } catch { /* silently ignore */ } finally {
           setConverting(false)
         }
       } else {
-        setCropFile(file)
+        pendingConfirmsRef.current = 1
+        setCropQueue([file])
       }
     } else if (src) {
-      if (isPdf(null, src)) {
-        // Fetch PDF bytes, send to process-image
-        setConverting(true)
-        try {
-          const resp = await fetch(src)
-          const blob = await resp.blob()
-          const pdfFile = new File([blob], 'attachment.pdf', { type: 'application/pdf' })
-          const data = await processReceiptImage(pdfFile)
-          const mimeType = data.content_type || 'image/jpeg'
-          const byteStr = atob(data.processed_image)
-          const arr = new Uint8Array(byteStr.length)
-          for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i)
-          setCropFile(new File([arr], 'attachment.jpg', { type: mimeType }))
-        } catch {
-          // silently ignore
-        } finally {
-          setConverting(false)
-        }
-      } else {
-        setCropSrc(src)
-      }
+      // Stored images are always JPEG (backend converts on upload), so pass URL directly
+      setCropSrc(src)
     }
   }
 
-  function closeCrop() {
-    setCropFile(null)
+  function handleCropConfirm(croppedFile) {
+    // Emit immediately — caller handles each page independently
+    onCropped?.(croppedFile)
+    setCropQueue((prev) => prev.slice(1))
+  }
+
+  function handleCropCancel() {
+    setCropQueue([])
     setCropSrc(null)
   }
 
+  const showModal = cropQueue.length > 0 || !!cropSrc
+  const queueTotal = pendingConfirmsRef.current
+  const queueDone = queueTotal - cropQueue.length
   const busy = reuploading || converting
 
   return (
     <>
-      {(cropFile || cropSrc) && (
+      {showModal && createPortal(
         <ImageCropModal
-          file={cropFile || undefined}
+          file={cropQueue[0] || undefined}
           src={cropSrc || undefined}
-          fileNumber={1}
-          fileTotal={1}
-          onConfirm={(croppedFile) => {
-            closeCrop()
-            onCropped?.(croppedFile)
-          }}
-          onCancel={closeCrop}
-        />
+          fileNumber={cropSrc ? 1 : queueDone + 1}
+          fileTotal={cropSrc ? 1 : queueTotal}
+          onConfirm={cropSrc ? (f) => { setCropSrc(null); onCropped?.(f) } : handleCropConfirm}
+          onCancel={handleCropCancel}
+        />,
+        document.body
       )}
 
       <div className="relative flex-shrink-0">
@@ -116,7 +96,7 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
           )}
         </button>
 
-        {/* Crop / converting badge */}
+        {/* Badge */}
         {!reuploading && (
           <span
             className="absolute bottom-0 left-0 bg-black/60 text-white text-[9px] leading-none px-1 py-0.5 pointer-events-none select-none"
@@ -126,14 +106,14 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
           </span>
         )}
 
-        {/* Spinner overlay when re-uploading or converting */}
+        {/* Spinner */}
         {busy && (
           <span className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg pointer-events-none">
             <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin block" />
           </span>
         )}
 
-        {/* Remove button */}
+        {/* Remove */}
         {onRemove && (
           <button
             type="button"

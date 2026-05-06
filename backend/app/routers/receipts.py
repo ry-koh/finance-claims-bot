@@ -170,6 +170,34 @@ async def process_image(
 
 
 # ---------------------------------------------------------------------------
+# POST /receipts/process-pdf-pages
+# ---------------------------------------------------------------------------
+
+@router.post("/process-pdf-pages")
+async def process_pdf_pages(
+    file: UploadFile = File(...),
+    auth: dict = Depends(require_auth),
+):
+    """
+    Convert a multi-page PDF to an array of base64-encoded JPEG images,
+    one per page, each normalised to A4.
+    """
+    file_bytes = await file.read()
+    try:
+        pages = image.process_pdf_pages(file_bytes)
+    except ValueError as e:
+        return JSONResponse(status_code=422, content={"error": str(e)})
+
+    return {
+        "pages": [
+            {"data": base64.b64encode(p).decode(), "content_type": "image/jpeg"}
+            for p in pages
+        ],
+        "page_count": len(pages),
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /receipts/upload-image
 # ---------------------------------------------------------------------------
 

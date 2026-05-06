@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import ImageCropModal from './ImageCropModal'
-import { processReceiptImage } from '../api/receipts'
+import { pdfToImageFiles, isPdfFile } from '../utils/pdfToImages'
 
 export default function DragDropZone({
   label = 'Drop file here',
@@ -20,19 +20,6 @@ export default function DragDropZone({
   const cropResultsRef = useRef([])
   const fileRef = useRef(null)
 
-  async function toImageFile(file) {
-    if (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) {
-      const data = await processReceiptImage(file)
-      const mimeType = data.content_type || 'image/jpeg'
-      const byteStr = atob(data.processed_image)
-      const arr = new Uint8Array(byteStr.length)
-      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i)
-      const ext = mimeType === 'image/png' ? '.png' : '.jpg'
-      return new File([arr], file.name.replace(/\.pdf$/i, ext), { type: mimeType })
-    }
-    return file
-  }
-
   async function dispatch(files) {
     if (!files?.length) return
     const fileArray = Array.from(files)
@@ -44,11 +31,13 @@ export default function DragDropZone({
 
     setConverting(true)
     try {
-      const converted = await Promise.all(fileArray.map(toImageFile))
+      // Expand PDFs into one File per page; keep non-PDFs as-is
+      const expanded = (
+        await Promise.all(fileArray.map((f) => isPdfFile(f) ? pdfToImageFiles(f) : Promise.resolve([f])))
+      ).flat()
       cropResultsRef.current = []
-      setCropQueue(converted)
+      setCropQueue(expanded)
     } catch {
-      // If conversion fails, pass through as-is
       if (multiple && onFiles) onFiles(fileArray)
       else if (onFile) onFile(fileArray[0])
     } finally {
