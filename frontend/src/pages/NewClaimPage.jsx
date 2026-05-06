@@ -8,7 +8,7 @@ import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
 import { submitTransportData, uploadMfApproval } from '../api/documents'
-import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
+import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS, TREASURER_WBS_ACCOUNTS } from '../constants/claimConstants'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
 
@@ -1276,7 +1276,7 @@ function Step3({
 function TreasurerClaimerPicker({ user, value, onChange }) {
   const ccaIds = (user?.ccas || []).map((c) => c.id)
 
-  const { data: claimers = [] } = useQuery({
+  const { data: claimers = [], isLoading } = useQuery({
     queryKey: ['claimers', 'treasurer', ccaIds.join(',')],
     queryFn: () =>
       Promise.all(ccaIds.map((id) => fetchClaimers({ cca_id: id }))).then((results) => results.flat()),
@@ -1290,12 +1290,13 @@ function TreasurerClaimerPicker({ user, value, onChange }) {
   }, [claimers, value, onChange])
 
   if (ccaIds.length === 0) return <p className="text-sm text-gray-400">No CCAs assigned to your account.</p>
-  if (claimers.length === 0) return <p className="text-sm text-gray-400">Loading your CCA info…</p>
+  if (isLoading) return <p className="text-sm text-gray-400">Loading your CCA info…</p>
+  if (claimers.length === 0) return <p className="text-sm text-gray-400">No claimers found for your CCAs.</p>
 
   if (claimers.length === 1) {
     return (
       <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
-        Claiming as: <strong>{claimers[0].name}</strong> ({user?.ccas?.[0]?.name})
+        Claiming as: <strong>{claimers[0].name}</strong> ({claimers[0].cca?.name})
       </div>
     )
   }
@@ -1313,7 +1314,7 @@ function TreasurerClaimerPicker({ user, value, onChange }) {
         <option value="" disabled>Select CCA</option>
         {claimers.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.name} — {user?.ccas?.find((cca) => cca.id === c.cca_id)?.name}
+            {c.name} — {c.cca?.name}
           </option>
         ))}
       </select>
@@ -1347,7 +1348,7 @@ export default function NewClaimPage() {
 
   const { user } = useAuth()
   const isTreasurer = user?.role === 'treasurer'
-  const availableWbsAccounts = isTreasurer ? ['SA', 'MF'] : WBS_ACCOUNTS
+  const availableWbsAccounts = isTreasurer ? TREASURER_WBS_ACCOUNTS : WBS_ACCOUNTS
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
