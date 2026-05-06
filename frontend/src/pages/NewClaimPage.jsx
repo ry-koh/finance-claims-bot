@@ -452,6 +452,7 @@ function Step2({ data, onChange }) {
               onFile={(file) => onChange({ mfApprovalFile: file })}
               dragBorder="border-amber-400 bg-amber-50"
               idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
+              withCrop
             />
           )}
         </div>
@@ -655,6 +656,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
           onFiles={(files) => setForm((prev) => ({ ...prev, files: [...prev.files, ...files] }))}
           multiple
           compact
+          withCrop
         />
       </div>
 
@@ -768,6 +770,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
                 label="+ Add exchange rate screenshot"
                 onFile={(file) => set('fx_screenshot_file', file)}
                 compact
+                withCrop
                 dragBorder="border-orange-400 bg-orange-50"
                 idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
               />
@@ -922,6 +925,7 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
             onFiles={(files) => setFiles((prev) => [...prev, ...files])}
             multiple
             compact
+            withCrop
           />
         </div>
 
@@ -950,6 +954,7 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
                   label={refund.file ? 'Replace file' : '+ Attach File'}
                   onFile={(file) => updateRefund(refund.localId, { file })}
                   compact
+                  withCrop
                 />
               </div>
               <button type="button" onClick={() => removeRefund(refund.localId)} className="text-red-400 text-sm">×</button>

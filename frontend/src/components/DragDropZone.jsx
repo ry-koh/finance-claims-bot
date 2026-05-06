@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import ImageCropModal from './ImageCropModal'
 
 export default function DragDropZone({
   label = 'Drop file here',
@@ -10,18 +11,62 @@ export default function DragDropZone({
   compact = false,
   dragBorder = 'border-blue-400 bg-blue-50',
   idleBorder = 'border-gray-300 bg-gray-50 hover:bg-gray-100',
+  withCrop = false,
 }) {
   const [isDragging, setIsDragging] = useState(false)
+  const [cropQueue, setCropQueue] = useState([])
+  const cropResultsRef = useRef([])
   const fileRef = useRef(null)
 
   function dispatch(files) {
     if (!files?.length) return
-    if (multiple && onFiles) onFiles(Array.from(files))
-    else if (onFile) onFile(Array.from(files)[0])
+    const fileArray = Array.from(files)
+    if (withCrop) {
+      const croppable = fileArray.filter((f) => f.type.startsWith('image/'))
+      if (croppable.length === 0) {
+        // No images (e.g. PDF), pass through directly
+        if (multiple && onFiles) onFiles(fileArray)
+        else if (onFile) onFile(fileArray[0])
+        return
+      }
+      cropResultsRef.current = []
+      setCropQueue(croppable)
+    } else {
+      if (multiple && onFiles) onFiles(fileArray)
+      else if (onFile) onFile(fileArray[0])
+    }
+  }
+
+  function handleCropConfirm(croppedFile) {
+    cropResultsRef.current = [...cropResultsRef.current, croppedFile]
+    setCropQueue((prev) => {
+      const remaining = prev.slice(1)
+      if (remaining.length === 0) {
+        const results = cropResultsRef.current
+        cropResultsRef.current = []
+        if (multiple && onFiles) onFiles(results)
+        else if (onFile) onFile(results[0])
+      }
+      return remaining
+    })
+  }
+
+  function handleCropCancel() {
+    cropResultsRef.current = []
+    setCropQueue([])
   }
 
   return (
     <>
+      {withCrop && cropQueue.length > 0 && (
+        <ImageCropModal
+          file={cropQueue[0]}
+          fileNumber={cropResultsRef.current.length + 1}
+          fileTotal={cropResultsRef.current.length + cropQueue.length}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
       <div
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true) }}
         onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false) }}

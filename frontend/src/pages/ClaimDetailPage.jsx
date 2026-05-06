@@ -298,6 +298,7 @@ function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
         onFile={(file) => onAction('screenshot', file)}
         loading={loading}
         compact
+        withCrop
       />
       {loading && (
         <p className="text-xs text-gray-500">Uploading &amp; generating documents — this may take 1–2 minutes</p>
@@ -330,6 +331,7 @@ function MfApprovalUpload({ claim, onUploaded }) {
         loading={upload.isPending}
         dragBorder="border-amber-400 bg-amber-50"
         idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
+        withCrop
       />
     </div>
   )
@@ -549,6 +551,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
             onFiles={(files) => setBtImages((prev) => [...prev, ...files])}
             multiple
             compact
+            withCrop
           />
         </div>
 
@@ -590,6 +593,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
                   label={refund.file ? 'Replace file' : '+ Attach File'}
                   onFile={(file) => updateRefund(idx, { file })}
                   compact
+                  withCrop
                 />
               </div>
               <button
@@ -1676,6 +1680,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
               onFile={handleFxFile}
               loading={uploadingFx}
               compact
+              withCrop
               dragBorder="border-orange-400 bg-orange-50"
               idleBorder="border-orange-300 bg-orange-50 hover:bg-orange-100"
             />
