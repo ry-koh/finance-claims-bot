@@ -4,13 +4,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
-import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
+import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt } from '../api/receipts'
 import {
   createBankTransaction, uploadBankTransactionImage, updateBankTransaction, createBtRefund,
   deleteBankTransactionImage, deleteBtRefund,
   useDeleteBankTransaction,
 } from '../api/bankTransactions'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
+import ReceiptUploader from '../components/ReceiptUploader'
+import DragDropZone from '../components/DragDropZone'
 
 // ─── Error helper ────────────────────────────────────────────────────────────
 
@@ -286,40 +288,26 @@ function StatusPipeline({ claim, onAction }) {
   )
 }
 
-// Screenshot upload — plain file input
+// Screenshot upload — drag-drop zone
 function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
-  const fileRef = useRef(null)
   const loading = onAction.loading?.screenshot
   return (
-    <div className="flex flex-col items-start gap-1">
-      <ActionButton
-        onClick={() => fileRef.current?.click()}
+    <div className="flex flex-col gap-1 w-full">
+      <DragDropZone
+        label={variant === 'secondary' ? 'Re-upload Screenshot' : 'Upload Screenshot'}
+        onFile={(file) => onAction('screenshot', file)}
         loading={loading}
-        variant={variant}
-      >
-        {loading ? 'Processing…' : (variant === 'secondary' ? 'Re-upload Screenshot' : 'Upload Screenshot')}
-      </ActionButton>
+        compact
+      />
       {loading && (
         <p className="text-xs text-gray-500">Uploading &amp; generating documents — this may take 1–2 minutes</p>
       )}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          e.target.value = ''
-          if (file) onAction('screenshot', file)
-        }}
-      />
     </div>
   )
 }
 
-// MF Approval screenshot upload
+// MF Approval screenshot upload — drag-drop zone
 function MfApprovalUpload({ claim, onUploaded }) {
-  const fileRef = useRef(null)
   const upload = useUploadMfApproval()
   const hasApproval = !!claim.mf_approval_drive_id
 
@@ -333,26 +321,15 @@ function MfApprovalUpload({ claim, onUploaded }) {
   return (
     <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-4">
       <h2 className="text-sm font-semibold text-amber-700 mb-2">Master's Fund Approval</h2>
-      <p className="text-xs text-gray-500 mb-3">
-        {hasApproval ? 'Approval screenshot uploaded.' : 'Upload the Master\'s approval screenshot for this MF claim.'}
-      </p>
-      <button
-        onClick={() => fileRef.current?.click()}
-        disabled={upload.isPending}
-        className={`text-sm font-medium px-4 py-2 rounded-lg ${hasApproval ? 'bg-gray-100 text-gray-700' : 'bg-amber-600 text-white'}`}
-      >
-        {upload.isPending ? 'Uploading…' : hasApproval ? 'Re-upload Approval' : 'Upload Approval Screenshot'}
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          e.target.value = ''
-          if (file) handleFile(file)
-        }}
+      {hasApproval && (
+        <p className="text-xs text-green-700 font-medium mb-2">✓ Approval uploaded</p>
+      )}
+      <DragDropZone
+        label={hasApproval ? 'Replace Approval' : 'Upload Approval Screenshot'}
+        onFile={handleFile}
+        loading={upload.isPending}
+        dragBorder="border-amber-400 bg-amber-50"
+        idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
       />
     </div>
   )
@@ -567,20 +544,12 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
               ))}
             </div>
           )}
-          <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-              className="hidden"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? [])
-                e.target.value = ''
-                if (files.length) setBtImages((prev) => [...prev, ...files])
-              }}
-            />
-            + Add screenshot
-          </label>
+          <DragDropZone
+            label="+ Add screenshot"
+            onFiles={(files) => setBtImages((prev) => [...prev, ...files])}
+            multiple
+            compact
+          />
         </div>
 
         {/* Refunds */}
@@ -613,19 +582,16 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
                 value={refund.amount}
                 onChange={(e) => updateRefund(idx, { amount: e.target.value })}
               />
-              <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium flex-1 truncate">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    e.target.value = ''
-                    if (file) updateRefund(idx, { file })
-                  }}
+              <div className="flex-1 min-w-0">
+                {refund.file && (
+                  <p className="text-xs text-gray-600 truncate mb-0.5">{refund.file.name}</p>
+                )}
+                <DragDropZone
+                  label={refund.file ? 'Replace file' : '+ Attach File'}
+                  onFile={(file) => updateRefund(idx, { file })}
+                  compact
                 />
-                {refund.uploading ? <Spinner small /> : (refund.file ? refund.file.name : '+ File')}
-              </label>
+              </div>
               <button
                 type="button"
                 onClick={() => removeRefund(idx)}
@@ -674,23 +640,61 @@ function BtCard({
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
-      {/* Collapsed header — always visible */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 text-left"
-      >
-        <span className="text-gray-400 text-xs">{expanded ? '▼' : '▶'}</span>
-        <span className="flex-1 text-xs font-semibold text-gray-700">
-          Bank Tx {btIndex}
-          {bt.amount != null && ` · ${formatAmount(bt.amount)}`}
-          {netAmount != null && bt.refunds?.length > 0 && ` · net ${formatAmount(netAmount)}`}
-          {` · ${bt.images?.length ?? 0} img`}
-        </span>
-        <span className={`text-xs font-semibold ${tally ? 'text-green-600' : 'text-amber-500'}`}>
-          {tally ? '✓' : '⚠'}
-        </span>
-      </button>
+      {/* Collapsed header — always visible, with BT edit/delete inline */}
+      <div className="flex items-center gap-1 px-3 py-2 bg-gray-50">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center gap-2 flex-1 text-left min-w-0"
+        >
+          <span className="text-gray-400 text-xs shrink-0">{expanded ? '▼' : '▶'}</span>
+          <span className="flex-1 text-xs font-semibold text-gray-700 truncate">
+            Bank Tx {btIndex}
+            {bt.amount != null && ` · ${formatAmount(bt.amount)}`}
+            {netAmount != null && bt.refunds?.length > 0 && ` · net ${formatAmount(netAmount)}`}
+            {` · ${bt.images?.length ?? 0} img`}
+          </span>
+          <span className={`text-xs font-semibold shrink-0 mr-1 ${tally ? 'text-green-600' : 'text-amber-500'}`}>
+            {tally ? '✓' : '⚠'}
+          </span>
+        </button>
+        {/* BT-level Edit / Delete — clearly separated from receipt row actions */}
+        <button
+          type="button"
+          onClick={onEdit}
+          disabled={saving}
+          className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded bg-blue-50 shrink-0 disabled:opacity-40"
+        >
+          Edit BT
+        </button>
+        {!confirmDelete ? (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs text-red-500 font-medium px-1.5 py-0.5 rounded bg-red-50 shrink-0"
+          >
+            Del BT
+          </button>
+        ) : (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => { onDelete(); setConfirmDelete(false) }}
+              disabled={saving}
+              className="text-xs bg-red-600 text-white font-medium px-1.5 py-0.5 rounded disabled:opacity-50"
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="text-xs bg-gray-100 text-gray-700 font-medium px-1.5 py-0.5 rounded"
+            >
+              No
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Expanded content */}
       {expanded && (
@@ -905,6 +909,8 @@ export default function ClaimDetailPage() {
       date: claim.date ?? '',
       wbs_account: claim.wbs_account ?? '',
       transport_form_needed: claim.transport_form_needed ?? false,
+      is_partial: claim.is_partial ?? false,
+      partial_amount: claim.partial_amount != null ? String(claim.partial_amount) : '',
       other_emails: claim.other_emails ?? [],
     })
     setEditMode(true)
@@ -917,10 +923,12 @@ export default function ClaimDetailPage() {
 
   function handleSave() {
     // Strip empty strings for enum/date fields to avoid Pydantic 422 errors
-    const { date, wbs_account, ...rest } = editFields
+    const { date, wbs_account, is_partial, partial_amount, ...rest } = editFields
     const payload = { id, ...rest }
     if (date) payload.date = date
     if (wbs_account) payload.wbs_account = wbs_account
+    payload.is_partial = is_partial
+    if (is_partial && partial_amount) payload.partial_amount = Number(partial_amount)
 
     updateClaimMut.mutate(
       payload,
@@ -1226,6 +1234,37 @@ export default function ClaimDetailPage() {
                 </label>
               </div>
 
+              {/* Partial claim */}
+              <div className="flex items-center gap-2">
+                <input
+                  id="is_partial"
+                  type="checkbox"
+                  checked={editFields.is_partial}
+                  onChange={(e) =>
+                    setEditFields((f) => ({ ...f, is_partial: e.target.checked }))
+                  }
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                />
+                <label htmlFor="is_partial" className="text-sm text-gray-700">
+                  Partial claim
+                </label>
+              </div>
+              {editFields.is_partial && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Partial Amount</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={editFields.partial_amount}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, partial_amount: e.target.value }))
+                    }
+                    className="w-full max-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    placeholder="0.00"
+                  />
+                </div>
+              )}
+
               {/* Other emails */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Other Emails</label>
@@ -1477,22 +1516,6 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   const [err, setErr] = useState({})
 
   const [receiptImageDriveIds, setReceiptImageDriveIds] = useState(initial?.receipt_image_drive_ids ?? [])
-  const [uploadingReceiptImg, setUploadingReceiptImg] = useState(false)
-  const [imgUploadErr, setImgUploadErr] = useState(null)
-
-  async function handleReceiptImageFile(file) {
-    if (!claimId) return
-    setImgUploadErr(null)
-    setUploadingReceiptImg(true)
-    try {
-      const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
-      setReceiptImageDriveIds(prev => [...prev, data.drive_file_id])
-    } catch(e) {
-      setImgUploadErr(extractError(e, 'Upload failed. Please try again.'))
-    } finally {
-      setUploadingReceiptImg(false)
-    }
-  }
 
   function handleSave() {
     const e = {}
@@ -1526,17 +1549,12 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
             ))}
           </div>
         )}
-        <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-            className="hidden"
-            disabled={uploadingReceiptImg || saving || !claimId}
-            onChange={e => { const file = e.target.files?.[0]; e.target.value=''; if(file) handleReceiptImageFile(file) }}
-          />
-          {uploadingReceiptImg ? 'Uploading…' : '+ Add receipt photo'}
-        </label>
-        {imgUploadErr && <p className="text-xs text-red-500 mt-0.5">{imgUploadErr}</p>}
+        <ReceiptUploader
+          claimId={claimId}
+          imageType="receipt"
+          label="Receipt Photo"
+          onUploaded={(driveId) => setReceiptImageDriveIds(prev => [...prev, driveId])}
+        />
       </div>
 
       {/* Description */}

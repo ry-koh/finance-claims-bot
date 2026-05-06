@@ -104,6 +104,10 @@ export default function ReceiptUploader({
       setA4Locked(false)
     } else {
       cropper.setAspectRatio(A4_RATIO)
+      // Expand the crop box to fill the full canvas width at A4 ratio
+      const canvas = cropper.getCanvasData()
+      const w = canvas.width
+      cropper.setCropBoxData({ left: canvas.left, top: canvas.top, width: w, height: w / A4_RATIO })
       setA4Locked(true)
     }
   }

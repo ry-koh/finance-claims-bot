@@ -330,7 +330,7 @@ async def create_receipt(
         receipt_data["receipt_no"] = payload.receipt_no
     if payload.company is not None:
         receipt_data["company"] = payload.company
-    if payload.date is not None:
+    if payload.date:  # treat empty string as absent — empty string is invalid for date column
         receipt_data["date"] = payload.date
     if payload.receipt_image_drive_id is not None:
         receipt_data["receipt_image_drive_id"] = payload.receipt_image_drive_id
@@ -503,11 +503,13 @@ async def update_receipt(
 
     # Build the field update dict for the receipt row
     update_data: dict = {}
-    for field in ("receipt_no", "description", "company", "date", "amount",
+    for field in ("receipt_no", "description", "company", "amount",
                   "receipt_image_drive_id", "bank_screenshot_drive_id"):
         value = getattr(payload, field, None)
         if value is not None:
             update_data[field] = value
+    if payload.date:  # treat empty string as absent
+        update_data["date"] = payload.date
 
     if category_changing and new_category is not None:
         claim_id: str = receipt["claim_id"]

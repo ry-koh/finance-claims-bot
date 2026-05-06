@@ -7,6 +7,7 @@ import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
 import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
+import DragDropZone from '../components/DragDropZone'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -446,21 +447,12 @@ function Step2({ data, onChange }) {
               <button type="button" onClick={() => onChange({ mfApprovalFile: null })} className="text-xs text-red-500 underline ml-2 shrink-0">Remove</button>
             </div>
           ) : (
-            <label className="flex flex-col items-center gap-1 border-2 border-dashed border-amber-300 rounded-xl py-4 cursor-pointer hover:bg-amber-100 active:bg-amber-200">
-              <span className="text-xl">📎</span>
-              <span className="text-sm font-medium text-amber-700">Upload approval</span>
-              <span className="text-xs text-amber-500">Tap to browse</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) onChange({ mfApprovalFile: file })
-                  e.target.value = ''
-                }}
-              />
-            </label>
+            <DragDropZone
+              label="Upload approval"
+              onFile={(file) => onChange({ mfApprovalFile: file })}
+              dragBorder="border-amber-400 bg-amber-50"
+              idleBorder="border-amber-300 bg-amber-50 hover:bg-amber-100"
+            />
           )}
         </div>
       )}
@@ -656,20 +648,12 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
             ))}
           </div>
         )}
-        <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-            className="hidden"
-            multiple
-            onChange={(e) => {
-              const newFiles = Array.from(e.target.files ?? [])
-              e.target.value = ''
-              if (newFiles.length) setForm((prev) => ({ ...prev, files: [...prev.files, ...newFiles] }))
-            }}
-          />
-          + Add photo
-        </label>
+        <DragDropZone
+          label="+ Add photo"
+          onFiles={(files) => setForm((prev) => ({ ...prev, files: [...prev.files, ...files] }))}
+          multiple
+          compact
+        />
       </div>
 
       <div>
@@ -894,20 +878,12 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
               ))}
             </div>
           )}
-          <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium">
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-              className="hidden"
-              multiple
-              onChange={(e) => {
-                const newFiles = Array.from(e.target.files ?? [])
-                e.target.value = ''
-                if (newFiles.length) setFiles((prev) => [...prev, ...newFiles])
-              }}
-            />
-            + Add screenshot
-          </label>
+          <DragDropZone
+            label="+ Add screenshot"
+            onFiles={(files) => setFiles((prev) => [...prev, ...files])}
+            multiple
+            compact
+          />
         </div>
 
         <div>
@@ -927,19 +903,16 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
                 onChange={(e) => updateRefund(refund.localId, { amount: e.target.value })}
                 className="w-24 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <label className="flex items-center gap-1 cursor-pointer text-xs text-blue-600 font-medium flex-1 truncate">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    e.target.value = ''
-                    if (file) updateRefund(refund.localId, { file })
-                  }}
+              <div className="flex-1 min-w-0">
+                {refund.file && (
+                  <p className="text-xs text-gray-600 truncate mb-0.5">{refund.file.name}</p>
+                )}
+                <DragDropZone
+                  label={refund.file ? 'Replace file' : '+ Attach File'}
+                  onFile={(file) => updateRefund(refund.localId, { file })}
+                  compact
                 />
-                {refund.file ? refund.file.name : '+ File'}
-              </label>
+              </div>
               <button type="button" onClick={() => removeRefund(refund.localId)} className="text-red-400 text-sm">×</button>
             </div>
           ))}

@@ -1,6 +1,6 @@
 # Finance Claims Bot — Setup Guide
 
-This guide walks through the complete one-time setup. Do it in order — each step depends on the previous one.
+Complete one-time setup. Do steps in order — each depends on the previous.
 
 ---
 
@@ -13,26 +13,20 @@ This guide walks through the complete one-time setup. Do it in order — each st
 4. Wait ~2 minutes for it to provision
 
 ### Run the database migrations
-1. In your Supabase project, click **SQL Editor** in the left sidebar
-2. Click **New query**
-3. Open the file `supabase/migrations/001_schema.sql` from this repo in any text editor (Notepad, VS Code, etc.)
-4. Select all the text (`Ctrl+A`), copy it
-5. Paste it into the Supabase SQL Editor and click **Run**
-6. You should see "Success. No rows returned"
-7. Repeat for each file in order:
+1. In your Supabase project, click **SQL Editor** in the left sidebar → **New query**
+2. Run each file in the `supabase/migrations/` folder in order by pasting its contents and clicking **Run**:
+   - `001_schema.sql`
    - `002_indexes.sql`
    - `003_functions.sql`
    - `004_seed.sql`
    - `005_transport_data.sql`
+3. You should see "Success. No rows returned" for each
 
 ### Copy your credentials
-1. In Supabase, go to **Settings** (gear icon) → **API**
-2. Copy the **Project URL** — it looks like `https://abcdefgh.supabase.co`
-   - Save this as `SUPABASE_URL`
-3. Under **Project API keys**, find the **service_role** key and click **Reveal**
-   - Copy it — it's a long string starting with `eyJ...`
-   - Save this as `SUPABASE_KEY`
-   - ⚠️ Use the **service_role** key, NOT the anon key
+1. Go to **Settings** → **API**
+2. Copy the **Project URL** (e.g. `https://abcdefgh.supabase.co`) → save as `SUPABASE_URL`
+3. Under **Project API keys**, reveal the **service_role** key → save as `SUPABASE_KEY`
+   - ⚠️ Use **service_role**, NOT the anon key
 
 ---
 
@@ -40,72 +34,48 @@ This guide walks through the complete one-time setup. Do it in order — each st
 
 ### Create the project
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Click the project dropdown at the top → **New Project**
+2. Click the project dropdown → **New Project**
 3. Name it `finance-claims-bot`, click **Create**
-4. Make sure your new project is selected in the dropdown
+4. Make sure your new project is selected
 
 ### Enable the required APIs
-1. Go to **APIs & Services** → **Library**
-2. Search for and enable each of these (click the API name → **Enable**):
-   - **Google Drive API**
-   - **Google Docs API**
-   - **Google Sheets API**
-   - **Gmail API**
+Go to **APIs & Services** → **Library** and enable each:
+- Google Drive API
+- Google Docs API
+- Google Sheets API
+- Gmail API
 
-### Create a Service Account (for Drive, Docs, Sheets)
-1. Go to **IAM & Admin** → **Service Accounts**
-2. Click **Create Service Account**
-3. Name it `finance-claims-service`, click **Create and continue**
-4. Skip the optional role/access steps, click **Done**
-5. Click on the service account you just created
-6. Go to the **Keys** tab → **Add Key** → **Create new key**
-7. Choose **JSON**, click **Create**
-8. A `.json` file will download to your computer — keep it safe
-9. Open that JSON file in a text editor. It looks like:
-   ```json
-   {
-     "type": "service_account",
-     "project_id": "...",
-     "private_key_id": "...",
-     "private_key": "-----BEGIN RSA PRIVATE KEY-----\n...",
-     "client_email": "finance-claims-service@....iam.gserviceaccount.com",
-     ...
-   }
-   ```
-10. Select all the text in that file (`Ctrl+A`), copy it — this entire JSON blob is your `GOOGLE_SERVICE_ACCOUNT_JSON`
+### Create a Service Account (still required by the backend)
+1. Go to **IAM & Admin** → **Service Accounts** → **Create Service Account**
+2. Name it `finance-claims-service`, click through and **Done**
+3. Click the service account → **Keys** tab → **Add Key** → **Create new key** → **JSON**
+4. A `.json` file downloads — open it in a text editor
+5. Select all (`Ctrl+A`) and copy the entire JSON blob → save as `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 ### Share your Google Drive folder with the service account
-1. Go to [drive.google.com](https://drive.google.com)
-2. Create a folder called `Claims` (or use an existing one)
-3. Right-click the folder → **Share**
-4. Paste the **client_email** from the JSON file (e.g. `finance-claims-service@....iam.gserviceaccount.com`)
-5. Set role to **Editor**, click **Send**
-6. Copy the folder ID from the URL: `https://drive.google.com/drive/folders/`**`THIS_PART_IS_THE_ID`**
-   - Save this as `GOOGLE_DRIVE_PARENT_FOLDER_ID`
+1. Go to [drive.google.com](https://drive.google.com) and create a folder called `Claims`
+2. Right-click → **Share**, paste the `client_email` from the JSON (e.g. `finance-claims-service@....iam.gserviceaccount.com`)
+3. Set role to **Editor**, click **Send**
+4. Copy the folder ID from the URL: `https://drive.google.com/drive/folders/`**`THIS_PART`** → save as `GOOGLE_DRIVE_PARENT_FOLDER_ID`
 
-### Create OAuth credentials (for Gmail sending)
-1. Go to **APIs & Services** → **OAuth consent screen**
-2. Choose **External**, click **Create**
-3. Fill in App name (`Finance Claims Bot`), your email for support and developer contact, click **Save and continue** through the remaining steps
-4. Go to **APIs & Services** → **Credentials** → **Create Credentials** → **OAuth client ID**
-5. Application type: **Web application**
-6. Name: `Finance Claims Gmail`
-7. Under **Authorised redirect URIs**, click **Add URI** and add: `http://localhost:8080`
-8. Click **Create**
-9. A popup shows your credentials:
-   - **Client ID** — save this as `GMAIL_CLIENT_ID` (ends in `.apps.googleusercontent.com`)
-   - **Client Secret** — save this as `GMAIL_CLIENT_SECRET`
-   - Click **OK**
+### Create OAuth credentials (for Gmail and Drive)
+1. Go to **APIs & Services** → **OAuth consent screen** → **External** → **Create**
+2. Fill in App name (`Finance Claims Bot`), your email for support and developer contact, save through the steps
+3. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
+4. Application type: **Web application**, Name: `Finance Claims Bot`
+5. Under **Authorised redirect URIs** add: `http://localhost:8080`
+6. Click **Create** — a popup shows:
+   - **Client ID** → save as `GMAIL_CLIENT_ID`
+   - **Client Secret** → save as `GMAIL_CLIENT_SECRET`
 
-### Run the Gmail authorisation script (one-time only)
-This generates a refresh token so the backend can send emails from your Gmail account.
+### Generate the Gmail refresh token (send emails as Finance Director)
+This authorises the backend to send emails from the FD's Gmail account.
 
-1. On your computer, open a terminal in the project folder
-2. Install the required library if you haven't already:
+1. In a terminal in the project folder:
    ```
    pip install google-auth-oauthlib
    ```
-3. Create a file called `credentials.json` in the `backend/` folder with this content (fill in your values):
+2. Create `backend/credentials.json`:
    ```json
    {
      "installed": {
@@ -117,138 +87,174 @@ This generates a refresh token so the backend can send emails from your Gmail ac
      }
    }
    ```
-4. Run the script:
+3. Run:
    ```
    python backend/scripts/gmail_auth.py
    ```
-5. Your browser will open — sign in with the Gmail account that will send the emails (the Finance Director's Gmail)
-6. Click **Allow** on all permission prompts
-7. The script prints a refresh token in the terminal — it looks like `1//0gABC...`
-   - Save this as `GMAIL_REFRESH_TOKEN`
-8. Delete `credentials.json` afterwards — it contains sensitive credentials
+4. Your browser opens — sign in as the **Finance Director's Gmail account** and click Allow
+5. The terminal prints a refresh token → save as `GMAIL_REFRESH_TOKEN`
+6. Delete `backend/credentials.json` afterwards
+
+### Generate the Drive refresh token (read/write Drive, Sheets, Docs)
+This is a separate token that authorises document generation and storage in Drive.
+
+1. Run:
+   ```
+   python backend/scripts/get_drive_token.py
+   ```
+2. When prompted, enter your `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET`
+3. Your browser opens — sign in as the account that owns the Drive folder and click Allow
+4. The terminal prints a refresh token → save as `DRIVE_REFRESH_TOKEN`
 
 ---
 
-## Step 3 — Telegram Bot
+## Step 3 — Cloudflare R2 (Image Storage)
 
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot`
-3. Follow the prompts — choose a name and username for your bot
-4. BotFather will give you a **bot token** — it looks like `1234567890:ABCDefGHIjklMNOpqrSTUvwxYZ`
-   - Save this as `TELEGRAM_BOT_TOKEN`
+R2 stores receipt images and bank transaction screenshots uploaded from the UI.
+
+1. Go to [cloudflare.com](https://cloudflare.com) → **R2 Object Storage** → **Create bucket**
+2. Name it (e.g. `finance-claims`) → save the name as `R2_BUCKET_NAME`
+3. In R2, go to **Manage R2 API tokens** → **Create API token**
+4. Set permissions: **Object Read & Write** for your bucket
+5. Save the credentials:
+   - **Account ID** → `R2_ACCOUNT_ID`
+   - **Access Key ID** → `R2_ACCESS_KEY_ID`
+   - **Secret Access Key** → `R2_SECRET_ACCESS_KEY`
 
 ---
 
-## Step 4 — Deploy the backend (Render)
+## Step 4 — Telegram Bot
 
-1. Push this repo to GitHub (if you haven't already)
-2. Go to [render.com](https://render.com) and sign in
-3. Click **New** → **Web Service**
-4. Connect your GitHub account and select this repo
-5. Fill in the settings:
-   - **Name**: `finance-claims-bot`
-   - **Root Directory**: `backend`
-   - **Runtime**: Python 3
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - **Instance Type**: Free
-6. Click **Advanced** → **Add Environment Variable** and add each of the following:
+1. Open Telegram → search **@BotFather** → send `/newbot`
+2. Follow prompts to choose a name and username
+3. BotFather gives you a bot token → save as `TELEGRAM_BOT_TOKEN`
 
-| Key | Value |
-|-----|-------|
-| `SUPABASE_URL` | Your Supabase Project URL from Step 1 |
-| `SUPABASE_KEY` | Your Supabase service_role key from Step 1 |
-| `TELEGRAM_BOT_TOKEN` | Your bot token from Step 3 |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | The entire JSON file contents from Step 2 (the whole blob) |
+---
+
+## Step 5 — Deploy Backend (Google Cloud Run)
+
+The backend auto-deploys to Cloud Run whenever you push to `main` via GitHub Actions.
+
+### Set up Google Cloud Run
+1. In your Google Cloud project, go to **APIs & Services** → **Library** and enable:
+   - **Cloud Run API**
+   - **Cloud Build API**
+   - **Artifact Registry API**
+2. Go to **IAM & Admin** → **Service Accounts** → **Create Service Account**
+3. Name it `github-deployer`, click **Create and continue**
+4. Grant these roles:
+   - Cloud Run Admin
+   - Service Account User
+   - Storage Admin
+   - Artifact Registry Administrator
+5. Click **Done**
+6. Click the service account → **Keys** tab → **Add Key** → **Create new key** → **JSON**
+7. Save the downloaded JSON → you'll need its full contents as `GCP_SA_KEY`
+
+### Add GitHub secrets
+Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret** for each:
+
+| Secret | Value |
+|---|---|
+| `GCP_PROJECT_ID` | Your Google Cloud project ID (visible in the Cloud Console header) |
+| `GCP_SA_KEY` | The entire JSON contents of the deployer service account key file |
+| `SUPABASE_URL` | From Step 1 |
+| `SUPABASE_KEY` | From Step 1 |
+| `TELEGRAM_BOT_TOKEN` | From Step 4 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | From Step 2 |
 | `GMAIL_CLIENT_ID` | From Step 2 |
 | `GMAIL_CLIENT_SECRET` | From Step 2 |
 | `GMAIL_REFRESH_TOKEN` | From Step 2 |
-| `GOOGLE_DRIVE_PARENT_FOLDER_ID` | The Drive folder ID from Step 2 |
-| `ACADEMIC_YEAR` | `2526` |
+| `GOOGLE_DRIVE_PARENT_FOLDER_ID` | From Step 2 |
+| `DRIVE_REFRESH_TOKEN` | From Step 2 |
+| `R2_ACCOUNT_ID` | From Step 3 |
+| `R2_ACCESS_KEY_ID` | From Step 3 |
+| `R2_SECRET_ACCESS_KEY` | From Step 3 |
+| `R2_BUCKET_NAME` | From Step 3 |
+| `FD_NAME` | Finance Director's full name (e.g. `Jun Kiat`) |
+| `FD_MATRIC_NO` | Finance Director's matric number |
+| `FD_PHONE` | Finance Director's phone number |
+| `FD_EMAIL` | Finance Director's personal email |
+| `ACADEMIC_YEAR` | e.g. `2526` |
 | `ALLOWED_ORIGINS` | `*` |
 
-7. Click **Create Web Service**
-8. Wait for the first deploy to finish (~3–5 minutes)
-9. Copy your Render URL from the top of the page — it looks like `https://finance-claims-bot.onrender.com`
+> `APP_URL` and `MINI_APP_URL` cannot be set yet — you'll add them in Steps 6–8.
+
+### Trigger the first deploy
+1. Push to `main`:
+   ```
+   git push origin main
+   ```
+2. Go to **Actions** → **Deploy to Google Cloud Run** → watch the workflow run (~3–5 minutes)
+3. When it finishes, the workflow prints your Cloud Run URL (e.g. `https://finance-claims-bot-xxxx-as.a.run.app`)
+4. Save this URL → you'll need it as `APP_URL`
 
 ---
 
-## Step 5 — Deploy the frontend (Vercel)
+## Step 6 — Deploy Frontend (Vercel)
 
-1. Go to [vercel.com](https://vercel.com) and sign in
-2. Click **Add New** → **Project**
-3. Import your GitHub repo
-4. Set **Root Directory** to `frontend`
-5. Under **Environment Variables**, add:
+1. Go to [vercel.com](https://vercel.com) → **Add New** → **Project**
+2. Import your GitHub repo
+3. Set **Root Directory** to `frontend`
+4. Under **Environment Variables** add:
 
 | Key | Value |
-|-----|-------|
-| `VITE_API_URL` | Your Render URL from Step 4 (e.g. `https://finance-claims-bot.onrender.com`) |
+|---|---|
+| `VITE_API_URL` | Your Cloud Run URL from Step 5 (e.g. `https://finance-claims-bot-xxxx-as.a.run.app`) |
 
-6. Click **Deploy**
-7. Wait for it to finish (~1–2 minutes)
-8. Copy your Vercel URL — it looks like `https://finance-claims-bot.vercel.app`
-
----
-
-## Step 6 — Connect the Mini App to Telegram
-
-1. Go back to **@BotFather** on Telegram
-2. Send `/newapp`
-3. Select your bot
-4. Follow the prompts — when asked for the Web App URL, enter your **Vercel URL** from Step 5
-5. BotFather will confirm the Mini App is created
+5. Click **Deploy** (~1–2 minutes)
+6. Copy your Vercel URL (e.g. `https://finance-claims-bot.vercel.app`) → save as `MINI_APP_URL`
 
 ---
 
-## Step 7 — Add MINI_APP_URL to Render
+## Step 7 — Connect the Mini App to Telegram
 
-Now that you have the Vercel URL, go back to Render:
-
-1. Go to your `finance-claims-bot` service → **Environment** tab
-2. Click **Add Environment Variable**:
-
-| Key | Value |
-|-----|-------|
-| `MINI_APP_URL` | Your Vercel URL from Step 5 (e.g. `https://finance-claims-bot.vercel.app`) |
-| `RENDER_EXTERNAL_URL` | Your Render URL from Step 4 (e.g. `https://finance-claims-bot.onrender.com`) |
-
-3. Click **Save Changes** — Render will redeploy automatically
+1. Go back to **@BotFather** → send `/newapp`
+2. Select your bot
+3. When asked for the Web App URL, enter your Vercel URL from Step 6
+4. BotFather confirms the Mini App is created
 
 ---
 
-## Step 8 — GitHub Actions keepalive
+## Step 8 — Add Remaining GitHub Secrets
 
-This prevents Supabase and Render from going inactive.
+Now that you have both URLs, add them as GitHub secrets:
 
-1. Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Name: `RENDER_URL`, Value: your Render URL (e.g. `https://finance-claims-bot.onrender.com`)
-4. Click **Add secret**
+| Secret | Value |
+|---|---|
+| `APP_URL` | Your Cloud Run URL from Step 5 |
+| `MINI_APP_URL` | Your Vercel URL from Step 6 |
 
-The workflow runs automatically every Sunday. You can also trigger it manually from **Actions** → **Keep Alive** → **Run workflow**.
+Then push a trivial change to `main` (or trigger the workflow manually via **Actions** → **Deploy to Google Cloud Run** → **Run workflow**) so the backend redeploys with `APP_URL` and `MINI_APP_URL` set. This is needed for the Telegram webhook to register on startup.
 
 ---
 
-## Step 9 — Register yourself as Finance Director
+## Step 9 — GitHub Actions Keepalive
+
+The keepalive workflow (`keepalive.yml`) pings `/health` every Sunday to prevent Supabase from going inactive.
+
+It uses the `APP_URL` secret you added in Step 8 — no further action needed. You can trigger it manually at any time via **Actions** → **Keep Alive** → **Run workflow**.
+
+---
+
+## Step 10 — Register Yourself as Finance Director
 
 1. Open Telegram, find your bot, send `/start`
-2. The bot won't recognise you yet — it will show your Telegram ID in the reply
-3. Send this command (replace with your actual name and email):
+2. The bot won't recognise you yet — it replies with your Telegram ID
+3. Send:
    ```
    /register_director Your Name your@email.com
    ```
    Example: `/register_director Jane Doe jane@u.nus.edu`
-4. The bot will confirm and show an "Open Claims App" button
-5. Tap the button — the Mini App should open
+4. The bot confirms and shows an **Open Claims App** button
+5. Tap the button — the Mini App opens
 
 ---
 
-## Adding team members
+## Adding Team Members
 
-1. Have the new member open your bot and send `/start`
-   - The bot will reply with their Telegram ID
-2. Send this from your account:
+1. Have the new member open your bot and send `/start` — the bot replies with their Telegram ID
+2. From your account, send:
    ```
    /confirm_member <their_telegram_id> Their Name their@email.com member
    ```
@@ -256,11 +262,11 @@ The workflow runs automatically every Sunday. You can also trigger it manually f
 
 ---
 
-## If the bot stops responding
+## If the Bot Stops Responding
 
-1. Go to [render.com](https://render.com)
-2. Find your `finance-claims-bot` service
-3. Click **Manual Deploy** → **Deploy latest commit**
-4. Wait ~2 minutes
+The backend is always-on on Cloud Run — it should not go cold. If something breaks:
 
-This happens because Render free tier spins down after inactivity. The weekly GitHub Actions ping reduces how often this occurs.
+1. Go to your GitHub repo → **Actions** → **Deploy to Google Cloud Run** → **Run workflow**
+2. Wait ~3 minutes for the deploy to complete
+
+To check logs: Google Cloud Console → **Cloud Run** → `finance-claims-bot` → **Logs**.
