@@ -223,6 +223,18 @@ Finance team fills all fields (including category/GST/DR-CR/remarks) and goes DR
 
 ---
 
+## Critical Constraint — Preserve All Existing Features
+
+**IMPORTANT: No existing feature, endpoint, UI component, or workflow step may be removed or altered in a breaking way.** All changes are purely additive:
+
+- The existing finance team claim creation flow (all fields, all WBS options, direct DRAFT → EMAIL_SENT) must remain exactly as-is
+- All existing status transitions, bulk actions, document generation, compilation, and submission steps are unchanged
+- All existing API endpoints retain their current behaviour — new role checks are added without removing existing functionality
+- The finance team's full claim detail page (receipts, bank transactions, line items, document uploads) is untouched except for the new PENDING_REVIEW review panel being added to it
+- Any DB migration must be backwards-compatible (additive columns with defaults, new tables only — no column removals or type changes)
+
+---
+
 ## Out of Scope
 
 - **Director analytics** (CCA expense breakdown by fund) — future feature; Analytics nav entry reserved as "Coming soon" with no logic
