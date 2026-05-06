@@ -10,7 +10,7 @@ import {
   deleteBankTransactionImage, deleteBtRefund, updateBtRefundFile,
   useDeleteBankTransaction,
 } from '../api/bankTransactions'
-import { useAuth, useIsFinanceTeam, useIsTreasurer } from '../context/AuthContext'
+import { useIsFinanceTeam, useIsTreasurer } from '../context/AuthContext'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
