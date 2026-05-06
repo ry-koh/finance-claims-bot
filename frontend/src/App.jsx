@@ -9,6 +9,7 @@ import RegistrationPage from './pages/RegistrationPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
 import TreasurerHomePage from './pages/TreasurerHomePage'
 import PendingRegistrationsPage from './pages/PendingRegistrationsPage'
+import TeamPage from './pages/TeamPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 
 function LoadingScreen() {
@@ -47,6 +48,7 @@ export default function App() {
             {isDirector && (
               <>
                 <Route path="pending-registrations" element={<PendingRegistrationsPage />} />
+                <Route path="team" element={<TeamPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
               </>
             )}

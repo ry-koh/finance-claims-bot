@@ -57,3 +57,41 @@ export function useRejectRegistration(options = {}) {
     ...options,
   })
 }
+
+export const TEAM_KEYS = {
+  all: ['team'],
+}
+
+export const fetchTeamMembers = () =>
+  api.get('/admin/team').then((r) => r.data)
+
+export const updateTeamMember = ({ id, role, cca_ids = [] }) =>
+  api.patch(`/admin/team/${id}`, { role, cca_ids }).then((r) => r.data)
+
+export const removeTeamMember = (id) =>
+  api.delete(`/admin/team/${id}`).then((r) => r.data)
+
+export function useTeamMembers() {
+  return useQuery({
+    queryKey: TEAM_KEYS.all,
+    queryFn: fetchTeamMembers,
+  })
+}
+
+export function useUpdateTeamMember(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateTeamMember,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: TEAM_KEYS.all }),
+    ...options,
+  })
+}
+
+export function useRemoveTeamMember(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: removeTeamMember,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: TEAM_KEYS.all }),
+    ...options,
+  })
+}

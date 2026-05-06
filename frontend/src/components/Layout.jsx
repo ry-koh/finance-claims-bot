@@ -24,6 +24,12 @@ function DirectorNav() {
         </span>
         <span>Approvals</span>
       </NavLink>
+      <NavLink to="/team" className={({ isActive }) =>
+        `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+      }>
+        <span className="text-xl">🛡️</span>
+        <span>Team</span>
+      </NavLink>
       <NavLink to="/analytics" className={({ isActive }) =>
         `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
       }>
