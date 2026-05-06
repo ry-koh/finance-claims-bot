@@ -1,24 +1,26 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { updateRegistration, getMe } from '../api/auth'
-import { useAllCcas } from '../api/portfolios'
+import { usePublicCcas } from '../api/portfolios'
 
 export default function PendingApprovalPage() {
   const { user, setUser } = useAuth()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(user?.name || '')
   const [email, setEmail] = useState(user?.email || '')
+  const [editRole, setEditRole] = useState(user?.role || '')
   const [selectedCcaIds, setSelectedCcaIds] = useState(
     (user?.ccas || []).map((c) => c.id)
   )
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const { data: allCcas = [] } = useAllCcas()
+  const { data: allCcas = [] } = usePublicCcas()
 
   function openEdit() {
     setName(user?.name || '')
     setEmail(user?.email || '')
+    setEditRole(user?.role || '')
     setSelectedCcaIds((user?.ccas || []).map((c) => c.id))
     setError('')
     setEditing(true)
@@ -38,8 +40,8 @@ export default function PendingApprovalPage() {
       await updateRegistration({
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        role: user.role,
-        cca_ids: user.role === 'treasurer' ? selectedCcaIds : [],
+        role: editRole,
+        cca_ids: editRole === 'treasurer' ? selectedCcaIds : [],
       })
       const updated = await getMe()
       setUser(updated)
@@ -86,6 +88,31 @@ export default function PendingApprovalPage() {
         ) : (
           <form onSubmit={handleSave} className="space-y-3">
             <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-2">I am a</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'treasurer', label: 'CCA Treasurer' },
+                  { value: 'member', label: 'Finance Member' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      setEditRole(opt.value)
+                      setSelectedCcaIds([])
+                    }}
+                    className={`py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors ${
+                      editRole === opt.value
+                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Name</label>
               <input
                 type="text"
@@ -98,7 +125,7 @@ export default function PendingApprovalPage() {
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 Email{' '}
-                {user?.role === 'member' && (
+                {editRole === 'member' && (
                   <span className="text-gray-400 font-normal">(@u.nus.edu)</span>
                 )}
               </label>
@@ -110,7 +137,7 @@ export default function PendingApprovalPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
-            {user?.role === 'treasurer' && (
+            {editRole === 'treasurer' && (
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">CCA(s)</label>
                 <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
@@ -136,7 +163,7 @@ export default function PendingApprovalPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={saving || !name.trim() || !email.trim() || (user?.role === 'treasurer' && selectedCcaIds.length === 0)}
+                disabled={saving || !editRole || !name.trim() || !email.trim() || (editRole === 'treasurer' && selectedCcaIds.length === 0)}
                 className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save'}

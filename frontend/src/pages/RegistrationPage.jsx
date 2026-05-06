@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { register } from '../api/auth'
-import { useAllCcas } from '../api/portfolios'
+import { usePublicCcas } from '../api/portfolios'
 
 export default function RegistrationPage() {
   const { setUser } = useAuth()
@@ -12,7 +12,7 @@ export default function RegistrationPage() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const { data: allCcas = [] } = useAllCcas()
+  const { data: allCcas = [] } = usePublicCcas()
 
   function toggleCca(id) {
     setSelectedCcaIds((prev) =>

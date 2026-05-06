@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useClaimers, useCreateClaimer, useUpdateClaimer, useDeleteClaimer } from '../api/claimers'
+import { useClaimers, useUpdateClaimer, useDeleteClaimer } from '../api/claimers'
 import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 
 // ── Inline edit / add form ────────────────────────────────────────────────────
@@ -237,21 +237,11 @@ function ClaimerRow({ claimer, updateMutation, deleteMutation }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function IdentifierDataPage() {
   const [search, setSearch] = useState('')
-  const [showAddForm, setShowAddForm] = useState(false)
 
   const claimerParams = search ? { search } : {}
   const { data: claimers, isLoading, isError, error } = useClaimers(claimerParams)
-  const createMutation = useCreateClaimer()
   const updateMutation = useUpdateClaimer()
   const deleteMutation = useDeleteClaimer()
-
-  const handleAdd = (fields) => {
-    createMutation.mutate(fields, {
-      onSuccess: () => {
-        setShowAddForm(false)
-      },
-    })
-  }
 
   // Group claimers: portfolio → cca → [claimers]
   const grouped = useMemo(() => {
@@ -275,12 +265,6 @@ export default function IdentifierDataPage() {
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 pt-4 pb-3 space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold text-gray-900">Identifier Data</h1>
-          <button
-            onClick={() => setShowAddForm((v) => !v)}
-            className="text-sm bg-blue-600 text-white font-medium px-3 py-1.5 rounded-lg"
-          >
-            {showAddForm ? 'Cancel' : '+ Add Claimer'}
-          </button>
         </div>
 
         {/* Search */}
@@ -297,18 +281,6 @@ export default function IdentifierDataPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {/* Add form */}
-        {showAddForm && (
-          <div>
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">New Claimer</h2>
-            <ClaimerForm
-              onSave={handleAdd}
-              onCancel={() => setShowAddForm(false)}
-              saving={createMutation.isPending}
-            />
-          </div>
-        )}
-
         {/* Loading */}
         {isLoading && (
           <div className="flex items-center justify-center py-12 text-gray-400 text-sm">

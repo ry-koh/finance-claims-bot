@@ -9,6 +9,9 @@ export const PORTFOLIO_KEYS = {
 }
 
 // Raw API calls
+export const fetchAllCcasPublic = () =>
+  api.get('/portfolios/ccas/public').then((r) => r.data)
+
 export const fetchPortfolios = () =>
   api.get('/portfolios').then((r) => r.data)
 
@@ -28,6 +31,13 @@ export function useCcasByPortfolio(portfolioId) {
     queryKey: PORTFOLIO_KEYS.ccas(portfolioId),
     queryFn: () => fetchCcasByPortfolio(portfolioId),
     enabled: !!portfolioId,
+  })
+}
+
+export function usePublicCcas() {
+  return useQuery({
+    queryKey: ['portfolios', 'ccas', 'public'],
+    queryFn: fetchAllCcasPublic,
   })
 }
 

@@ -5,6 +5,18 @@ from app.auth import require_auth
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
 
+@router.get("/ccas/public")
+async def list_all_ccas_public(db=Depends(get_supabase)):
+    """Public endpoint for CCA listing during registration — no auth required."""
+    result = (
+        db.table("ccas")
+        .select("*, portfolio:portfolios(id, name)")
+        .order("name")
+        .execute()
+    )
+    return result.data
+
+
 @router.get("")
 async def list_portfolios(auth=Depends(require_auth), db=Depends(get_supabase)):
     result = db.table("portfolios").select("*").order("name").execute()

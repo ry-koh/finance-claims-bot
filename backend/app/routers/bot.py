@@ -361,7 +361,10 @@ async def webhook(request: Request):
         logger.exception("Error handling command %s from %s: %s", command, sender_id, exc)
 
     finally:
-        await bot.close()
+        try:
+            await bot.close()
+        except Exception as exc:
+            logger.warning("Error closing bot session: %s", exc)
 
     return {"ok": True}
 

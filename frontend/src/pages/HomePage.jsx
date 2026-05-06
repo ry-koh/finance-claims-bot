@@ -284,7 +284,7 @@ export default function HomePage() {
 
         {/* Status count chips */}
         {!selectMode && (
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none mt-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 mt-2">
             {STATUSES.map(({ label, value }) => {
               const count = value === null ? allCount : (countsData?.[value] ?? 0)
               const isActive = activeStatus === value
