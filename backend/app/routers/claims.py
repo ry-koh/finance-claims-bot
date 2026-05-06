@@ -171,6 +171,9 @@ async def get_claim(
         raise HTTPException(status_code=404, detail="Claim not found")
     claim = claim_resp.data[0]
 
+    if _member.get("role") == "treasurer" and str(claim.get("filled_by")) != str(_member["id"]):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Line items ordered by index
     line_items_resp = (
         db.table("claim_line_items")
@@ -266,16 +269,19 @@ async def get_claim_line_items(
     Return all line items for a claim ordered by line_item_index,
     each with its receipts list nested inside.
     """
-    # Verify claim exists
+    # Verify claim exists (and check treasurer ownership)
     resp = (
         db.table("claims")
-        .select("id")
+        .select("id, filled_by")
         .eq("id", claim_id)
         .is_("deleted_at", "null")
         .execute()
     )
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
+
+    if _member.get("role") == "treasurer" and str(resp.data[0].get("filled_by")) != str(_member["id"]):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Fetch line items ordered by index
     line_items_resp = (
@@ -448,7 +454,10 @@ async def update_claim(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    _get_claim_or_404(db, claim_id)
+    claim = _get_claim_or_404(db, claim_id)
+
+    if _member.get("role") == "treasurer" and str(claim.get("filled_by")) != str(_member["id"]):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Build update dict from only provided fields, excluding immutable fields
     immutable = {"reference_code", "claim_number", "created_at"}
