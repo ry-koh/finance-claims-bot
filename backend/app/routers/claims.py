@@ -367,7 +367,7 @@ async def create_claim(
     claimer = claimer_resp.data[0]
 
     if _member.get("role") == "treasurer":
-        if str(payload.wbs_account) == "MBH":
+        if payload.wbs_account == WBSAccount.MBH:
             raise HTTPException(400, "Treasurers cannot select MBH as WBS account")
         cca_links = (
             db.table("treasurer_ccas")
@@ -576,13 +576,15 @@ async def submit_for_review(
     claim = _get_claim_or_404(db, claim_id)
     if str(claim.get("filled_by")) != str(member["id"]):
         raise HTTPException(403, "You can only submit your own claims")
-    if claim.get("status") != "draft":
+    if claim.get("status") != ClaimStatus.DRAFT.value:
         raise HTTPException(400, f"Claim must be in draft status, currently: {claim.get('status')}")
-    db.table("claims").update({
+    resp = db.table("claims").update({
         "status": "pending_review",
         "rejection_comment": None,
     }).eq("id", claim_id).execute()
-    return {"success": True, "status": "pending_review"}
+    if not resp.data:
+        raise HTTPException(status_code=500, detail="Failed to update claim status")
+    return {"success": True, "status": ClaimStatus.PENDING_REVIEW.value}
 
 
 # ---------------------------------------------------------------------------
@@ -598,10 +600,12 @@ async def reject_review(
 ):
     """Finance team rejects a PENDING_REVIEW claim back to DRAFT with a comment."""
     claim = _get_claim_or_404(db, claim_id)
-    if claim.get("status") != "pending_review":
+    if claim.get("status") != ClaimStatus.PENDING_REVIEW.value:
         raise HTTPException(400, "Claim is not in pending_review status")
-    db.table("claims").update({
+    resp = db.table("claims").update({
         "status": "draft",
         "rejection_comment": payload.comment,
     }).eq("id", claim_id).execute()
-    return {"success": True, "status": "draft"}
+    if not resp.data:
+        raise HTTPException(status_code=500, detail="Failed to update claim status")
+    return {"success": True, "status": ClaimStatus.DRAFT.value}

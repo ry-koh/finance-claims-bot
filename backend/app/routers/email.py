@@ -79,7 +79,7 @@ async def send_claim_email(
         # 6. Build email
         msg = gmail_service.build_claim_email(claim, receipts_resp.data, bt_resp.data)
 
-        # 6. Set headers — send only to treasurer, no CC
+        # Set headers
         reference_code = claim.get("reference_code") or ""
         msg["To"] = claimer_email
         msg["Subject"] = reference_code
@@ -173,7 +173,7 @@ async def resend_claim_email(
         # 5. Build email
         msg = gmail_service.build_claim_email(claim, receipts_resp.data, bt_resp.data)
 
-        # 5. Set headers — send only to treasurer, no CC
+        # Set headers
         reference_code = claim.get("reference_code") or ""
         msg["To"] = claimer_email
         msg["Subject"] = reference_code
