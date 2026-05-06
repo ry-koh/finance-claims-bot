@@ -18,6 +18,7 @@ export default function DragDropZone({
   const [cropQueue, setCropQueue] = useState([])
   const [converting, setConverting] = useState(false)
   const cropResultsRef = useRef([])
+  const cropTotalRef = useRef(0)
   const fileRef = useRef(null)
 
   async function dispatch(files) {
@@ -36,6 +37,7 @@ export default function DragDropZone({
         await Promise.all(fileArray.map((f) => isPdfFile(f) ? pdfToImageFiles(f) : Promise.resolve([f])))
       ).flat()
       cropResultsRef.current = []
+      cropTotalRef.current = expanded.length
       setCropQueue(expanded)
     } catch {
       if (multiple && onFiles) onFiles(fileArray)
@@ -46,17 +48,15 @@ export default function DragDropZone({
   }
 
   function handleCropConfirm(croppedFile) {
-    cropResultsRef.current = [...cropResultsRef.current, croppedFile]
-    setCropQueue((prev) => {
-      const remaining = prev.slice(1)
-      if (remaining.length === 0) {
-        const results = cropResultsRef.current
-        cropResultsRef.current = []
-        if (multiple && onFiles) onFiles(results)
-        else if (onFile) onFile(results[0])
-      }
-      return remaining
-    })
+    const allConfirmed = [...cropResultsRef.current, croppedFile]
+    cropResultsRef.current = allConfirmed
+    // Advance queue — side effects outside the updater to avoid Strict Mode double-invoke
+    setCropQueue((prev) => prev.slice(1))
+    if (allConfirmed.length === cropTotalRef.current) {
+      cropResultsRef.current = []
+      if (multiple && onFiles) onFiles(allConfirmed)
+      else if (onFile) onFile(allConfirmed[0])
+    }
   }
 
   function handleCropCancel() {
@@ -70,9 +70,10 @@ export default function DragDropZone({
     <>
       {withCrop && cropQueue.length > 0 && (
         <ImageCropModal
+          key={cropTotalRef.current - cropQueue.length}
           file={cropQueue[0]}
-          fileNumber={cropResultsRef.current.length + 1}
-          fileTotal={cropResultsRef.current.length + cropQueue.length}
+          fileNumber={cropTotalRef.current - cropQueue.length + 1}
+          fileTotal={cropTotalRef.current}
           onConfirm={handleCropConfirm}
           onCancel={handleCropCancel}
         />
