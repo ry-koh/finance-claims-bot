@@ -324,7 +324,15 @@ function MfApprovalUpload({ claim, onUploaded }) {
     <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-4">
       <h2 className="text-sm font-semibold text-amber-700 mb-2">Master's Fund Approval</h2>
       {hasApproval && (
-        <p className="text-xs text-green-700 font-medium mb-2">✓ Approval uploaded</p>
+        <div className="flex items-center gap-3 mb-2">
+          <CroppableThumb
+            src={imageUrl(claim.mf_approval_drive_id)}
+            label="MF approval"
+            reuploading={upload.isPending}
+            onCropped={handleFile}
+          />
+          <p className="text-xs text-green-700 font-medium">✓ Uploaded — tap to crop/rotate</p>
+        </div>
       )}
       <DragDropZone
         label={hasApproval ? 'Replace Approval' : 'Upload Approval Screenshot'}
