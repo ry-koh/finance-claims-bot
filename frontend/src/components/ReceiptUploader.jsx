@@ -157,7 +157,7 @@ export default function ReceiptUploader({
           onInitialized={(instance) => setCropperInstance(instance)}
           aspectRatio={NaN}
           viewMode={1}
-          autoCropArea={0.95}
+          autoCropArea={1}
           responsive
           style={{ maxHeight: '65vh', width: '100%' }}
         />
@@ -179,6 +179,14 @@ export default function ReceiptUploader({
             className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
           >
             ↻ Right
+          </button>
+          <button
+            type="button"
+            onClick={() => cropperInstance?.reset()}
+            disabled={isUploading}
+            className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
+          >
+            ↩ Reset
           </button>
         </div>
 

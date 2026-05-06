@@ -87,7 +87,7 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
           onInitialized={(instance) => setCropperInstance(instance)}
           viewMode={1}
           dragMode="move"
-          autoCropArea={0.95}
+          autoCropArea={1}
           responsive
           guides
           center={false}
@@ -114,6 +114,14 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
             className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
           >
             <span className="text-white text-2xl leading-none select-none">↻</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => cropperInstance?.reset()}
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+            title="Reset"
+          >
+            <span className="text-white text-lg leading-none select-none">↩</span>
           </button>
         </div>
 
