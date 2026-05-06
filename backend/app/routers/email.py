@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_supabase
-from app.auth import require_auth
+from app.auth import require_finance_team
 from app.services import gmail as gmail_service
 from app.services import pdf as pdf_service
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/email", tags=["email"])
 @router.post("/send/{claim_id}")
 async def send_claim_email(
     claim_id: str,
-    _member: dict = Depends(require_auth),
+    _member: dict = Depends(require_finance_team),
     db=Depends(get_supabase),
 ):
     """
@@ -64,7 +64,7 @@ async def send_claim_email(
         )
 
     # 5. Validate claim status
-    allowed_statuses = {"draft", "email_sent"}
+    allowed_statuses = {"draft", "pending_review", "email_sent"}
     current_status = claim.get("status") or ""
     if current_status not in allowed_statuses:
         raise HTTPException(
@@ -123,7 +123,7 @@ async def send_claim_email(
 @router.post("/resend/{claim_id}")
 async def resend_claim_email(
     claim_id: str,
-    _member: dict = Depends(require_auth),
+    _member: dict = Depends(require_finance_team),
     db=Depends(get_supabase),
 ):
     """

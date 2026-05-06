@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel as PydanticBaseModel
 from supabase import Client
 
-from app.auth import require_auth, require_director
+from app.auth import require_auth, require_director, require_finance_team
 from app.config import settings
 from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
@@ -15,6 +15,10 @@ from app.services import r2 as r2_service
 class BulkStatusUpdate(PydanticBaseModel):
     claim_ids: list[str]
     status: ClaimStatus
+
+
+class RejectReviewRequest(PydanticBaseModel):
+    comment: str
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
@@ -72,6 +76,10 @@ async def list_claims(
         .is_("deleted_at", "null")
         .order("created_at", desc=True)
     )
+
+    # Treasurers can only see claims they created
+    if _member.get("role") == "treasurer":
+        query = query.eq("filled_by", _member["id"])
 
     if status:
         query = query.eq("status", status)
@@ -358,6 +366,19 @@ async def create_claim(
         raise HTTPException(status_code=404, detail="Claimer not found")
     claimer = claimer_resp.data[0]
 
+    if _member.get("role") == "treasurer":
+        if str(payload.wbs_account) == "MBH":
+            raise HTTPException(400, "Treasurers cannot select MBH as WBS account")
+        cca_links = (
+            db.table("treasurer_ccas")
+            .select("cca_id")
+            .eq("finance_team_id", _member["id"])
+            .execute()
+        )
+        allowed_cca_ids = {row["cca_id"] for row in (cca_links.data or [])}
+        if not claimer_resp.data or claimer_resp.data[0].get("cca_id") not in allowed_cca_ids:
+            raise HTTPException(403, "You can only create claims for your own CCA")
+
     cca_name = claimer.get("cca", {}).get("name", "UNKNOWN")
     portfolio_name = claimer.get("cca", {}).get("portfolio", {}).get("name", "UNKNOWN")
 
@@ -382,7 +403,9 @@ async def create_claim(
         "status": ClaimStatus.DRAFT.value,
         "other_emails": payload.other_emails,
     }
-    if payload.filled_by is not None:
+    if _member.get("role") == "treasurer":
+        claim_data["filled_by"] = str(_member["id"])
+    elif payload.filled_by is not None:
         claim_data["filled_by"] = str(payload.filled_by)
     if payload.wbs_no is not None:
         claim_data["wbs_no"] = payload.wbs_no
@@ -535,3 +558,50 @@ async def delete_claim(
     db.table("claims").delete().eq("id", claim_id).execute()
 
     return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/submit-review  (treasurer only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/submit-review")
+async def submit_for_review(
+    claim_id: str,
+    member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Treasurer moves their DRAFT claim to PENDING_REVIEW."""
+    if member.get("role") != "treasurer":
+        raise HTTPException(403, "Only treasurers can submit for review")
+    claim = _get_claim_or_404(db, claim_id)
+    if str(claim.get("filled_by")) != str(member["id"]):
+        raise HTTPException(403, "You can only submit your own claims")
+    if claim.get("status") != "draft":
+        raise HTTPException(400, f"Claim must be in draft status, currently: {claim.get('status')}")
+    db.table("claims").update({
+        "status": "pending_review",
+        "rejection_comment": None,
+    }).eq("id", claim_id).execute()
+    return {"success": True, "status": "pending_review"}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/reject-review  (finance team only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/reject-review")
+async def reject_review(
+    claim_id: str,
+    payload: RejectReviewRequest,
+    _member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Finance team rejects a PENDING_REVIEW claim back to DRAFT with a comment."""
+    claim = _get_claim_or_404(db, claim_id)
+    if claim.get("status") != "pending_review":
+        raise HTTPException(400, "Claim is not in pending_review status")
+    db.table("claims").update({
+        "status": "draft",
+        "rejection_comment": payload.comment,
+    }).eq("id", claim_id).execute()
+    return {"success": True, "status": "draft"}

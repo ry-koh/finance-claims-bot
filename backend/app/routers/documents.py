@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from app.database import get_supabase
-from app.auth import require_auth
+from app.auth import require_auth, require_finance_team
 from app.services import r2 as r2_service
 from app.config import settings
 from telegram import Bot
@@ -317,7 +317,7 @@ def _do_generate(claim_id: str, db) -> dict:
 async def generate_documents(
     claim_id: str,
     db=Depends(get_supabase),
-    _auth=Depends(require_auth),
+    _auth=Depends(require_finance_team),
 ):
     """Generate LOA, Summary, RFP (and optionally Transport) PDFs for a claim."""
     claim = _get_full_claim(claim_id, db)
@@ -331,7 +331,7 @@ async def generate_documents(
 async def compile_documents(
     claim_id: str,
     db=Depends(get_supabase),
-    _auth=Depends(require_auth),
+    _auth=Depends(require_finance_team),
 ):
     """Merge all current documents into a single compiled PDF."""
     claim = _get_full_claim(claim_id, db)
@@ -359,7 +359,7 @@ async def upload_screenshot(
     claim_id: str,
     files: list[UploadFile] = File(...),
     db=Depends(get_supabase),
-    _auth=Depends(require_auth),
+    _auth=Depends(require_finance_team),
 ):
     """Upload one or more email screenshots, create a multi-page A4 PDF, and mark claim as screenshot_uploaded."""
     from PIL import Image as PILImage  # lazy import
@@ -454,7 +454,7 @@ async def upload_mf_approval(
     claim_id: str,
     file: UploadFile = File(...),
     db=Depends(get_supabase),
-    _auth=Depends(require_auth),
+    _auth=Depends(require_finance_team),
 ):
     """Upload Master's Fund approval screenshot for a claim."""
     from app.services import image as image_service
@@ -485,7 +485,7 @@ async def upload_mf_approval(
 @router.post("/send-telegram")
 async def send_to_telegram(
     payload: SendTelegramPayload,
-    member: dict = Depends(require_auth),
+    member: dict = Depends(require_finance_team),
     db=Depends(get_supabase),
 ):
     """Send compiled PDFs for the given claim IDs to the requesting user via Telegram."""
