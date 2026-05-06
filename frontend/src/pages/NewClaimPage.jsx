@@ -8,6 +8,7 @@ import { createBankTransaction, uploadBankTransactionImage, createBtRefund } fro
 import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import DragDropZone from '../components/DragDropZone'
+import CroppableThumb from '../components/CroppableThumb'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -638,16 +639,15 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial }) {
       <div>
         <p className="text-xs font-medium text-gray-600 mb-1">Receipt Photos</p>
         {form.files.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1">
+          <div className="flex flex-wrap gap-3 mb-2">
             {form.files.map((file, i) => (
-              <div key={i} className="flex items-center gap-1 bg-blue-50 border border-blue-100 rounded px-2 py-0.5 text-xs">
-                <span className="text-gray-700 truncate max-w-[100px]">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, files: prev.files.filter((_, j) => j !== i) }))}
-                  className="text-red-400 ml-1"
-                >×</button>
-              </div>
+              <CroppableThumb
+                key={i}
+                file={file}
+                label={file.name}
+                onRemove={() => setForm((prev) => ({ ...prev, files: prev.files.filter((_, j) => j !== i) }))}
+                onCropped={(f) => setForm((prev) => ({ ...prev, files: prev.files.map((x, j) => j === i ? f : x) }))}
+              />
             ))}
           </div>
         )}
@@ -911,12 +911,15 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-1">Bank Screenshots</p>
           {files.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-1">
+            <div className="flex flex-wrap gap-3 mb-2">
               {files.map((file, i) => (
-                <div key={i} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                  <span className="text-gray-700 truncate max-w-[120px]">{file.name}</span>
-                  <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
-                </div>
+                <CroppableThumb
+                  key={i}
+                  file={file}
+                  label={file.name}
+                  onRemove={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                  onCropped={(f) => setFiles((prev) => prev.map((x, j) => j === i ? f : x))}
+                />
               ))}
             </div>
           )}
@@ -946,16 +949,22 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
                 onChange={(e) => updateRefund(refund.localId, { amount: e.target.value })}
                 className="w-24 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <div className="flex-1 min-w-0">
-                {refund.file && (
-                  <p className="text-xs text-gray-600 truncate mb-0.5">{refund.file.name}</p>
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                {refund.file ? (
+                  <CroppableThumb
+                    file={refund.file}
+                    label={refund.file.name}
+                    onRemove={() => updateRefund(refund.localId, { file: null })}
+                    onCropped={(f) => updateRefund(refund.localId, { file: f })}
+                  />
+                ) : (
+                  <DragDropZone
+                    label="+ Attach File"
+                    onFile={(file) => updateRefund(refund.localId, { file })}
+                    compact
+                    withCrop
+                  />
                 )}
-                <DragDropZone
-                  label={refund.file ? 'Replace file' : '+ Attach File'}
-                  onFile={(file) => updateRefund(refund.localId, { file })}
-                  compact
-                  withCrop
-                />
               </div>
               <button type="button" onClick={() => removeRefund(refund.localId)} className="text-red-400 text-sm">×</button>
             </div>

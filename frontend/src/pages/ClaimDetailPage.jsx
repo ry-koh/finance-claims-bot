@@ -13,6 +13,7 @@ import {
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
+import CroppableThumb from '../components/CroppableThumb'
 
 // ─── Error helper ────────────────────────────────────────────────────────────
 
@@ -402,6 +403,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
   const [err, setErr] = useState(null)
   const [existingImages, setExistingImages] = useState(initial?.images ?? [])
   const [existingRefunds, setExistingRefunds] = useState(initial?.refunds ?? [])
+  const [reuploadingImageId, setReuploadingImageId] = useState(null)
 
   const busy = saving || deleting
 
@@ -442,6 +444,20 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
       setErr('Failed to delete refund. Please try again.')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleReuploadExistingImage(imageId, croppedFile) {
+    if (!initial?.id) return
+    setReuploadingImageId(imageId)
+    try {
+      const uploaded = await uploadBankTransactionImage({ btId: initial.id, file: croppedFile })
+      setExistingImages(prev => prev.map(img => img.id === imageId ? { ...img, drive_file_id: uploaded.drive_file_id } : img))
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(claimId) })
+    } catch {
+      setErr('Failed to re-upload image. Please try again.')
+    } finally {
+      setReuploadingImageId(null)
     }
   }
 
@@ -518,31 +534,26 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
         {/* BT Images */}
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-1">Bank Screenshots</p>
-          {existingImages.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-1">
+          {(existingImages.length > 0 || btImages.length > 0) && (
+            <div className="flex flex-wrap gap-3 mb-2">
               {existingImages.map(img => (
-                <div key={img.id} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                  <a href={imageUrl(img.drive_file_id)} target="_blank" rel="noreferrer" className="text-blue-600 underline">
-                    Image
-                  </a>
-                  <button type="button" disabled={deleting} onClick={() => handleDeleteExistingImage(img.id)} className="text-red-400 ml-1 disabled:opacity-40">×</button>
-                </div>
+                <CroppableThumb
+                  key={img.id}
+                  src={imageUrl(img.drive_file_id)}
+                  label="BT screenshot"
+                  reuploading={reuploadingImageId === img.id}
+                  onRemove={deleting ? undefined : () => handleDeleteExistingImage(img.id)}
+                  onCropped={(f) => handleReuploadExistingImage(img.id, f)}
+                />
               ))}
-            </div>
-          )}
-          {btImages.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-1">
               {btImages.map((file, i) => (
-                <div key={i} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                  <span className="text-gray-700 truncate max-w-[120px]">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => setBtImages((prev) => prev.filter((_, j) => j !== i))}
-                    className="text-red-400 ml-1"
-                  >
-                    ×
-                  </button>
-                </div>
+                <CroppableThumb
+                  key={i}
+                  file={file}
+                  label={file.name}
+                  onRemove={() => setBtImages((prev) => prev.filter((_, j) => j !== i))}
+                  onCropped={(f) => setBtImages((prev) => prev.map((x, j) => j === i ? f : x))}
+                />
               ))}
             </div>
           )}
@@ -585,16 +596,22 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
                 value={refund.amount}
                 onChange={(e) => updateRefund(idx, { amount: e.target.value })}
               />
-              <div className="flex-1 min-w-0">
-                {refund.file && (
-                  <p className="text-xs text-gray-600 truncate mb-0.5">{refund.file.name}</p>
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                {refund.file ? (
+                  <CroppableThumb
+                    file={refund.file}
+                    label={refund.file.name}
+                    onRemove={() => updateRefund(idx, { file: null })}
+                    onCropped={(f) => updateRefund(idx, { file: f })}
+                  />
+                ) : (
+                  <DragDropZone
+                    label="+ Attach File"
+                    onFile={(file) => updateRefund(idx, { file })}
+                    compact
+                    withCrop
+                  />
                 )}
-                <DragDropZone
-                  label={refund.file ? 'Replace file' : '+ Attach File'}
-                  onFile={(file) => updateRefund(idx, { file })}
-                  compact
-                  withCrop
-                />
               </div>
               <button
                 type="button"
@@ -1549,7 +1566,9 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   const [err, setErr] = useState({})
 
   const [receiptImageDriveIds, setReceiptImageDriveIds] = useState(initial?.receipt_image_drive_ids ?? [])
+  const [reuploadingReceiptIdx, setReuploadingReceiptIdx] = useState(null)
   const [uploadingFx, setUploadingFx] = useState(false)
+  const [reuploadingFx, setReuploadingFx] = useState(false)
   const [fxUploadErr, setFxUploadErr] = useState(null)
 
   async function handleFxFile(file) {
@@ -1563,6 +1582,32 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
       setFxUploadErr(extractError(e, 'Screenshot upload failed. Please try again.'))
     } finally {
       setUploadingFx(false)
+    }
+  }
+
+  async function handleReuploadReceiptImage(idx, croppedFile) {
+    if (!claimId) return
+    setReuploadingReceiptIdx(idx)
+    try {
+      const data = await uploadReceiptImage({ file: croppedFile, claim_id: claimId, image_type: 'receipt' })
+      setReceiptImageDriveIds(prev => prev.map((id, i) => i === idx ? data.drive_file_id : id))
+    } catch {
+      // silently ignore — old ID stays
+    } finally {
+      setReuploadingReceiptIdx(null)
+    }
+  }
+
+  async function handleReuploadFxImage(croppedFile) {
+    if (!claimId) return
+    setReuploadingFx(true)
+    try {
+      const data = await uploadReceiptImage({ file: croppedFile, claim_id: claimId, image_type: 'exchange_rate' })
+      setF(p => ({ ...p, exchange_rate_screenshot_drive_id: data.drive_file_id }))
+    } catch {
+      // silently ignore
+    } finally {
+      setReuploadingFx(false)
     }
   }
 
@@ -1589,12 +1634,16 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
       <div>
         <p className="text-xs font-semibold text-gray-600 mb-1">Receipt Photos</p>
         {receiptImageDriveIds.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1">
+          <div className="flex flex-wrap gap-3 mb-2">
             {receiptImageDriveIds.map((imgId, i) => (
-              <div key={imgId} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs">
-                <a href={imageUrl(imgId)} target="_blank" rel="noreferrer" className="text-blue-600 underline">Photo {i+1}</a>
-                <button type="button" onClick={() => setReceiptImageDriveIds(prev => prev.filter((_, j) => j !== i))} className="text-red-400 ml-1">×</button>
-              </div>
+              <CroppableThumb
+                key={imgId}
+                src={imageUrl(imgId)}
+                label={`Photo ${i + 1}`}
+                reuploading={reuploadingReceiptIdx === i}
+                onRemove={() => setReceiptImageDriveIds(prev => prev.filter((_, j) => j !== i))}
+                onCropped={(f) => handleReuploadReceiptImage(i, f)}
+              />
             ))}
           </div>
         )}
@@ -1664,16 +1713,13 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
         <div className="pl-6">
           <p className="text-xs text-gray-500 mb-1">Exchange Rate Screenshot</p>
           {f.exchange_rate_screenshot_drive_id ? (
-            <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
-              <a href={imageUrl(f.exchange_rate_screenshot_drive_id)} target="_blank" rel="noreferrer"
-                className="text-xs text-orange-700 font-medium underline flex-1">
-                ✓ Screenshot uploaded
-              </a>
-              <button type="button" onClick={() => setF(p => ({ ...p, exchange_rate_screenshot_drive_id: null }))}
-                className="text-xs text-red-500 shrink-0">
-                Remove
-              </button>
-            </div>
+            <CroppableThumb
+              src={imageUrl(f.exchange_rate_screenshot_drive_id)}
+              label="Exchange rate screenshot"
+              reuploading={reuploadingFx}
+              onRemove={() => setF(p => ({ ...p, exchange_rate_screenshot_drive_id: null }))}
+              onCropped={handleReuploadFxImage}
+            />
           ) : (
             <DragDropZone
               label={uploadingFx ? 'Uploading…' : '+ Add exchange rate screenshot'}
