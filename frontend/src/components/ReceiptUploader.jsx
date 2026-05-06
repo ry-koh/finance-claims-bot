@@ -23,8 +23,8 @@ export default function ReceiptUploader({
   const [processError, setProcessError] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
   const [a4Locked, setA4Locked] = useState(false)
+  const [cropperInstance, setCropperInstance] = useState(null)
   const fileInputRef = useRef(null)
-  const cropperRef = useRef(null)
 
   const processImageMutation = useProcessReceiptImage()
   const uploadImageMutation = useUploadReceiptImage()
@@ -89,15 +89,15 @@ export default function ReceiptUploader({
   // ── State 3: Crop ────────────────────────────────────────────────────────────
 
   function handleRotateLeft() {
-    cropperRef.current?.cropper.rotate(-90)
+    cropperInstance?.rotate(-90)
   }
 
   function handleRotateRight() {
-    cropperRef.current?.cropper.rotate(90)
+    cropperInstance?.rotate(90)
   }
 
   function toggleA4() {
-    const cropper = cropperRef.current?.cropper
+    const cropper = cropperInstance
     if (!cropper) return
     if (a4Locked) {
       cropper.setAspectRatio(NaN)
@@ -120,7 +120,7 @@ export default function ReceiptUploader({
 
   function handleConfirm() {
     if (uploadImageMutation.isPending) return
-    const cropper = cropperRef.current?.cropper
+    const cropper = cropperInstance
     if (!cropper) return
 
     cropper.getCroppedCanvas().toBlob(
@@ -175,8 +175,8 @@ export default function ReceiptUploader({
         </p>
 
         <Cropper
-          ref={cropperRef}
           src={processedImage}
+          onInitialized={(instance) => setCropperInstance(instance)}
           aspectRatio={NaN}
           viewMode={1}
           autoCropArea={0.95}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Cropper from 'react-cropper'
 import 'cropperjs/dist/cropper.css'
 
@@ -6,7 +6,7 @@ import 'cropperjs/dist/cropper.css'
 const CHROME_HEIGHT = 132
 
 export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm, onCancel }) {
-  const cropperRef = useRef(null)
+  const [cropperInstance, setCropperInstance] = useState(null)
   const src = useMemo(() => URL.createObjectURL(file), [file])
 
   useEffect(() => {
@@ -14,11 +14,11 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
   }, [src])
 
   function rotate(deg) {
-    cropperRef.current?.cropper.rotate(deg)
+    cropperInstance?.rotate(deg)
   }
 
   function confirm() {
-    const canvas = cropperRef.current?.cropper.getCroppedCanvas()
+    const canvas = cropperInstance?.getCroppedCanvas()
     if (!canvas) return
     canvas.toBlob(
       (blob) => {
@@ -70,9 +70,9 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
       {/* Cropper — fills all space between header and footer */}
       <div style={{ height: `calc(100vh - ${CHROME_HEIGHT}px)` }}>
         <Cropper
-          ref={cropperRef}
           src={src}
           style={{ height: '100%', width: '100%' }}
+          onInitialized={(instance) => setCropperInstance(instance)}
           viewMode={1}
           dragMode="move"
           autoCropArea={0.95}
