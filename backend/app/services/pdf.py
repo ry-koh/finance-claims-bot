@@ -80,7 +80,6 @@ def _add_image_page(pdf, drive_id: str, header_label: str) -> None:
         scale = min(
             CONTENT_W / width_mm if width_mm > 0 else 1,
             available_h / height_mm if height_mm > 0 else 1,
-            1.0,
         )
         scaled_w = width_mm * scale
         scaled_h = height_mm * scale

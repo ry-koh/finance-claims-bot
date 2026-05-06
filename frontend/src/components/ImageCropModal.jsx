@@ -1,17 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Cropper from 'react-cropper'
 import 'cropperjs/dist/cropper.css'
 
 // Header ~52px + footer ~80px
 const CHROME_HEIGHT = 132
 
-export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm, onCancel }) {
+/**
+ * Full-screen crop/rotate modal.
+ * Accepts either:
+ *   file  — File object  (component creates + revokes an object URL)
+ *   src   — URL string   (used directly as Cropper src)
+ */
+export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTotal, onConfirm, onCancel }) {
+  const [src, setSrc] = useState(null)
   const [cropperInstance, setCropperInstance] = useState(null)
-  const src = useMemo(() => URL.createObjectURL(file), [file])
 
   useEffect(() => {
-    return () => URL.revokeObjectURL(src)
-  }, [src])
+    if (file) {
+      const url = URL.createObjectURL(file)
+      setSrc(url)
+      return () => URL.revokeObjectURL(url)
+    } else if (srcProp) {
+      setSrc(srcProp)
+    }
+  }, [file, srcProp])
 
   function rotate(deg) {
     cropperInstance?.rotate(deg)
@@ -23,10 +36,8 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
     canvas.toBlob(
       (blob) => {
         if (!blob) return
-        const croppedFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
-          type: 'image/jpeg',
-        })
-        onConfirm(croppedFile)
+        const name = file?.name.replace(/\.[^.]+$/, '.jpg') ?? 'cropped.jpg'
+        onConfirm(new File([blob], name, { type: 'image/jpeg' }))
       },
       'image/jpeg',
       0.92
@@ -35,8 +46,10 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
 
   const isLast = fileNumber >= fileTotal
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+  if (!src) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3">
         <button
@@ -63,11 +76,10 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
           )}
         </div>
 
-        {/* Balance the cancel button */}
         <div className="w-14" />
       </div>
 
-      {/* Cropper — fills all space between header and footer */}
+      {/* Cropper */}
       <div style={{ height: `calc(100vh - ${CHROME_HEIGHT}px)` }}>
         <Cropper
           src={src}
@@ -86,14 +98,13 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
         />
       </div>
 
-      {/* Footer controls */}
+      {/* Footer */}
       <div className="flex-shrink-0 flex items-center justify-between px-5 py-4">
         <div className="flex gap-3">
           <button
             type="button"
             onClick={() => rotate(-90)}
             className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
-            title="Rotate left"
           >
             <span className="text-white text-2xl leading-none select-none">↺</span>
           </button>
@@ -101,7 +112,6 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
             type="button"
             onClick={() => rotate(90)}
             className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
-            title="Rotate right"
           >
             <span className="text-white text-2xl leading-none select-none">↻</span>
           </button>
@@ -115,6 +125,7 @@ export default function ImageCropModal({ file, fileNumber, fileTotal, onConfirm,
           {isLast ? 'Use Photo' : 'Next →'}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

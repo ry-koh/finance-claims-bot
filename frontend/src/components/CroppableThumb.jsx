@@ -4,20 +4,16 @@ import ImageCropModal from './ImageCropModal'
 /**
  * Square thumbnail with tap-to-recrop.
  *
- * Props:
  *   file   — File object (in-memory, not yet uploaded)
- *   src    — URL string (already uploaded; fetched on tap to create a croppable File)
- *   label  — accessible name, also used as filename when fetching
+ *   src    — URL string (already uploaded image)
  *   onRemove()          — called when × is tapped
- *   onCropped(newFile)  — called after crop is confirmed; parent handles re-upload / state update
+ *   onCropped(newFile)  — called after crop is confirmed
  *   reuploading         — shows spinner overlay while parent is re-uploading
  */
 export default function CroppableThumb({ file, src, label = 'image', onRemove, onCropped, reuploading = false }) {
   const [thumbSrc, setThumbSrc] = useState(null)
-  const [cropFile, setCropFile] = useState(null)
-  const [fetching, setFetching] = useState(false)
+  const [showCrop, setShowCrop] = useState(false)
 
-  // Build the preview URL — revoke object URLs on cleanup
   useEffect(() => {
     if (file) {
       const url = URL.createObjectURL(file)
@@ -28,46 +24,28 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
     }
   }, [file, src])
 
-  async function handleTap() {
-    if (fetching || reuploading) return
-    if (file) {
-      setCropFile(file)
-    } else if (src) {
-      setFetching(true)
-      try {
-        const resp = await fetch(src)
-        const blob = await resp.blob()
-        const fetched = new File([blob], label.replace(/[^a-z0-9.]/gi, '_') + '.jpg', {
-          type: blob.type.startsWith('image/') ? blob.type : 'image/jpeg',
-        })
-        setCropFile(fetched)
-      } catch {
-        // silently ignore — user can try again
-      } finally {
-        setFetching(false)
-      }
-    }
+  function handleTap() {
+    if (reuploading) return
+    if (file || src) setShowCrop(true)
   }
-
-  const busy = fetching || reuploading
 
   return (
     <>
-      {cropFile && (
+      {showCrop && (
         <ImageCropModal
-          file={cropFile}
+          file={file}
+          src={src}
           fileNumber={1}
           fileTotal={1}
           onConfirm={(croppedFile) => {
-            setCropFile(null)
+            setShowCrop(false)
             onCropped?.(croppedFile)
           }}
-          onCancel={() => setCropFile(null)}
+          onCancel={() => setShowCrop(false)}
         />
       )}
 
       <div className="relative flex-shrink-0">
-        {/* Thumbnail */}
         <button
           type="button"
           onClick={handleTap}
@@ -79,31 +57,31 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
           ) : (
             <span className="flex w-full h-full items-center justify-center text-gray-400 text-lg">🖼</span>
           )}
-
-          {/* Spinner when fetching or re-uploading */}
-          {busy && (
-            <span className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin block" />
-            </span>
-          )}
         </button>
 
-        {/* Crop badge — bottom-left corner */}
-        {!busy && (
+        {/* Crop badge */}
+        {!reuploading && (
           <span
-            className="absolute bottom-0 left-0 bg-black/60 text-white text-[9px] leading-none px-1 py-0.5 rounded-br-lg rounded-tl-none pointer-events-none select-none"
-            style={{ borderTopRightRadius: '6px' }}
+            className="absolute bottom-0 left-0 bg-black/60 text-white text-[9px] leading-none px-1 py-0.5 pointer-events-none select-none"
+            style={{ borderBottomLeftRadius: '8px', borderTopRightRadius: '6px' }}
           >
             ✂
           </span>
         )}
 
-        {/* Remove button — top-right corner */}
+        {/* Spinner overlay when re-uploading */}
+        {reuploading && (
+          <span className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg pointer-events-none">
+            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin block" />
+          </span>
+        )}
+
+        {/* Remove button */}
         {onRemove && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs font-bold flex items-center justify-center leading-none shadow"
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs font-bold flex items-center justify-center leading-none shadow"
           >
             ×
           </button>

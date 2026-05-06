@@ -8,7 +8,6 @@ const STATE_IDLE = 'idle'
 const STATE_PROCESSING = 'processing'
 const STATE_CROP = 'crop'
 
-const A4_RATIO = 210 / 297 // portrait A4
 
 export default function ReceiptUploader({
   claimId,
@@ -22,7 +21,6 @@ export default function ReceiptUploader({
   const [processedImage, setProcessedImage] = useState(null)
   const [processError, setProcessError] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [a4Locked, setA4Locked] = useState(false)
   const [cropperInstance, setCropperInstance] = useState(null)
   const fileInputRef = useRef(null)
 
@@ -62,7 +60,6 @@ export default function ReceiptUploader({
 
   function startProcessing(file) {
     setProcessError(null)
-    setA4Locked(false)
     setUiState(STATE_PROCESSING)
     processImageMutation.mutate(file, {
       onSuccess(data) {
@@ -94,22 +91,6 @@ export default function ReceiptUploader({
 
   function handleRotateRight() {
     cropperInstance?.rotate(90)
-  }
-
-  function toggleA4() {
-    const cropper = cropperInstance
-    if (!cropper) return
-    if (a4Locked) {
-      cropper.setAspectRatio(NaN)
-      setA4Locked(false)
-    } else {
-      cropper.setAspectRatio(A4_RATIO)
-      // Expand the crop box to fill the full canvas width at A4 ratio
-      const canvas = cropper.getCanvasData()
-      const w = canvas.width
-      cropper.setCropBoxData({ left: canvas.left, top: canvas.top, width: w, height: w / A4_RATIO })
-      setA4Locked(true)
-    }
   }
 
   function handleCancel() {
@@ -169,10 +150,7 @@ export default function ReceiptUploader({
       <div className="flex flex-col gap-2">
         <p className="text-xs font-semibold text-gray-600">{label}</p>
 
-        {/* A4 portrait frame hint */}
-        <p className="text-xs text-gray-400">
-          Check orientation and crop area. Use A4 Fit to match the page.
-        </p>
+        <p className="text-xs text-gray-400">Check orientation and crop to remove excess whitespace.</p>
 
         <Cropper
           src={processedImage}
@@ -185,7 +163,7 @@ export default function ReceiptUploader({
         />
 
         {/* Controls row */}
-        <div className="flex gap-2 flex-wrap justify-center">
+        <div className="flex gap-2 justify-center">
           <button
             type="button"
             onClick={handleRotateLeft}
@@ -201,18 +179,6 @@ export default function ReceiptUploader({
             className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg disabled:opacity-50"
           >
             ↻ Right
-          </button>
-          <button
-            type="button"
-            onClick={toggleA4}
-            disabled={isUploading}
-            className={`px-3 py-1.5 text-sm rounded-lg disabled:opacity-50 transition-colors ${
-              a4Locked
-                ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            A4 Fit {a4Locked ? '✓' : ''}
           </button>
         </div>
 
