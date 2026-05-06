@@ -21,6 +21,7 @@ class WBSAccount(str, Enum):
 
 class ClaimStatus(str, Enum):
     DRAFT = "draft"
+    PENDING_REVIEW = "pending_review"
     EMAIL_SENT = "email_sent"
     SCREENSHOT_PENDING = "screenshot_pending"
     SCREENSHOT_UPLOADED = "screenshot_uploaded"
@@ -43,6 +44,7 @@ class DocumentType(str, Enum):
 class UserRole(str, Enum):
     DIRECTOR = "director"
     MEMBER = "member"
+    TREASURER = "treasurer"
 
 
 class GSTCode(str, Enum):

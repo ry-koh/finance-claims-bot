@@ -9,9 +9,9 @@ async def require_auth(
     db: Client = Depends(get_supabase),
 ) -> dict:
     """
-    FastAPI dependency that validates the Telegram user ID against the
-    finance_team table and returns the matching member row as a dict.
-    Raises HTTP 403 if the user is not found.
+    Validates the Telegram user ID against the finance_team table.
+    Returns the member row as a dict.
+    Raises 401 if unregistered, 403 if pending approval.
     """
     response = (
         db.table("finance_team")
@@ -20,16 +20,30 @@ async def require_auth(
         .execute()
     )
     if not response.data:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return response.data[0]
+        raise HTTPException(status_code=401, detail="unregistered")
+    member = response.data[0]
+    if member.get("status") == "pending":
+        raise HTTPException(status_code=403, detail="pending")
+    return member
+
+
+async def require_finance_team(
+    member: dict = Depends(require_auth),
+) -> dict:
+    """
+    Requires the authenticated user to be a finance member or director.
+    Treasurers are rejected with 403.
+    """
+    if member.get("role") == "treasurer":
+        raise HTTPException(status_code=403, detail="Finance team access required")
+    return member
 
 
 async def require_director(
     member: dict = Depends(require_auth),
 ) -> dict:
     """
-    FastAPI dependency that additionally requires the authenticated user to
-    have the 'director' role.  Raises HTTP 403 otherwise.
+    Requires the authenticated user to have the 'director' role.
     """
     if member.get("role") != "director":
         raise HTTPException(status_code=403, detail="Access denied: director role required")
