@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Cropper from 'react-cropper'
 import 'cropperjs/dist/cropper.css'
@@ -11,42 +11,91 @@ const CHROME_HEIGHT = 132
  * Accepts either:
  *   file  — File object  (component creates + revokes an object URL)
  *   src   — URL string   (used directly as Cropper src)
+ *
+ * Rotation is applied by drawing the current image onto an offscreen canvas
+ * and remounting Cropper with the result, so the image always fits the
+ * container after rotation without Cropper.js zooming in.
  */
 export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTotal, onConfirm, onCancel }) {
-  const [src, setSrc] = useState(null)
+  const [displaySrc, setDisplaySrc] = useState(null)
   const [cropperInstance, setCropperInstance] = useState(null)
+  const [cropperKey, setCropperKey] = useState(0)
+  const [rotating, setRotating] = useState(false)
 
+  // Track the latest rotated blob URL so we can revoke it on the next rotation
+  const rotatedUrlRef = useRef(null)
+
+  // Set up the initial source from file or URL prop
   useEffect(() => {
     if (file) {
       const url = URL.createObjectURL(file)
-      setSrc(url)
-      return () => URL.revokeObjectURL(url)
+      setDisplaySrc(url)
+      setCropperKey((k) => k + 1)
+      return () => {
+        URL.revokeObjectURL(url)
+      }
     } else if (srcProp) {
-      setSrc(srcProp)
+      setDisplaySrc(srcProp)
+      setCropperKey((k) => k + 1)
     }
   }, [file, srcProp])
 
-  function rotate(deg) {
-    if (!cropperInstance) return
-    cropperInstance.rotate(deg)
+  // Revoke any leftover rotated URL on unmount
+  useEffect(() => {
+    return () => {
+      if (rotatedUrlRef.current) {
+        URL.revokeObjectURL(rotatedUrlRef.current)
+        rotatedUrlRef.current = null
+      }
+    }
+  }, [])
 
-    // After rotation the canvas may overflow the container (portrait→landscape or vice versa).
-    // Re-fit it so the whole image stays visible without zooming in.
-    requestAnimationFrame(() => {
-      if (!cropperInstance) return
-      const container = cropperInstance.getContainerData()
-      const canvas = cropperInstance.getCanvasData()
+  async function rotate(deg) {
+    if (!displaySrc || rotating) return
+    setRotating(true)
 
-      const fit = Math.min(container.width / canvas.width, container.height / canvas.height)
-      const newW = Math.floor(canvas.width * fit)
-      const newH = Math.floor(canvas.height * fit)
-      const newLeft = Math.floor((container.width - newW) / 2)
-      const newTop = Math.floor((container.height - newH) / 2)
+    try {
+      // Draw the current displayed image onto an offscreen canvas, rotated by `deg`
+      const img = new Image()
+      // crossOrigin needed when drawing URL-based images onto canvas
+      if (!file) img.crossOrigin = 'anonymous'
+      await new Promise((res, rej) => {
+        img.onload = res
+        img.onerror = rej
+        img.src = displaySrc
+      })
 
-      cropperInstance.setCanvasData({ left: newLeft, top: newTop, width: newW, height: newH })
-      // Expand crop box to fill the newly fitted canvas
-      cropperInstance.setCropBoxData({ left: newLeft, top: newTop, width: newW, height: newH })
-    })
+      const rad = (deg * Math.PI) / 180
+      const transposed = Math.abs(deg) % 180 === 90
+      const w = transposed ? img.naturalHeight : img.naturalWidth
+      const h = transposed ? img.naturalWidth : img.naturalHeight
+
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.translate(w / 2, h / 2)
+      ctx.rotate(rad)
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2)
+
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.95))
+      const newUrl = URL.createObjectURL(blob)
+
+      // Revoke the previous rotated URL (the original file URL is managed by its own useEffect)
+      if (rotatedUrlRef.current) {
+        URL.revokeObjectURL(rotatedUrlRef.current)
+      }
+      rotatedUrlRef.current = newUrl
+
+      setDisplaySrc(newUrl)
+      setCropperKey((k) => k + 1) // remount Cropper so it fits the new image cleanly
+    } catch (err) {
+      // CORS or canvas failure (e.g. tainted image) — fall back to Cropper.js internal rotation
+      console.warn('Canvas rotation failed, using Cropper.js fallback:', err)
+      cropperInstance?.rotate(deg)
+    } finally {
+      setRotating(false)
+    }
   }
 
   function confirm() {
@@ -65,7 +114,7 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
 
   const isLast = fileNumber >= fileTotal
 
-  if (!src) return null
+  if (!displaySrc) return null
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
@@ -98,10 +147,11 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
         <div className="w-14" />
       </div>
 
-      {/* Cropper — touch-action:none stops the browser hijacking swipe/pinch gestures */}
+      {/* Cropper — touch-action:none stops the browser hijacking swipe/pinch */}
       <div style={{ height: `calc(100vh - ${CHROME_HEIGHT}px)`, touchAction: 'none' }}>
         <Cropper
-          src={src}
+          key={cropperKey}
+          src={displaySrc}
           style={{ height: '100%', width: '100%' }}
           onInitialized={(instance) => setCropperInstance(instance)}
           viewMode={1}
@@ -127,24 +177,39 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
           <button
             type="button"
             onClick={() => rotate(-90)}
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+            disabled={rotating}
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors disabled:opacity-40"
           >
             <span className="text-white text-2xl leading-none select-none">↺</span>
           </button>
           <button
             type="button"
             onClick={() => rotate(90)}
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+            disabled={rotating}
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors disabled:opacity-40"
           >
             <span className="text-white text-2xl leading-none select-none">↻</span>
           </button>
           <button
             type="button"
-            onClick={() => cropperInstance?.reset()}
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+            onClick={() => {
+              if (rotatedUrlRef.current) {
+                URL.revokeObjectURL(rotatedUrlRef.current)
+                rotatedUrlRef.current = null
+              }
+              if (file) {
+                const resetUrl = URL.createObjectURL(file)
+                rotatedUrlRef.current = resetUrl
+                setDisplaySrc(resetUrl)
+              } else {
+                setDisplaySrc(srcProp)
+              }
+              setCropperKey((k) => k + 1)
+            }}
+            disabled={rotating}
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors disabled:opacity-40"
             title="Reset"
           >
-            {/* Reset icon */}
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-white">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
               <path d="M3 3v5h5" />
@@ -155,7 +220,8 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
         <button
           type="button"
           onClick={confirm}
-          className="px-6 py-2.5 bg-white text-black rounded-full font-semibold text-sm active:bg-white/80 transition-colors"
+          disabled={rotating || !cropperInstance}
+          className="px-6 py-2.5 bg-white text-black rounded-full font-semibold text-sm active:bg-white/80 transition-colors disabled:opacity-50"
         >
           {isLast ? 'Use Photo' : 'Next →'}
         </button>
