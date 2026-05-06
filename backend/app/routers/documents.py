@@ -314,21 +314,26 @@ def _do_generate(claim_id: str, db) -> dict:
 
 
 @router.post("/generate/{claim_id}")
-async def generate_documents(
+def generate_documents(
     claim_id: str,
     db=Depends(get_supabase),
     _auth=Depends(require_finance_team),
 ):
     """Generate LOA, Summary, RFP (and optionally Transport) PDFs for a claim."""
     claim = _get_full_claim(claim_id, db)
-    blocked = {"draft"}
-    if claim.get("status") in blocked:
-        raise HTTPException(400, f"Cannot generate documents for a draft claim.")
+    if claim.get("status") == "draft":
+        raise HTTPException(400, "Cannot generate documents for a draft claim.")
+
+    # Atomic lock — prevents two users triggering simultaneous generation
+    lock = db.rpc("claim_start_generation", {"p_claim_id": claim_id}).execute()
+    if not lock.data:
+        raise HTTPException(409, "Document generation is already in progress for this claim.")
+
     return _do_generate(claim_id, db)
 
 
 @router.post("/compile/{claim_id}")
-async def compile_documents(
+def compile_documents(
     claim_id: str,
     db=Depends(get_supabase),
     _auth=Depends(require_finance_team),
@@ -336,10 +341,10 @@ async def compile_documents(
     """Merge all current documents into a single compiled PDF."""
     claim = _get_full_claim(claim_id, db)
 
-    if claim.get("status") not in ("docs_generated", "compiled"):
+    if claim.get("status") not in ("docs_generated", "screenshot_uploaded", "compiled"):
         raise HTTPException(
             400,
-            f"Cannot compile claim with status '{claim.get('status')}'. Expected 'docs_generated'.",
+            f"Cannot compile claim with status '{claim.get('status')}'. Expected 'docs_generated' or 'screenshot_uploaded'.",
         )
 
     try:
@@ -426,7 +431,28 @@ async def upload_screenshot(
     del screenshot_pdf_bytes
     db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
 
-    # Auto-generate and compile documents now that the screenshot is available
+    # If docs already exist (loa/summary/rfp generated), skip regeneration and compile directly
+    existing_docs = db.table("claim_documents").select("type").eq("claim_id", claim_id).eq("is_current", True).execute()
+    existing_types = {d["type"] for d in (existing_docs.data or [])}
+    docs_already_generated = any(t == "loa" or t.startswith("loa_") for t in existing_types)
+
+    if docs_already_generated:
+        try:
+            compile_result = _do_compile(claim_id, claim["reference_code"], db)
+            return {"success": True, "claim_status": "compiled", "page_count": compile_result["page_count"]}
+        except ValueError as e:
+            logger.warning("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
+            return {"success": True, "claim_status": "screenshot_uploaded"}
+        except Exception as e:
+            logger.exception("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
+            return {"success": True, "claim_status": "screenshot_uploaded"}
+
+    # Docs don't exist yet — acquire generation lock before generating
+    lock = db.rpc("claim_start_generation", {"p_claim_id": claim_id}).execute()
+    if not lock.data:
+        # Another request already started generation; return current status
+        return {"success": True, "claim_status": "screenshot_uploaded"}
+
     try:
         result = _do_generate(claim_id, db)
         return {"success": True, "claim_status": result["claim_status"], "documents": result.get("documents", [])}

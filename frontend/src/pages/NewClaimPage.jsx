@@ -35,7 +35,7 @@ function StepIndicator({ current }) {
         const active = step === current
         const done = step < current
         return (
-          <div key={step} className="flex items-center gap-2">
+          <div key={step} className="flex items-start gap-2">
             <div className="flex flex-col items-center">
               <div
                 className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
@@ -58,7 +58,7 @@ function StepIndicator({ current }) {
             </div>
             {i < steps.length - 1 && (
               <div
-                className={`w-8 h-0.5 mb-3 ${done ? 'bg-blue-600' : 'bg-gray-200'}`}
+                className={`w-8 h-0.5 mt-3.5 ${done ? 'bg-blue-600' : 'bg-gray-200'}`}
               />
             )}
           </div>

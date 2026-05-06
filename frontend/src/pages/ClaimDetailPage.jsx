@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, CLAIM_KEYS } from '../api/claims'
+import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
@@ -104,7 +104,7 @@ function ActionButton({ onClick, disabled, loading, children, variant = 'primary
 }
 
 // Vertical stepper pipeline
-function StatusPipeline({ claim, onAction }) {
+function StatusPipeline({ claim, onAction, isTreasurer }) {
   const displayStatus = claim.status === 'error' ? 'screenshot_uploaded' : claim.status
   const currentIdx = statusIndex(displayStatus)
 
@@ -120,12 +120,12 @@ function StatusPipeline({ claim, onAction }) {
       activeAt: ['draft', 'pending_review'],
       render: ({ isDone, isCurrent }) => (
         <div className="flex flex-col items-start gap-1.5">
-          {isCurrent && displayStatus === 'draft' && (
+          {!isTreasurer && isCurrent && displayStatus === 'draft' && (
             <ActionButton onClick={() => onAction('send')} loading={onAction.loading?.send}>
               Send Email
             </ActionButton>
           )}
-          {isDone && (
+          {!isTreasurer && isDone && (
             <ActionButton variant="secondary" onClick={() => onAction('resend')} loading={onAction.loading?.resend}>
               Resend
             </ActionButton>
@@ -140,8 +140,8 @@ function StatusPipeline({ claim, onAction }) {
       activeAt: ['email_sent', 'screenshot_pending'],
       render: ({ isDone, isCurrent }) => (
         <div className="flex flex-col items-start gap-1">
-          {isCurrent && <ScreenshotUploadButton claimId={claim.id} onAction={onAction} />}
-          {isDone && <ScreenshotUploadButton claimId={claim.id} onAction={onAction} variant="secondary" />}
+          {!isTreasurer && isCurrent && <ScreenshotUploadButton claimId={claim.id} onAction={onAction} />}
+          {!isTreasurer && isDone && <ScreenshotUploadButton claimId={claim.id} onAction={onAction} variant="secondary" />}
         </div>
       ),
     },
@@ -174,12 +174,12 @@ function StatusPipeline({ claim, onAction }) {
         }
         return (
           <div className="flex flex-col items-start gap-1.5">
-            {isCurrent && !isDone && (
+            {!isTreasurer && isCurrent && !isDone && (
               <ActionButton onClick={() => onAction('generate')} loading={onAction.loading?.generate}>
                 Generate Docs
               </ActionButton>
             )}
-            {isDone && (
+            {!isTreasurer && isDone && (
               <ActionButton variant="secondary" onClick={() => onAction('generate')} loading={onAction.loading?.generate}>
                 Regenerate
               </ActionButton>
@@ -204,12 +204,12 @@ function StatusPipeline({ claim, onAction }) {
         }
         return (
           <div className="flex flex-col items-start gap-1.5">
-            {isCurrent && !isDone && (
+            {!isTreasurer && isCurrent && !isDone && (
               <ActionButton onClick={() => onAction('compile')} loading={onAction.loading?.compile}>
                 Compile PDF
               </ActionButton>
             )}
-            {isDone && (
+            {!isTreasurer && isDone && (
               <ActionButton variant="secondary" onClick={() => onAction('compile')} loading={onAction.loading?.compile}>
                 Recompile
               </ActionButton>
@@ -224,9 +224,21 @@ function StatusPipeline({ claim, onAction }) {
       doneAt: 'submitted',
       activeAt: ['compiled'],
       render: ({ isCurrent }) =>
-        isCurrent ? (
+        isCurrent && !isTreasurer ? (
           <ActionButton variant="warning" onClick={() => onAction('submit')} loading={onAction.loading?.submit}>
             Mark Submitted
+          </ActionButton>
+        ) : null,
+    },
+    {
+      label: 'Reimbursed',
+      description: 'Mark claim as reimbursed',
+      doneAt: 'reimbursed',
+      activeAt: ['submitted'],
+      render: ({ isCurrent }) =>
+        isCurrent && !isTreasurer ? (
+          <ActionButton variant="warning" onClick={() => onAction('reimburse')} loading={onAction.loading?.reimburse}>
+            Mark Reimbursed
           </ActionButton>
         ) : null,
     },
@@ -707,6 +719,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
 function BtCard({
   bt, btIndex, claimId, linkedReceipts, expanded, onToggle, onEdit, onDelete, onAddReceipt,
   saving, addingReceipt, onReceiptSaved, onReceiptCancelled, onEditReceipt, onDeleteReceipt, receiptSaving,
+  isTreasurer,
 }) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -848,6 +861,7 @@ function BtCard({
                 onEdit={(fields) => onEditReceipt(r, fields)}
                 onDelete={() => onDeleteReceipt(r)}
                 saving={receiptSaving}
+                isTreasurer={isTreasurer}
               />
             ))}
             {!linkedReceipts.length && !addingReceipt && (
@@ -863,6 +877,7 @@ function BtCard({
               onCancel={onReceiptCancelled}
               saving={receiptSaving}
               claimId={claimId}
+              isTreasurer={isTreasurer}
             />
           )}
 
@@ -923,14 +938,6 @@ function BtCard({
 
 // ─── Review Panel (finance team, pending_review status) ──────────────────────
 
-function AttachmentThumb({ driveId, label }) {
-  const url = imageUrl(driveId)
-  return (
-    <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
-      <img src={url} alt={label} className="w-full h-full object-cover" />
-    </div>
-  )
-}
 
 function ReviewPanel({ claim, onApprove, onReject, approving }) {
   const [rejectComment, setRejectComment] = useState('')
@@ -954,20 +961,21 @@ function ReviewPanel({ claim, onApprove, onReject, approving }) {
 
       {allImages.length > 0 && (
         <div className="mb-4">
-          <p className="text-xs font-semibold text-gray-600 mb-2">Attachments</p>
-          <div className="grid grid-cols-3 gap-2">
+          <p className="text-xs font-semibold text-gray-600 mb-2">Attachments — tap to view fullscreen or crop</p>
+          <div className="flex flex-wrap gap-3">
             {allImages.map((img) => (
-              <AttachmentThumb
-                key={img.key}
-                driveId={img.driveId}
-                label={img.label}
-              />
+              <div key={img.key} className="flex flex-col items-center gap-1">
+                <CroppableThumb
+                  src={imageUrl(img.driveId)}
+                  label={img.label}
+                  thumbSize="w-24 h-24"
+                />
+                <span className="text-[10px] text-gray-500 max-w-[6rem] truncate text-center">{img.label}</span>
+              </div>
             ))}
           </div>
         </div>
       )}
-
-      <p className="text-xs text-gray-500 mb-4">Fill in category, GST, and DR/CR for each receipt below before approving.</p>
 
       <div className="flex gap-2">
         <button
@@ -1043,6 +1051,8 @@ export default function ClaimDetailPage() {
   const generateDocsMut = useGenerateDocuments()
   const compileDocsMut = useCompileDocuments()
   const updateClaimMut = useUpdateClaim()
+  const submitClaimMut = useSubmitClaim()
+  const reimburseClaimMut = useReimburseClaim()
   const deleteClaimMut = useDeleteClaim()
   const createReceiptMut = useCreateReceipt()
   const updateReceiptMut = useUpdateReceipt()
@@ -1071,7 +1081,8 @@ export default function ClaimDetailPage() {
     screenshot: uploadScreenshotMut.isPending,
     generate: generateDocsMut.isPending,
     compile: compileDocsMut.isPending,
-    submit: updateClaimMut.isPending,
+    submit: submitClaimMut.isPending,
+    reimburse: reimburseClaimMut.isPending,
   }
 
   function invalidateClaim() {
@@ -1099,10 +1110,9 @@ export default function ClaimDetailPage() {
     } else if (type === 'compile') {
       compileDocsMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
     } else if (type === 'submit') {
-      updateClaimMut.mutate(
-        { id, status: 'submitted' },
-        { onSuccess: invalidateClaim, onError: errHandler }
-      )
+      submitClaimMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
+    } else if (type === 'reimburse') {
+      reimburseClaimMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
     }
   }
 
@@ -1138,6 +1148,8 @@ export default function ClaimDetailPage() {
     if (wbs_account) payload.wbs_account = wbs_account
     payload.is_partial = is_partial
     if (is_partial && partial_amount) payload.partial_amount = Number(partial_amount)
+    // Optimistic concurrency: reject if someone else changed the claim while editing
+    if (claim?.updated_at) payload.client_updated_at = claim.updated_at
 
     updateClaimMut.mutate(
       payload,
@@ -1589,7 +1601,7 @@ export default function ClaimDetailPage() {
         {/* ── Status Pipeline ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Progress</h2>
-          <StatusPipeline claim={claim} onAction={handleAction} />
+          <StatusPipeline claim={claim} onAction={handleAction} isTreasurer={isTreasurer} />
         </div>
 
         {/* ── Bank Transactions ── */}
@@ -1630,6 +1642,7 @@ export default function ClaimDetailPage() {
                   onEditReceipt={handleEditReceipt}
                   onDeleteReceipt={handleDeleteReceipt}
                   receiptSaving={createReceiptMut.isPending || updateReceiptMut.isPending || deleteReceiptMut.isPending}
+                  isTreasurer={isTreasurer}
                 />
               )
             })}
@@ -1663,6 +1676,7 @@ export default function ClaimDetailPage() {
                 onEdit={(fields) => handleEditReceipt(r, fields)}
                 onDelete={() => handleDeleteReceipt(r)}
                 saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
+                isTreasurer={isTreasurer}
               />
             ))}
             {!unlinked.length && !showAddUnlinked && (
@@ -1676,6 +1690,7 @@ export default function ClaimDetailPage() {
               onCancel={() => setShowAddUnlinked(false)}
               saving={createReceiptMut.isPending}
               claimId={id}
+              isTreasurer={isTreasurer}
             />
           )}
         </div>
@@ -1782,7 +1797,7 @@ const EMPTY_RECEIPT_FIELDS = {
   is_foreign_currency: false, exchange_rate_screenshot_drive_id: null,
 }
 
-function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId }) {
+function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId, isTreasurer }) {
   const [f, setF] = useState({ ...EMPTY_RECEIPT_FIELDS, ...initial })
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
   const [err, setErr] = useState({})
@@ -1855,7 +1870,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
     const e = {}
     if (!f.description.trim()) e.description = 'Required'
     if (!f.amount || isNaN(Number(f.amount)) || Number(f.amount) <= 0) e.amount = 'Enter valid amount'
-    if (!f.category) e.category = 'Required'
+    if (!isTreasurer && !f.category) e.category = 'Required'
     if (Object.keys(e).length) { setErr(e); return }
     onSave({
       ...f,
@@ -1900,27 +1915,31 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
         <input className={inputCls} placeholder="Description *" value={f.description} onChange={set('description')} />
         {err.description && <p className="text-xs text-red-500 mt-0.5">{err.description}</p>}
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className={`grid gap-2 ${isTreasurer ? '' : 'grid-cols-2'}`}>
         <div>
           <input className={inputCls} type="number" inputMode="decimal" placeholder="Amount *" value={f.amount} onChange={set('amount')} />
           {err.amount && <p className="text-xs text-red-500 mt-0.5">{err.amount}</p>}
         </div>
-        <div>
-          <select className={inputCls} value={f.category} onChange={set('category')}>
-            <option value="">Category *</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        {!isTreasurer && (
+          <div>
+            <select className={inputCls} value={f.category} onChange={set('category')}>
+              <option value="">Category *</option>
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {err.category && <p className="text-xs text-red-500 mt-0.5">{err.category}</p>}
+          </div>
+        )}
+      </div>
+      {!isTreasurer && (
+        <div className="grid grid-cols-2 gap-2">
+          <select className={inputCls} value={f.gst_code} onChange={set('gst_code')}>
+            {GST_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          {err.category && <p className="text-xs text-red-500 mt-0.5">{err.category}</p>}
+          <select className={inputCls} value={f.dr_cr} onChange={set('dr_cr')}>
+            {DR_CR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <select className={inputCls} value={f.gst_code} onChange={set('gst_code')}>
-          {GST_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select className={inputCls} value={f.dr_cr} onChange={set('dr_cr')}>
-          {DR_CR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-      </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <input className={inputCls} placeholder="Receipt No." value={f.receipt_no} onChange={set('receipt_no')} />
         <input className={inputCls} placeholder="Company" value={f.company} onChange={set('company')} />
@@ -2008,7 +2027,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   )
 }
 
-function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
+function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -2057,6 +2076,7 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId }) {
           onCancel={() => setEditing(false)}
           saving={saving}
           claimId={claimId}
+          isTreasurer={isTreasurer}
         />
       </div>
     )

@@ -22,6 +22,7 @@ export function usePendingRegistrations() {
   return useQuery({
     queryKey: PENDING_KEYS.all,
     queryFn: fetchPendingRegistrations,
+    refetchInterval: 30_000,
   })
 }
 
@@ -65,8 +66,8 @@ export const TEAM_KEYS = {
 export const fetchTeamMembers = () =>
   api.get('/admin/team').then((r) => r.data)
 
-export const updateTeamMember = ({ id, role, cca_ids = [] }) =>
-  api.patch(`/admin/team/${id}`, { role, cca_ids }).then((r) => r.data)
+export const updateTeamMember = ({ id, role, cca_ids = [], name, email }) =>
+  api.patch(`/admin/team/${id}`, { role, cca_ids, name, email }).then((r) => r.data)
 
 export const removeTeamMember = (id) =>
   api.delete(`/admin/team/${id}`).then((r) => r.data)

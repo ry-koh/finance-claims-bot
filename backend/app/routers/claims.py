@@ -329,37 +329,11 @@ async def create_claim(
 ):
     academic_year = settings.ACADEMIC_YEAR
 
-    # --- Atomically increment document counter ---
-    # Try to update existing row and get new counter
-    counter_resp = (
-        db.table("document_counters")
-        .select("id, counter")
-        .eq("academic_year", academic_year)
-        .execute()
-    )
-
-    if not counter_resp.data:
-        # No row yet — insert with counter=1
-        insert_resp = (
-            db.table("document_counters")
-            .insert({"academic_year": academic_year, "counter": 1})
-            .execute()
-        )
-        if not insert_resp.data:
-            raise HTTPException(status_code=500, detail="Failed to initialise document counter")
-        counter = 1
-    else:
-        row = counter_resp.data[0]
-        new_counter = row["counter"] + 1
-        update_resp = (
-            db.table("document_counters")
-            .update({"counter": new_counter})
-            .eq("id", row["id"])
-            .execute()
-        )
-        if not update_resp.data:
-            raise HTTPException(status_code=500, detail="Failed to increment document counter")
-        counter = new_counter
+    # --- Atomically increment document counter (INSERT ... ON CONFLICT DO UPDATE) ---
+    counter_resp = db.rpc("increment_document_counter", {"p_year": academic_year}).execute()
+    if counter_resp.data is None:
+        raise HTTPException(status_code=500, detail="Failed to increment document counter")
+    counter = counter_resp.data
 
     # --- Fetch claimer → CCA → portfolio ---
     claimer_resp = (
@@ -459,8 +433,8 @@ async def update_claim(
     if _member.get("role") == "treasurer" and str(claim.get("filled_by")) != str(_member["id"]):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Build update dict from only provided fields, excluding immutable fields
-    immutable = {"reference_code", "claim_number", "created_at"}
+    # Build update dict from only provided fields, excluding immutable/meta fields
+    immutable = {"reference_code", "claim_number", "created_at", "client_updated_at"}
     update_data = {}
     for field, value in payload.model_dump(exclude_none=True).items():
         if field in immutable:
@@ -503,14 +477,19 @@ async def update_claim(
             # Mark them as stale
             db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
 
-    # Perform the update
-    update_resp = (
-        db.table("claims")
-        .update(update_data)
-        .eq("id", claim_id)
-        .execute()
-    )
+    # Perform the update — with optional optimistic concurrency check
+    client_ts = payload.client_updated_at
+    query = db.table("claims").update(update_data).eq("id", claim_id)
+    if client_ts:
+        query = query.eq("updated_at", client_ts)
+    update_resp = query.execute()
+
     if not update_resp.data:
+        if client_ts:
+            raise HTTPException(
+                status_code=409,
+                detail="This claim was modified by someone else. Please refresh and try again.",
+            )
         raise HTTPException(status_code=500, detail="Failed to update claim")
 
     return {
@@ -585,14 +564,13 @@ async def submit_for_review(
     claim = _get_claim_or_404(db, claim_id)
     if str(claim.get("filled_by")) != str(member["id"]):
         raise HTTPException(403, "You can only submit your own claims")
-    if claim.get("status") != ClaimStatus.DRAFT.value:
-        raise HTTPException(400, f"Claim must be in draft status, currently: {claim.get('status')}")
+    # Atomic: only update if still in draft — catches concurrent double-submit
     resp = db.table("claims").update({
         "status": ClaimStatus.PENDING_REVIEW.value,
         "rejection_comment": None,
-    }).eq("id", claim_id).execute()
+    }).eq("id", claim_id).eq("status", ClaimStatus.DRAFT.value).execute()
     if not resp.data:
-        raise HTTPException(status_code=500, detail="Failed to update claim status")
+        raise HTTPException(409, "Claim is no longer in draft status")
     return {"success": True, "status": ClaimStatus.PENDING_REVIEW.value}
 
 
@@ -608,13 +586,45 @@ async def reject_review(
     db: Client = Depends(get_supabase),
 ):
     """Finance team rejects a PENDING_REVIEW claim back to DRAFT with a comment."""
-    claim = _get_claim_or_404(db, claim_id)
-    if claim.get("status") != ClaimStatus.PENDING_REVIEW.value:
-        raise HTTPException(400, "Claim is not in pending_review status")
+    # Atomic: only update if still in pending_review
     resp = db.table("claims").update({
         "status": ClaimStatus.DRAFT.value,
         "rejection_comment": payload.comment,
-    }).eq("id", claim_id).execute()
+    }).eq("id", claim_id).eq("status", ClaimStatus.PENDING_REVIEW.value).execute()
     if not resp.data:
-        raise HTTPException(status_code=500, detail="Failed to update claim status")
+        raise HTTPException(409, "Claim is no longer in pending_review status")
     return {"success": True, "status": ClaimStatus.DRAFT.value}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/submit  (finance team only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/submit")
+async def mark_submitted(
+    claim_id: str,
+    _member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Mark a compiled claim as submitted to school finance."""
+    resp = db.table("claims").update({"status": "submitted"}).eq("id", claim_id).eq("status", "compiled").execute()
+    if not resp.data:
+        raise HTTPException(409, "Claim is not in compiled status")
+    return {"success": True, "status": "submitted"}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/reimburse  (finance team only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/reimburse")
+async def mark_reimbursed(
+    claim_id: str,
+    _member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Mark a submitted claim as reimbursed."""
+    resp = db.table("claims").update({"status": "reimbursed"}).eq("id", claim_id).eq("status", "submitted").execute()
+    if not resp.data:
+        raise HTTPException(409, "Claim is not in submitted status")
+    return {"success": True, "status": "reimbursed"}

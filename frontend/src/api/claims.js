@@ -43,6 +43,7 @@ export function useClaims(params = {}) {
   return useQuery({
     queryKey: CLAIM_KEYS.list(params),
     queryFn: () => fetchClaims(params),
+    refetchInterval: 30_000,
   })
 }
 
@@ -50,6 +51,7 @@ export function useClaimCounts() {
   return useQuery({
     queryKey: [...CLAIM_KEYS.all, 'counts'],
     queryFn: fetchClaimCounts,
+    refetchInterval: 30_000,
   })
 }
 
@@ -58,6 +60,7 @@ export function useClaim(id) {
     queryKey: CLAIM_KEYS.detail(id),
     queryFn: () => fetchClaim(id),
     enabled: !!id,
+    refetchInterval: 15_000,
   })
 }
 
@@ -101,6 +104,30 @@ export function useRestoreClaim(options = {}) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
     },
+    ...options,
+  })
+}
+
+export const submitClaim = (claimId) =>
+  api.post(`/claims/${claimId}/submit`).then((r) => r.data)
+
+export const reimburseClaim = (claimId) =>
+  api.post(`/claims/${claimId}/reimburse`).then((r) => r.data)
+
+export function useSubmitClaim(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitClaim,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all }),
+    ...options,
+  })
+}
+
+export function useReimburseClaim(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: reimburseClaim,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all }),
     ...options,
   })
 }

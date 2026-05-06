@@ -296,6 +296,9 @@ class ClaimUpdate(BaseModel):
     is_partial: Optional[bool] = None
     partial_amount: Optional[Decimal] = None
     mf_approval_drive_id: Optional[str] = None
+    # Optimistic concurrency: if provided, the update is rejected with 409
+    # if the claim was modified by someone else since the client last fetched it.
+    client_updated_at: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

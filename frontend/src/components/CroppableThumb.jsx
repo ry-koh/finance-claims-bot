@@ -16,7 +16,7 @@ import { pdfToImageFiles, isPdfFile } from '../utils/pdfToImages'
  *                            Falls back to onCropped(files[0]) if not provided.
  *   reuploading      — shows spinner overlay while parent is re-uploading
  */
-export default function CroppableThumb({ file, src, label = 'image', onRemove, onCropped, onCroppedMany, reuploading = false }) {
+export default function CroppableThumb({ file, src, label = 'image', onRemove, onCropped, onCroppedMany, reuploading = false, thumbSize = 'w-14 h-14' }) {
   const [thumbSrc, setThumbSrc] = useState(null)
   const [cropQueue, setCropQueue] = useState([])  // File[] — pages waiting to crop
   const [cropSrc, setCropSrc] = useState(null)    // URL — for non-PDF uploaded images
@@ -111,7 +111,7 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
         <button
           type="button"
           onClick={handleTap}
-          className="block w-14 h-14 rounded-lg overflow-hidden bg-gray-200 focus:outline-none active:opacity-75"
+          className={`block ${thumbSize} rounded-lg overflow-hidden bg-gray-200 focus:outline-none active:opacity-75`}
           title="Tap to crop or rotate"
         >
           {thumbSrc ? (

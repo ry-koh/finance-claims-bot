@@ -18,12 +18,16 @@ function MemberRow({ member, allCcas, updateMutation, removeMutation }) {
   const [editing, setEditing] = useState(false)
   const [editRole, setEditRole] = useState(member.role)
   const [editCcaIds, setEditCcaIds] = useState((member.ccas || []).map((c) => c.id))
+  const [editName, setEditName] = useState(member.name || '')
+  const [editEmail, setEditEmail] = useState(member.email || '')
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [rowError, setRowError] = useState(null)
 
   function openEdit() {
     setEditRole(member.role)
     setEditCcaIds((member.ccas || []).map((c) => c.id))
+    setEditName(member.name || '')
+    setEditEmail(member.email || '')
     setRowError(null)
     setEditing(true)
   }
@@ -35,7 +39,13 @@ function MemberRow({ member, allCcas, updateMutation, removeMutation }) {
   function handleSave() {
     setRowError(null)
     updateMutation.mutate(
-      { id: member.id, role: editRole, cca_ids: editRole === 'treasurer' ? editCcaIds : [] },
+      {
+        id: member.id,
+        role: editRole,
+        cca_ids: editRole === 'treasurer' ? editCcaIds : [],
+        name: editName.trim() || undefined,
+        email: editEmail.trim() || undefined,
+      },
       {
         onSuccess: () => setEditing(false),
         onError: (err) => setRowError(err?.response?.data?.detail || 'Update failed.'),
@@ -51,7 +61,7 @@ function MemberRow({ member, allCcas, updateMutation, removeMutation }) {
     })
   }
 
-  const canSave = editRole && (editRole !== 'treasurer' || editCcaIds.length > 0)
+  const canSave = editName.trim() && editRole && (editRole !== 'treasurer' || editCcaIds.length > 0)
   const isSaving = updateMutation.isPending
   const isRemoving = removeMutation.isPending
 
@@ -94,6 +104,26 @@ function MemberRow({ member, allCcas, updateMutation, removeMutation }) {
 
       {editing && (
         <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Name</p>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs"
+              placeholder="Full name"
+            />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Email</p>
+            <input
+              type="email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs"
+              placeholder="Email address"
+            />
+          </div>
           <div>
             <p className="text-xs font-semibold text-gray-600 mb-1.5">Role</p>
             <div className="grid grid-cols-2 gap-2">
