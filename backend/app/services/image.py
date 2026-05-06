@@ -110,15 +110,14 @@ def normalise_to_a4(jpeg_bytes: bytes) -> bytes:
     if img.mode != 'RGB':
         img = img.convert('RGB')
 
-    if img.width > img.height:
-        img = img.rotate(90, expand=True)
-
-    scale = min(A4_WIDTH_PX / img.width, A4_HEIGHT_PX / img.height, 1.0)
-    if scale < 1.0:
-        img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+    # Scale to fill A4 (up or down), preserving aspect ratio and orientation
+    scale = min(A4_WIDTH_PX / img.width, A4_HEIGHT_PX / img.height)
+    new_w = int(img.width * scale)
+    new_h = int(img.height * scale)
+    img = img.resize((new_w, new_h), Image.LANCZOS)
 
     canvas = Image.new('RGB', (A4_WIDTH_PX, A4_HEIGHT_PX), (255, 255, 255))
-    canvas.paste(img, ((A4_WIDTH_PX - img.width) // 2, (A4_HEIGHT_PX - img.height) // 2))
+    canvas.paste(img, ((A4_WIDTH_PX - new_w) // 2, (A4_HEIGHT_PX - new_h) // 2))
     return _compress_to_target(canvas)
 
 
