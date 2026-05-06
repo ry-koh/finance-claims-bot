@@ -39,7 +39,12 @@ export default function CroppableThumb({ file, src, label = 'image', onRemove, o
           const pages = await pdfToImageFiles(file)
           pendingConfirmsRef.current = pages.length
           setCropQueue(pages)
-        } catch { /* silently ignore */ } finally {
+        } catch (err) {
+          // Conversion failed — skip crop and send the raw PDF straight to the caller;
+          // the backend upload endpoint converts PDFs to JPEG on its own.
+          console.error('PDF conversion failed, bypassing crop:', err)
+          onCropped?.(file)
+        } finally {
           setConverting(false)
         }
       } else {

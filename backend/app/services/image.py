@@ -54,22 +54,27 @@ def convert_to_jpeg(file_bytes: bytes, content_type: str) -> bytes:
         img = Image.open(io.BytesIO(file_bytes))
     elif is_pdf:
         try:
-            from pdf2image import convert_from_bytes as pdf_convert
+            import fitz  # PyMuPDF
         except ImportError:
             raise ValueError(
                 "PDF conversion unavailable on this server. "
                 "Please upload receipt as a JPEG or PNG image."
             )
         try:
-            pages = pdf_convert(file_bytes, first_page=1, last_page=1)
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            if doc.page_count == 0:
+                raise ValueError("PDF contained no pages.")
+            page = doc[0]
+            mat = fitz.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        except ValueError:
+            raise
         except Exception:
             raise ValueError(
                 "PDF conversion unavailable on this server. "
                 "Please upload receipt as a JPEG or PNG image."
             )
-        if not pages:
-            raise ValueError("Could not extract any pages from the PDF.")
-        img = pages[0]
     else:
         img = Image.open(io.BytesIO(file_bytes))
 
@@ -127,27 +132,24 @@ def process_pdf_pages(file_bytes: bytes) -> list[bytes]:
     """Convert every page of a PDF to a normalised JPEG. Returns a list of JPEG bytes."""
     from PIL import Image  # lazy import
     try:
-        from pdf2image import convert_from_bytes as pdf_convert
+        import fitz  # PyMuPDF
     except ImportError:
         raise ValueError("PDF conversion unavailable on this server.")
 
     try:
-        pages = pdf_convert(file_bytes)
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
     except Exception:
-        raise ValueError("Could not convert PDF pages.")
+        raise ValueError("Could not open PDF.")
 
-    if not pages:
+    if doc.page_count == 0:
         raise ValueError("PDF contained no pages.")
 
     results = []
-    for page_img in pages:
-        if page_img.mode == 'RGBA':
-            bg = Image.new('RGB', page_img.size, (255, 255, 255))
-            bg.paste(page_img, mask=page_img.split()[3])
-            page_img = bg
-        elif page_img.mode != 'RGB':
-            page_img = page_img.convert('RGB')
+    mat = fitz.Matrix(2.0, 2.0)
+    for page in doc:
+        pix = page.get_pixmap(matrix=mat)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         buf = io.BytesIO()
-        page_img.save(buf, format='JPEG', quality=85)
+        img.save(buf, format='JPEG', quality=85)
         results.append(normalise_to_a4(buf.getvalue()))
     return results
