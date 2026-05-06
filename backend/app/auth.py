@@ -2,6 +2,7 @@ from fastapi import Depends, Header, HTTPException
 from supabase import Client
 
 from app.database import get_supabase
+from app.models import UserRole
 
 
 async def require_auth(
@@ -34,7 +35,7 @@ async def require_finance_team(
     Requires the authenticated user to be a finance member or director.
     Treasurers are rejected with 403.
     """
-    if member.get("role") == "treasurer":
+    if member.get("role") == UserRole.TREASURER:
         raise HTTPException(status_code=403, detail="Finance team access required")
     return member
 
@@ -45,6 +46,6 @@ async def require_director(
     """
     Requires the authenticated user to have the 'director' role.
     """
-    if member.get("role") != "director":
+    if member.get("role") != UserRole.DIRECTOR:
         raise HTTPException(status_code=403, detail="Access denied: director role required")
     return member
