@@ -21,7 +21,6 @@ const STATUS_BADGE = Object.fromEntries(
   STATUSES.filter(s => s.value).map(s => [s.value, s.badge])
 )
 STATUS_BADGE['error'] = 'bg-red-100 text-red-800'
-STATUS_BADGE['pending_review'] = 'bg-amber-100 text-amber-800'
 
 function badgeClasses(status) {
   return STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'

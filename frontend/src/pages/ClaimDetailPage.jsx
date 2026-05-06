@@ -15,7 +15,6 @@ import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
-import ImageCropModal from '../components/ImageCropModal'
 
 // ─── Error helper ────────────────────────────────────────────────────────────
 
@@ -118,7 +117,7 @@ function StatusPipeline({ claim, onAction }) {
       label: 'Email',
       description: 'Send email to treasurer',
       doneAt: 'email_sent',
-      activeAt: ['draft'],
+      activeAt: ['draft', 'pending_review'],
       render: ({ isDone, isCurrent }) => (
         <div className="flex flex-col items-start gap-1.5">
           {isCurrent && displayStatus === 'draft' && (
@@ -924,17 +923,11 @@ function BtCard({
 
 // ─── Review Panel (finance team, pending_review status) ──────────────────────
 
-function AttachmentThumb({ driveId, label, onRecrop }) {
+function AttachmentThumb({ driveId, label }) {
   const url = imageUrl(driveId)
   return (
-    <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
+    <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
       <img src={url} alt={label} className="w-full h-full object-cover" />
-      <button
-        onClick={onRecrop}
-        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 active:opacity-100 transition-opacity"
-      >
-        <span className="text-white text-xs font-medium">Re-crop</span>
-      </button>
     </div>
   )
 }
@@ -942,7 +935,6 @@ function AttachmentThumb({ driveId, label, onRecrop }) {
 function ReviewPanel({ claim, onApprove, onReject, approving }) {
   const [rejectComment, setRejectComment] = useState('')
   const [showRejectModal, setShowRejectModal] = useState(false)
-  const [cropTarget, setCropTarget] = useState(null)
 
   const receipts = claim.receipts ?? []
   const bankTransactions = claim.bank_transactions ?? []
@@ -969,7 +961,6 @@ function ReviewPanel({ claim, onApprove, onReject, approving }) {
                 key={img.key}
                 driveId={img.driveId}
                 label={img.label}
-                onRecrop={() => setCropTarget(img)}
               />
             ))}
           </div>
@@ -1009,7 +1000,7 @@ function ReviewPanel({ claim, onApprove, onReject, approving }) {
             />
             <div className="flex gap-2">
               <button
-                onClick={() => { onReject(rejectComment); setShowRejectModal(false) }}
+                onClick={() => { onReject(rejectComment); setRejectComment(''); setShowRejectModal(false) }}
                 disabled={!rejectComment.trim()}
                 className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
               >
@@ -1024,16 +1015,6 @@ function ReviewPanel({ claim, onApprove, onReject, approving }) {
             </div>
           </div>
         </div>
-      )}
-
-      {cropTarget && (
-        <ImageCropModal
-          src={imageUrl(cropTarget.driveId)}
-          fileNumber={1}
-          fileTotal={1}
-          onConfirm={() => setCropTarget(null)}
-          onCancel={() => setCropTarget(null)}
-        />
       )}
     </div>
   )
@@ -1389,7 +1370,7 @@ export default function ClaimDetailPage() {
         {/* ── Submit for Review — treasurer DRAFT claims only ── */}
         {isTreasurer && claim.status === 'draft' && (
           <button
-            onClick={() => submitForReviewMut.mutate(claim.id, { onSuccess: invalidateClaim })}
+            onClick={() => submitForReviewMut.mutate(id, { onSuccess: invalidateClaim, onError: (err) => setActionError(extractError(err, 'Failed to submit for review.')) })}
             disabled={submitForReviewMut.isPending}
             className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50"
           >
