@@ -140,6 +140,7 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
   function handleCategoryChange(cat) {
     const entries = Object.entries(allSelections)
     const myIdx = entries.findIndex(([rid]) => rid === receipt.id)
+    if (myIdx === -1) { onUpdate({ category: cat }); return }
     const match = entries.slice(0, myIdx).find(([, s]) => s.category === cat)
     if (match) {
       onUpdate({ category: cat, gst_code: match[1].gst_code, dr_cr: match[1].dr_cr })
@@ -167,8 +168,8 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
         {/* Receipt images */}
         {(receipt.images ?? []).length > 0 && (
           <div className="flex flex-col gap-2">
-            {receipt.images.map((img) => (
-              <FullWidthImage key={img.drive_file_id} src={imageUrl(img.drive_file_id)} label={receipt.description} />
+            {receipt.images.map((img, i) => (
+              <FullWidthImage key={img.drive_file_id ?? i} src={imageUrl(img.drive_file_id)} label={receipt.description} />
             ))}
           </div>
         )}
