@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { useQuestion, usePostAnswer } from '../api/help'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuestion, usePostAnswer, useDeleteQuestion } from '../api/help'
+import { useIsDirector } from '../context/AuthContext'
 
 function imageUrl(path) {
   return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(path)}`
@@ -22,9 +23,15 @@ function formatDate(str) {
 
 export default function HelpInboxThreadPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const isDirector = useIsDirector()
   const { data: question, isLoading } = useQuestion(id)
   const [answerText, setAnswerText] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const postAnswer = usePostAnswer(id)
+  const deleteQuestion = useDeleteQuestion({
+    onSuccess: () => navigate('/help-inbox', { replace: true }),
+  })
 
   function handleSend() {
     if (!answerText.trim()) return
@@ -58,7 +65,36 @@ export default function HelpInboxThreadPage() {
             ))}
           </div>
         )}
-        <p className="text-xs text-gray-400">{formatDate(question.created_at)}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-400">{formatDate(question.created_at)}</p>
+          {isDirector && (
+            confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">Delete this question?</p>
+                <button
+                  onClick={() => deleteQuestion.mutate(id)}
+                  disabled={deleteQuestion.isPending}
+                  className="text-xs text-red-600 font-semibold active:opacity-70 disabled:opacity-50"
+                >
+                  {deleteQuestion.isPending ? 'Deleting...' : 'Yes, delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="text-xs text-gray-500 active:opacity-70"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="text-xs text-red-500 active:opacity-70"
+              >
+                Delete
+              </button>
+            )
+          )}
+        </div>
       </div>
 
       {question.answers?.length > 0 && (

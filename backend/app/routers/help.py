@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
-from app.auth import require_auth, require_finance_team
+from app.auth import require_auth, require_finance_team, require_director
 from app.database import get_supabase
 from app.services import r2 as r2_service
 
@@ -227,3 +227,15 @@ async def post_answer(
         "answerer_name": current_user["name"],
         "created_at": answer["created_at"],
     }
+
+
+@router.delete("/questions/{question_id}", status_code=204)
+def delete_question(
+    question_id: str,
+    _director: dict = Depends(require_director),
+    db=Depends(get_supabase),
+):
+    resp = db.table("help_questions").select("id").eq("id", question_id).single().execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Question not found")
+    db.table("help_questions").delete().eq("id", question_id).execute()

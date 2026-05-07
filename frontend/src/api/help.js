@@ -22,6 +22,9 @@ export const createQuestion = (data) =>
 export const postAnswer = (questionId, data) =>
   api.post(`/help/questions/${questionId}/answers`, data).then((r) => r.data)
 
+export const deleteQuestion = (questionId) =>
+  api.delete(`/help/questions/${questionId}`).then((r) => r.data)
+
 export const uploadHelpImage = (file) => {
   const form = new FormData()
   form.append('file', file)
@@ -70,6 +73,15 @@ export function usePostAnswer(questionId, options = {}) {
       queryClient.invalidateQueries({ queryKey: HELP_KEYS.question(questionId) })
       queryClient.invalidateQueries({ queryKey: HELP_KEYS.allQuestions })
     },
+    ...options,
+  })
+}
+
+export function useDeleteQuestion(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteQuestion,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HELP_KEYS.allQuestions }),
     ...options,
   })
 }
