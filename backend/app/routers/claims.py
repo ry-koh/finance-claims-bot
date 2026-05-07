@@ -445,7 +445,8 @@ async def update_claim(
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Build update dict from only provided fields, excluding immutable/meta fields
-    immutable = {"reference_code", "claim_number", "created_at", "client_updated_at"}
+    # wbs_no is GENERATED ALWAYS (computed from wbs_account) and cannot be set directly
+    immutable = {"reference_code", "claim_number", "created_at", "client_updated_at", "wbs_no"}
     update_data = {}
     for field, value in payload.model_dump(exclude_none=True).items():
         if field in immutable:
