@@ -10,6 +10,8 @@ const STATUS_LABELS = {
   docs_generated: 'Docs Generated',
   compiled: 'Compiled',
   submitted: 'Submitted',
+  attachment_requested: 'Attachment Required',
+  attachment_uploaded: 'Attachment Submitted',
   reimbursed: 'Reimbursed',
   error: 'Error',
 }
@@ -23,6 +25,8 @@ const STATUS_BADGE = {
   docs_generated: 'bg-purple-100 text-purple-800',
   compiled: 'bg-indigo-100 text-indigo-800',
   submitted: 'bg-green-100 text-green-800',
+  attachment_requested: 'bg-orange-100 text-orange-800',
+  attachment_uploaded: 'bg-amber-100 text-amber-800',
   reimbursed: 'bg-teal-100 text-teal-800',
   error: 'bg-red-100 text-red-800',
 }
@@ -87,6 +91,11 @@ export default function TreasurerHomePage() {
               {claim.status === 'draft' && claim.rejection_comment && (
                 <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 rounded-lg px-2 py-1 mb-2 font-medium">
                   ⚠ Action required — tap to view feedback
+                </div>
+              )}
+              {claim.status === 'attachment_requested' && (
+                <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 rounded-lg px-2 py-1 mb-2 font-medium">
+                  📎 Action required — additional attachment needed
                 </div>
               )}
               <div className="flex justify-between items-start gap-2 mb-1">

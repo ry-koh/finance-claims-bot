@@ -13,6 +13,8 @@ const STATUSES = [
   { label: 'Docs Generated',       value: 'docs_generated',      badge: 'bg-purple-100 text-purple-800' },
   { label: 'Compiled',             value: 'compiled',            badge: 'bg-indigo-100 text-indigo-800' },
   { label: 'Submitted',            value: 'submitted',           badge: 'bg-green-100 text-green-800' },
+  { label: 'Attach. Requested',    value: 'attachment_requested',  badge: 'bg-orange-100 text-orange-800' },
+  { label: 'Attach. Uploaded',     value: 'attachment_uploaded',   badge: 'bg-blue-100 text-blue-800' },
   { label: 'Reimbursed',           value: 'reimbursed',          badge: 'bg-teal-100 text-teal-800' },
 ]
 
