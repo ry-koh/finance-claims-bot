@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
-import { useClaim, rejectReview } from '../api/claims'
+import { useQueryClient } from '@tanstack/react-query'
+import { useClaim, rejectReview, CLAIM_KEYS } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
+import { updateReceipt } from '../api/receipts'
+import { sendEmail } from '../api/email'
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -306,6 +309,147 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
   )
 }
 
+// ─── Summary screen ───────────────────────────────────────────────────────────
+
+function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBack, onReject, approving }) {
+  // Group receipts by category
+  const groups = {}
+  for (const r of receipts) {
+    const sel = selections[r.id] ?? {}
+    const cat = sel.category || '(unassigned)'
+    if (!groups[cat]) groups[cat] = { receipts: [], gst_code: sel.gst_code, dr_cr: sel.dr_cr }
+    groups[cat].receipts.push(r)
+  }
+
+  const totalReceipts = receipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
+  const totalBtNet = bankTransactions.reduce((s, bt) => {
+    const refundTotal = (bt.refunds ?? []).reduce((rs, ref) => rs + Number(ref.amount ?? 0), 0)
+    return s + Number(bt.amount ?? 0) - refundTotal
+  }, 0)
+  const reconciled = Math.abs(totalReceipts - totalBtNet) <= 0.01
+
+  const flagged = receipts
+    .map((r, i) => ({ i, remark: selections[r.id]?.remark?.trim() }))
+    .filter(({ remark }) => remark)
+
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10">
+        <button type="button" onClick={onBack} className="text-blue-600 text-sm font-medium px-1 py-1 active:text-blue-800">
+          ← Back
+        </button>
+        <span className="text-sm font-semibold text-gray-800">Review Summary</span>
+        <button type="button" onClick={onReject} className="text-red-600 text-sm font-medium px-1 py-1 active:text-red-800">
+          Reject
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4 pb-24">
+        {/* Flagged banner */}
+        {flagged.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-amber-800 mb-1">Flagged Receipts</p>
+            {flagged.map(({ i, remark }) => (
+              <p key={i} className="text-xs text-amber-700">Receipt {i + 1} — {remark}</p>
+            ))}
+            <p className="text-xs text-amber-600 mt-1">Resolve by rejecting, or clear the notes before approving.</p>
+          </div>
+        )}
+
+        {/* Receipts grouped by category */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-3 pb-1">Receipts by Category</p>
+          {Object.entries(groups).map(([cat, group]) => (
+            <div key={cat} className="border-t border-gray-100 first:border-t-0">
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-50">
+                <span className="text-sm font-semibold text-gray-800">{cat}</span>
+                <div className="flex gap-1">
+                  <span className="text-[10px] bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 font-medium">{group.gst_code}</span>
+                  <span className="text-[10px] bg-gray-200 text-gray-700 rounded px-1.5 py-0.5 font-medium">{group.dr_cr}</span>
+                </div>
+              </div>
+              {group.receipts.map((r) => (
+                <div key={r.id} className="flex justify-between items-center px-4 py-1.5 text-sm border-t border-gray-50">
+                  <span className="text-gray-700 truncate">{r.description || '—'}</span>
+                  <span className="text-gray-900 font-medium shrink-0 ml-2">{formatAmount(r.amount)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between px-4 py-1.5 text-sm border-t border-gray-200 bg-gray-50">
+                <span className="text-gray-500">Subtotal</span>
+                <span className="font-semibold">
+                  {formatAmount(group.receipts.reduce((s, r) => s + Number(r.amount ?? 0), 0))}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bank transactions */}
+        {bankTransactions.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-3 pb-1">Bank Transactions</p>
+            {bankTransactions.map((bt, i) => {
+              const refundTotal = (bt.refunds ?? []).reduce((s, r) => s + Number(r.amount ?? 0), 0)
+              const net = Number(bt.amount ?? 0) - refundTotal
+              return (
+                <div key={bt.id} className="border-t border-gray-100 px-4 py-2 flex flex-col gap-0.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">BT {i + 1} gross</span>
+                    <span>{formatAmount(bt.amount)}</span>
+                  </div>
+                  {(bt.refunds ?? []).map((ref, j) => (
+                    <div key={ref.id ?? j} className="flex justify-between text-sm text-red-600">
+                      <span>Refund {j + 1}</span>
+                      <span>− {formatAmount(ref.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-sm font-semibold border-t border-gray-100 pt-0.5 mt-0.5">
+                    <span className="text-gray-700">Net</span>
+                    <span>{formatAmount(net)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Reconciliation */}
+        <div className={`rounded-xl border p-4 ${reconciled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+          <div className="flex justify-between text-sm mb-1">
+            <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>Total receipts</span>
+            <span className="font-semibold">{formatAmount(totalReceipts)}</span>
+          </div>
+          <div className="flex justify-between text-sm mb-2">
+            <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>Total net BTs</span>
+            <span className="font-semibold">{formatAmount(totalBtNet)}</span>
+          </div>
+          {reconciled ? (
+            <p className="text-xs text-green-700 font-semibold">✓ Amounts match</p>
+          ) : (
+            <p className="text-xs text-amber-700">⚠ Amounts do not match — please verify before approving</p>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-3">
+        <button type="button" onClick={onBack} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 active:bg-gray-100">
+          ← Back
+        </button>
+        <button
+          type="button"
+          onClick={onApprove}
+          disabled={approving}
+          className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold disabled:opacity-50 active:bg-green-700"
+        >
+          {approving ? 'Approving…' : 'Approve & Send Email'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ApprovalWizardPage() {
@@ -313,11 +457,13 @@ export default function ApprovalWizardPage() {
   const navigate = useNavigate()
   const isFinanceTeam = useIsFinanceTeam()
   const { data: claim, isLoading } = useClaim(id)
+  const queryClient = useQueryClient()
 
   const [step, setStep] = useState(0)
   const [selections, setSelections] = useState({})
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejecting, setRejecting] = useState(false)
+  const [approving, setApproving] = useState(false)
   const initializedRef = useRef(false)
 
   // Restore or init draft once claim loads
@@ -373,6 +519,33 @@ export default function ApprovalWizardPage() {
     }
   }
 
+  async function handleApprove() {
+    setApproving(true)
+    try {
+      for (const receipt of receipts) {
+        const sel = selections[receipt.id]
+        if (!sel?.category) continue
+        await updateReceipt({
+          id: receipt.id,
+          category: sel.category,
+          gst_code: sel.gst_code,
+          dr_cr: sel.dr_cr,
+          confirm_category_change: true,
+        })
+      }
+      await sendEmail(id)
+      clearDraft(id)
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+      navigate(`/claims/${id}`)
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      const msg = typeof detail === 'string' ? detail : err?.message || 'Unknown error'
+      alert(`Approval failed: ${msg}`)
+    } finally {
+      setApproving(false)
+    }
+  }
+
   function handleNext() {
     setStep((s) => s + 1)
   }
@@ -414,6 +587,27 @@ export default function ApprovalWizardPage() {
     )
   }
 
-  // step === totalSteps → summary (Task 5)
-  return <div className="p-4 text-sm text-gray-500">Summary — coming in Task 5</div>
+  // step === totalSteps → summary
+  return (
+    <>
+      {showRejectModal && (
+        <RejectModal
+          receipts={receipts}
+          selections={selections}
+          onConfirm={handleReject}
+          onCancel={() => setShowRejectModal(false)}
+          loading={rejecting}
+        />
+      )}
+      <SummaryScreen
+        receipts={receipts}
+        bankTransactions={bankTransactions}
+        selections={selections}
+        onApprove={handleApprove}
+        onBack={() => setStep(totalSteps - 1)}
+        onReject={() => setShowRejectModal(true)}
+        approving={approving}
+      />
+    </>
+  )
 }
