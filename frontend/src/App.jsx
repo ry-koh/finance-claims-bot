@@ -9,10 +9,12 @@ import RegistrationPage from './pages/RegistrationPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
 import TreasurerHomePage from './pages/TreasurerHomePage'
 import PendingRegistrationsPage from './pages/PendingRegistrationsPage'
-import TeamPage from './pages/TeamPage'
+import FinanceTeamPage from './pages/FinanceTeamPage'
+import CcaTreasurersPage from './pages/CcaTreasurersPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import ApprovalWizardPage from './pages/ApprovalWizardPage'
 import ContactPage from './pages/ContactPage'
+import SettingsPage from './pages/SettingsPage'
 
 function LoadingScreen() {
   return (
@@ -69,8 +71,10 @@ export default function App() {
             {isDirector && (
               <>
                 <Route path="pending-registrations" element={<PendingRegistrationsPage />} />
-                <Route path="team" element={<TeamPage />} />
+                <Route path="team" element={<FinanceTeamPage />} />
+                <Route path="cca-treasurers" element={<CcaTreasurersPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
               </>
             )}
           </>
