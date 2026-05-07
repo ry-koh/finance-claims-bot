@@ -783,7 +783,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
 function BtCard({
   bt, btIndex, claimId, linkedReceipts, expanded, onToggle, onEdit, onDelete, onAddReceipt,
   saving, addingReceipt, onReceiptSaved, onReceiptCancelled, onEditReceipt, onDeleteReceipt, receiptSaving,
-  isTreasurer,
+  isTreasurer, canEdit = true,
 }) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -834,41 +834,45 @@ function BtCard({
             {tally ? '✓' : '⚠'}
           </span>
         </button>
-        {/* BT-level Edit / Delete — clearly separated from receipt row actions */}
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={saving}
-          className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded bg-blue-50 shrink-0 disabled:opacity-40"
-        >
-          Edit BT
-        </button>
-        {!confirmDelete ? (
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            className="text-xs text-red-500 font-medium px-1.5 py-0.5 rounded bg-red-50 shrink-0"
-          >
-            Del BT
-          </button>
-        ) : (
-          <div className="flex items-center gap-1 shrink-0">
+        {/* BT-level Edit / Delete — only shown when editing is permitted */}
+        {canEdit && (
+          <>
             <button
               type="button"
-              onClick={() => { onDelete(); setConfirmDelete(false) }}
+              onClick={onEdit}
               disabled={saving}
-              className="text-xs bg-red-600 text-white font-medium px-1.5 py-0.5 rounded disabled:opacity-50"
+              className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded bg-blue-50 shrink-0 disabled:opacity-40"
             >
-              Confirm
+              Edit BT
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(false)}
-              className="text-xs bg-gray-100 text-gray-700 font-medium px-1.5 py-0.5 rounded"
-            >
-              No
-            </button>
-          </div>
+            {!confirmDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="text-xs text-red-500 font-medium px-1.5 py-0.5 rounded bg-red-50 shrink-0"
+              >
+                Del BT
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { onDelete(); setConfirmDelete(false) }}
+                  disabled={saving}
+                  className="text-xs bg-red-600 text-white font-medium px-1.5 py-0.5 rounded disabled:opacity-50"
+                >
+                  Confirm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="text-xs bg-gray-100 text-gray-700 font-medium px-1.5 py-0.5 rounded"
+                >
+                  No
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -926,6 +930,7 @@ function BtCard({
                 onDelete={() => onDeleteReceipt(r)}
                 saving={receiptSaving}
                 isTreasurer={isTreasurer}
+                canEdit={canEdit}
               />
             ))}
             {!linkedReceipts.length && !addingReceipt && (
@@ -947,7 +952,7 @@ function BtCard({
 
           {/* Footer actions */}
           <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-            {!addingReceipt && (
+            {canEdit && !addingReceipt && (
               <button
                 type="button"
                 onClick={onAddReceipt}
@@ -957,41 +962,45 @@ function BtCard({
                 + Add Receipt
               </button>
             )}
-            <button
-              type="button"
-              onClick={onEdit}
-              disabled={saving}
-              className="text-xs text-gray-600 font-medium px-2 py-1 rounded-lg bg-gray-100 disabled:opacity-40"
-            >
-              Edit
-            </button>
-            {!confirmDelete ? (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="text-xs text-red-500 font-medium px-2 py-1 rounded-lg bg-red-50"
-              >
-                Delete
-              </button>
-            ) : (
-              <div className="flex items-center gap-1">
+            {canEdit && (
+              <>
                 <button
                   type="button"
-                  onClick={() => { onDelete(); setConfirmDelete(false) }}
+                  onClick={onEdit}
                   disabled={saving}
-                  className="text-xs bg-red-600 text-white font-medium px-2 py-1 rounded-lg disabled:opacity-50 flex items-center gap-1"
+                  className="text-xs text-gray-600 font-medium px-2 py-1 rounded-lg bg-gray-100 disabled:opacity-40"
                 >
-                  {saving && <Spinner small />}
-                  Confirm
+                  Edit
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="text-xs bg-gray-100 text-gray-700 font-medium px-2 py-1 rounded-lg"
-                >
-                  Cancel
-                </button>
-              </div>
+                {!confirmDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="text-xs text-red-500 font-medium px-2 py-1 rounded-lg bg-red-50"
+                  >
+                    Delete
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => { onDelete(); setConfirmDelete(false) }}
+                      disabled={saving}
+                      className="text-xs bg-red-600 text-white font-medium px-2 py-1 rounded-lg disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {saving && <Spinner small />}
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="text-xs bg-gray-100 text-gray-700 font-medium px-2 py-1 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1361,6 +1370,7 @@ export default function ClaimDetailPage() {
   const portfolio = cca.portfolio ?? {}
   const showErrorBanner = claim.status === 'error' && !errorDismissed
   const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
+  const canEdit = !isTreasurer || claim.status === 'draft'
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50 pb-6">
@@ -1379,23 +1389,25 @@ export default function ClaimDetailPage() {
             {claim.reference_code ?? `Claim #${claim.claim_number ?? id}`}
           </h1>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {!editMode ? (
+          {canEdit && (
+            <div className="flex items-center gap-2 shrink-0">
+              {!editMode && (
+                <button
+                  onClick={startEdit}
+                  className="text-xs font-medium text-blue-600 px-2 py-1 rounded-lg bg-blue-50 active:bg-blue-100"
+                >
+                  Edit
+                </button>
+              )}
               <button
-                onClick={startEdit}
-                className="text-xs font-medium text-blue-600 px-2 py-1 rounded-lg bg-blue-50 active:bg-blue-100"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={editMode}
+                className="text-xs font-medium text-red-600 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100 disabled:opacity-40"
               >
-                Edit
+                Delete
               </button>
-            ) : null}
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={editMode}
-              className="text-xs font-medium text-red-600 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100 disabled:opacity-40"
-            >
-              Delete
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1687,12 +1699,14 @@ export default function ClaimDetailPage() {
             <h2 className="text-sm font-semibold text-gray-700">
               Bank Transactions ({claim.bank_transactions?.length ?? 0})
             </h2>
-            <button
-              onClick={() => { setEditingBt(null); setShowBtModal(true) }}
-              className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
-            >
-              + Add
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => { setEditingBt(null); setShowBtModal(true) }}
+                className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
+              >
+                + Add
+              </button>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             {(claim.bank_transactions ?? []).map((bt, idx) => {
@@ -1720,6 +1734,7 @@ export default function ClaimDetailPage() {
                   onDeleteReceipt={handleDeleteReceipt}
                   receiptSaving={createReceiptMut.isPending || updateReceiptMut.isPending || deleteReceiptMut.isPending}
                   isTreasurer={isTreasurer}
+                  canEdit={canEdit}
                 />
               )
             })}
@@ -1735,7 +1750,7 @@ export default function ClaimDetailPage() {
             <h2 className="text-sm font-semibold text-gray-700">
               Unlinked Receipts ({unlinked.length})
             </h2>
-            {!showAddUnlinked && (
+            {canEdit && !showAddUnlinked && (
               <button
                 onClick={() => setShowAddUnlinked(true)}
                 className="text-xs text-blue-600 font-medium px-2 py-1 rounded-lg bg-blue-50"
@@ -1754,6 +1769,7 @@ export default function ClaimDetailPage() {
                 onDelete={() => handleDeleteReceipt(r)}
                 saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
                 isTreasurer={isTreasurer}
+                canEdit={canEdit}
               />
             ))}
             {!unlinked.length && !showAddUnlinked && (
@@ -2104,7 +2120,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   )
 }
 
-function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer }) {
+function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, canEdit = true }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -2196,16 +2212,18 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer })
             </div>
           )}
         </div>
-        <div className="flex gap-1.5 shrink-0 items-start">
-          <button onClick={() => setEditing(true)}
-            className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded hover:bg-blue-50">
-            Edit
-          </button>
-          <button onClick={() => setConfirmDelete(true)}
-            className="text-xs text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50">
-            Del
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-1.5 shrink-0 items-start">
+            <button onClick={() => setEditing(true)}
+              className="text-xs text-blue-600 font-medium px-1.5 py-0.5 rounded hover:bg-blue-50">
+              Edit
+            </button>
+            <button onClick={() => setConfirmDelete(true)}
+              className="text-xs text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50">
+              Del
+            </button>
+          </div>
+        )}
       </div>
       {confirmDelete && (
         <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">

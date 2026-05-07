@@ -443,6 +443,8 @@ async def update_claim(
 
     if _member.get("role") == "treasurer" and str(claim.get("filled_by")) != str(_member["id"]):
         raise HTTPException(status_code=403, detail="Access denied")
+    if _member.get("role") == "treasurer" and claim.get("status") != "draft":
+        raise HTTPException(status_code=403, detail="This claim can no longer be edited")
 
     # Build update dict from only provided fields, excluding immutable/meta fields
     # wbs_no is GENERATED ALWAYS (computed from wbs_account) and cannot be set directly
@@ -521,9 +523,14 @@ async def delete_claim(
     db: Client = Depends(get_supabase),
 ):
     """Permanently delete a claim and all associated R2 files."""
-    resp = db.table("claims").select("id").eq("id", claim_id).execute()
+    resp = db.table("claims").select("id, status, filled_by").eq("id", claim_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
+    claim = resp.data[0]
+    if _member.get("role") == "treasurer" and str(claim.get("filled_by")) != str(_member["id"]):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if _member.get("role") == "treasurer" and claim.get("status") != "draft":
+        raise HTTPException(status_code=403, detail="This claim can no longer be deleted")
 
     # Collect all R2 object names across image and document tables
     r2_paths = []

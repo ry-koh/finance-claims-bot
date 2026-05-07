@@ -140,6 +140,18 @@ def _delete_line_item_if_empty(db: Client, line_item_id: str) -> None:
         db.table("claim_line_items").delete().eq("id", line_item_id).execute()
 
 
+def _assert_claim_editable(db: Client, claim_id: str, member: dict) -> None:
+    """Raise 403 if a treasurer is trying to mutate a claim that is no longer in draft."""
+    if member.get("role") != "treasurer":
+        return
+    resp = db.table("claims").select("status, filled_by").eq("id", claim_id).execute()
+    claim = resp.data[0] if resp.data else {}
+    if str(claim.get("filled_by", "")) != str(member.get("id", "")):
+        raise HTTPException(403, "Access denied")
+    if claim.get("status") != "draft":
+        raise HTTPException(403, "This claim can no longer be edited")
+
+
 # ---------------------------------------------------------------------------
 # POST /receipts/process-image
 # ---------------------------------------------------------------------------
@@ -263,10 +275,11 @@ async def upload_receipt_image(
     db: Client = Depends(get_supabase),
 ):
     """Upload an image for a specific receipt and persist Drive ID."""
-    receipt_resp = db.table("receipts").select("*, claim:claims(reference_code)").eq("id", receipt_id).execute()
+    receipt_resp = db.table("receipts").select("*, claim:claims(reference_code, status, filled_by)").eq("id", receipt_id).execute()
     if not receipt_resp.data:
         raise HTTPException(404, "Receipt not found")
     receipt = receipt_resp.data[0]
+    _assert_claim_editable(db, receipt["claim_id"], _auth)
     reference_code = receipt.get("claim", {}).get("reference_code", receipt["claim_id"])
 
     raw_bytes = await file.read()
@@ -296,9 +309,12 @@ async def delete_receipt_image(
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    resp = db.table("receipt_images").select("*").eq("id", image_id).eq("receipt_id", receipt_id).execute()
+    resp = db.table("receipt_images").select("*, receipt:receipts(claim_id)").eq("id", image_id).eq("receipt_id", receipt_id).execute()
     if not resp.data:
         raise HTTPException(404, "Image not found")
+    claim_id = (resp.data[0].get("receipt") or {}).get("claim_id", "")
+    if claim_id:
+        _assert_claim_editable(db, claim_id, _auth)
     db.table("receipt_images").delete().eq("id", image_id).execute()
     return {"deleted": True}
 
@@ -319,6 +335,7 @@ async def create_receipt(
     """
     # 1. Fetch the claim (404 if not found or soft-deleted)
     _get_claim_or_404(db, payload.claim_id)
+    _assert_claim_editable(db, payload.claim_id, _member)
 
     # 2. Check if a line item already exists for this category
     existing_line_item = _get_line_item_for_category(db, payload.claim_id, payload.category)
@@ -504,6 +521,7 @@ async def update_receipt(
     Pass ?confirm_category_change=true to confirm.
     """
     receipt = _get_receipt_or_404(db, receipt_id)
+    _assert_claim_editable(db, receipt["claim_id"], _member)
     old_line_item_id: Optional[str] = receipt.get("line_item_id")
 
     # Determine if category is changing
@@ -644,6 +662,7 @@ async def delete_receipt(
     - Drive files (receipt_image_drive_id, bank_screenshot_drive_id)
     """
     receipt = _get_receipt_or_404(db, receipt_id)
+    _assert_claim_editable(db, receipt["claim_id"], _member)
     line_item_id: Optional[str] = receipt.get("line_item_id")
 
     # Delete from DB
