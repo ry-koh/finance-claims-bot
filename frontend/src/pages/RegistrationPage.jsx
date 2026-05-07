@@ -49,6 +49,7 @@ export default function RegistrationPage() {
     role &&
     name.trim() &&
     email.trim() &&
+    telegramUsername.trim() &&
     (role !== 'treasurer' || selectedCcaIds.length > 0)
 
   return (
@@ -116,8 +117,7 @@ export default function RegistrationPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Telegram Username
-                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                  Telegram Username <span className="text-red-500">*</span>
                 </label>
                 <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-300">
                   <span className="px-3 text-gray-400 text-sm bg-gray-50 border-r border-gray-300 py-2">@</span>

@@ -76,6 +76,8 @@ async def register(
         raise HTTPException(400, "Treasurers must select at least one CCA")
     if not payload.name.strip():
         raise HTTPException(400, "Name is required")
+    if not payload.telegram_username.strip():
+        raise HTTPException(400, "Telegram username is required")
 
     existing = (
         db.table("finance_team")
