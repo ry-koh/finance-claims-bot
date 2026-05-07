@@ -11,6 +11,7 @@ import TreasurerHomePage from './pages/TreasurerHomePage'
 import PendingRegistrationsPage from './pages/PendingRegistrationsPage'
 import TeamPage from './pages/TeamPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import ApprovalWizardPage from './pages/ApprovalWizardPage'
 
 function LoadingScreen() {
   return (
@@ -59,6 +60,7 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="claims/new" element={<NewClaimPage />} />
             <Route path="claims/:id" element={<ClaimDetailPage />} />
+            <Route path="claims/:id/approve" element={<ApprovalWizardPage />} />
             <Route path="identifiers" element={<IdentifierDataPage />} />
             {isDirector && (
               <>
