@@ -66,17 +66,18 @@ function FullWidthImage({ src, label }) {
   )
 }
 
-function RefundViewButton({ fileId }) {
+function ImageThumbnail({ fileId }) {
   const [viewing, setViewing] = useState(false)
+  const src = imageUrl(fileId)
   return (
     <>
-      {viewing && <FullscreenImageViewer src={imageUrl(fileId)} onClose={() => setViewing(false)} />}
+      {viewing && <FullscreenImageViewer src={src} onClose={() => setViewing(false)} />}
       <button
         type="button"
         onClick={() => setViewing(true)}
-        className="text-xs text-blue-600 font-medium underline active:text-blue-800"
+        className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 active:opacity-75 shrink-0"
       >
-        View attachment
+        <img src={src} alt="Attachment" className="w-full h-full object-cover" />
       </button>
     </>
   )
@@ -259,13 +260,24 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
                     Bank Transaction {i + 1}{isLinked ? ' — linked' : ''}
                   </p>
                   <InfoRow label="Gross" value={formatAmount(bt.amount)} />
-                  {(bt.refunds ?? []).map((ref, j) => (
-                    <div key={ref.id ?? j} className="flex flex-col gap-0.5">
-                      <InfoRow label={`Refund ${j + 1}`} value={`− ${formatAmount(ref.amount)}`} />
-                      {ref.drive_file_id && <RefundViewButton fileId={ref.drive_file_id} />}
-                      {(ref.extra_drive_file_ids ?? []).map((fid, k) => (
-                        <RefundViewButton key={fid ?? k} fileId={fid} />
+                  {(bt.images ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {bt.images.map((img, k) => img.drive_file_id && (
+                        <ImageThumbnail key={img.drive_file_id ?? k} fileId={img.drive_file_id} />
                       ))}
+                    </div>
+                  )}
+                  {(bt.refunds ?? []).map((ref, j) => (
+                    <div key={ref.id ?? j} className="flex flex-col gap-1 mt-0.5">
+                      <InfoRow label={`Refund ${j + 1}`} value={`− ${formatAmount(ref.amount)}`} />
+                      {(ref.drive_file_id || (ref.extra_drive_file_ids ?? []).length > 0) && (
+                        <div className="flex flex-wrap gap-2">
+                          {ref.drive_file_id && <ImageThumbnail fileId={ref.drive_file_id} />}
+                          {(ref.extra_drive_file_ids ?? []).map((fid, k) => fid && (
+                            <ImageThumbnail key={fid ?? k} fileId={fid} />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   <div className="border-t border-gray-100 pt-1.5 mt-0.5">
@@ -427,21 +439,32 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
               const refundTotal = (bt.refunds ?? []).reduce((s, r) => s + Number(r.amount ?? 0), 0)
               const net = Number(bt.amount ?? 0) - refundTotal
               return (
-                <div key={bt.id} className="border-t border-gray-100 px-4 py-2 flex flex-col gap-0.5">
+                <div key={bt.id} className="border-t border-gray-100 px-4 py-2 flex flex-col gap-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">BT {i + 1} gross</span>
                     <span>{formatAmount(bt.amount)}</span>
                   </div>
+                  {(bt.images ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {bt.images.map((img, k) => img.drive_file_id && (
+                        <ImageThumbnail key={img.drive_file_id ?? k} fileId={img.drive_file_id} />
+                      ))}
+                    </div>
+                  )}
                   {(bt.refunds ?? []).map((ref, j) => (
-                    <div key={ref.id ?? j} className="flex flex-col gap-0.5">
+                    <div key={ref.id ?? j} className="flex flex-col gap-1">
                       <div className="flex justify-between text-sm text-red-600">
                         <span>Refund {j + 1}</span>
                         <span>− {formatAmount(ref.amount)}</span>
                       </div>
-                      {ref.drive_file_id && <RefundViewButton fileId={ref.drive_file_id} />}
-                      {(ref.extra_drive_file_ids ?? []).map((fid, k) => (
-                        <RefundViewButton key={fid ?? k} fileId={fid} />
-                      ))}
+                      {(ref.drive_file_id || (ref.extra_drive_file_ids ?? []).length > 0) && (
+                        <div className="flex flex-wrap gap-2">
+                          {ref.drive_file_id && <ImageThumbnail fileId={ref.drive_file_id} />}
+                          {(ref.extra_drive_file_ids ?? []).map((fid, k) => fid && (
+                            <ImageThumbnail key={fid ?? k} fileId={fid} />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   <div className="flex justify-between text-sm font-semibold border-t border-gray-100 pt-0.5 mt-0.5">

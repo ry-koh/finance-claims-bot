@@ -116,8 +116,32 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
 
   const steps = [
     {
+      label: 'Treasurer Submit Claim',
+      description: 'Treasurer submits the claim for finance team review',
+      doneAt: 'email_sent',
+      activeAt: ['draft', 'pending_review'],
+      render: ({ isCurrent }) => {
+        if (!isTreasurer) return null
+        if (isCurrent && displayStatus === 'draft') {
+          return (
+            <ActionButton onClick={() => onAction('submitForReview')} loading={onAction.loading?.submitForReview}>
+              Submit for Review
+            </ActionButton>
+          )
+        }
+        if (isCurrent && displayStatus === 'pending_review') {
+          return (
+            <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-1 rounded-lg">
+              Pending review
+            </span>
+          )
+        }
+        return null
+      },
+    },
+    {
       label: 'Email',
-      description: 'Send email to treasurer',
+      description: 'Confirmation email sent to treasurer once approved',
       doneAt: 'email_sent',
       activeAt: ['draft', 'pending_review'],
       render: ({ isDone, isCurrent }) => (
@@ -1128,6 +1152,7 @@ export default function ClaimDetailPage() {
     compile: compileDocsMut.isPending,
     submit: submitClaimMut.isPending,
     reimburse: reimburseClaimMut.isPending,
+    submitForReview: submitForReviewMut.isPending,
   }
 
   function invalidateClaim() {
@@ -1140,7 +1165,9 @@ export default function ClaimDetailPage() {
 
     const errHandler = (err) => setActionError(extractError(err, 'Action failed. Please try again.'))
 
-    if (type === 'send') {
+    if (type === 'submitForReview') {
+      submitForReviewMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
+    } else if (type === 'send') {
       sendEmailMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
     } else if (type === 'resend') {
       resendEmailMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
@@ -1204,13 +1231,14 @@ export default function ClaimDetailPage() {
           setEditFields({})
           const stale = data?.stale_documents ?? []
           if (stale.length > 0) setStaleDocsWarning(true)
-          // Merge the PATCH response directly into cache to avoid blank screen
-          // if the background refetch (triggered by useUpdateClaim.onSuccess) fails
+          // Merge the PATCH response directly into cache, then force a refetch
+          // so MF upload section appears immediately if wbs_account changed to MF
           if (data?.claim) {
             queryClient.setQueryData(CLAIM_KEYS.detail(id), (old) =>
               old ? { ...old, ...data.claim } : undefined
             )
           }
+          invalidateClaim()
         },
         onError: (err) => setActionError(extractError(err, 'Failed to save changes.')),
       }
@@ -1433,17 +1461,6 @@ export default function ClaimDetailPage() {
             <p className="text-xs font-semibold text-red-700 mb-1">Action Required — Finance Team Feedback:</p>
             <p className="text-sm text-red-800">{claim.rejection_comment}</p>
           </div>
-        )}
-
-        {/* ── Submit for Review — treasurer DRAFT claims only ── */}
-        {isTreasurer && claim.status === 'draft' && (
-          <button
-            onClick={() => submitForReviewMut.mutate(id, { onSuccess: invalidateClaim, onError: (err) => setActionError(extractError(err, 'Failed to submit for review.')) })}
-            disabled={submitForReviewMut.isPending}
-            className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50"
-          >
-            {submitForReviewMut.isPending ? 'Submitting…' : 'Submit for Review'}
-          </button>
         )}
 
         {/* ── Claim info card ── */}

@@ -49,6 +49,9 @@ export default function App() {
 
   return (
     <Routes>
+      {!isTreasurer && (
+        <Route path="/claims/:id/approve" element={<ApprovalWizardPage />} />
+      )}
       <Route path="/" element={<Layout />}>
         {isTreasurer ? (
           <>
@@ -61,7 +64,6 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="claims/new" element={<NewClaimPage />} />
             <Route path="claims/:id" element={<ClaimDetailPage />} />
-            <Route path="claims/:id/approve" element={<ApprovalWizardPage />} />
             <Route path="identifiers" element={<IdentifierDataPage />} />
             <Route path="contact" element={<ContactPage />} />
             {isDirector && (
