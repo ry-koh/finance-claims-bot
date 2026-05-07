@@ -518,8 +518,10 @@ export default function ApprovalWizardPage() {
       await rejectReview({ claimId: id, comment })
       clearDraft(id)
       navigate(`/claims/${id}`)
-    } catch {
-      // leave modal open — user can retry
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      const msg = typeof detail === 'string' ? detail : err?.message || 'Unknown error'
+      alert(`Rejection failed: ${msg}`)
     } finally {
       setRejecting(false)
     }
@@ -528,6 +530,13 @@ export default function ApprovalWizardPage() {
   async function handleApprove() {
     setApproving(true)
     try {
+      const skipped = receipts.filter((r) => !selections[r.id]?.category)
+      if (skipped.length > 0) {
+        const confirmed = window.confirm(
+          `${skipped.length} receipt(s) have no category and will be skipped. Continue?`
+        )
+        if (!confirmed) { setApproving(false); return }
+      }
       for (const receipt of receipts) {
         const sel = selections[receipt.id]
         if (!sel?.category) continue
