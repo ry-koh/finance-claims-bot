@@ -5,8 +5,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, rejectReview, CLAIM_KEYS } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
-import { updateReceipt } from '../api/receipts'
+import { updateReceipt, uploadReceiptImageById, deleteReceiptImage } from '../api/receipts'
+import { uploadBankTransactionImage, deleteBankTransactionImage, updateBtRefundFile } from '../api/bankTransactions'
 import { sendEmail } from '../api/email'
+import ImageCropModal from '../components/ImageCropModal'
+import CroppableThumb from '../components/CroppableThumb'
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -66,19 +69,40 @@ function FullWidthImage({ src, label }) {
   )
 }
 
-function ImageThumbnail({ fileId }) {
+function CroppableFullImage({ src, label, onCropped, reuploading = false }) {
   const [viewing, setViewing] = useState(false)
-  const src = imageUrl(fileId)
+  const [cropping, setCropping] = useState(false)
   return (
     <>
       {viewing && <FullscreenImageViewer src={src} onClose={() => setViewing(false)} />}
-      <button
-        type="button"
-        onClick={() => setViewing(true)}
-        className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 active:opacity-75 shrink-0"
-      >
-        <img src={src} alt="Attachment" className="w-full h-full object-cover" />
-      </button>
+      {cropping && createPortal(
+        <ImageCropModal
+          src={src}
+          fileNumber={1}
+          fileTotal={1}
+          onConfirm={(f) => { setCropping(false); onCropped?.(f) }}
+          onCancel={() => setCropping(false)}
+        />,
+        document.body
+      )}
+      <div className="relative w-full rounded-xl overflow-hidden bg-gray-200">
+        <button type="button" onClick={() => setViewing(true)} className="w-full active:opacity-75 block">
+          <img src={src} alt={label} className="w-full object-contain max-h-64" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setCropping(true)}
+          disabled={reuploading}
+          className="absolute bottom-2 right-2 bg-black/60 text-white text-xs font-medium px-2 py-1 rounded-lg active:bg-black/80 disabled:opacity-50"
+        >
+          {reuploading ? '…' : '✂ Crop'}
+        </button>
+        {reuploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl pointer-events-none">
+            <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
     </>
   )
 }
@@ -200,7 +224,7 @@ function RejectModal({ receipts, selections, onConfirm, onCancel, loading }) {
 
 // ─── Per-receipt screen ───────────────────────────────────────────────────────
 
-function ReceiptStep({ receipt, selection, allSelections, bankTransactions, stepNum, totalSteps, onUpdate, onNext, onBack, onReject }) {
+function ReceiptStep({ receipt, selection, allSelections, bankTransactions, stepNum, totalSteps, onUpdate, onNext, onBack, onReject, onReplaceReceiptImage, onReplaceBtImage, onReplaceRefundImage, replacingImages }) {
   function handleCategoryChange(cat) {
     const entries = Object.entries(allSelections)
     const myIdx = entries.findIndex(([rid]) => rid === receipt.id)
@@ -233,7 +257,13 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
         {(receipt.images ?? []).length > 0 && (
           <div className="flex flex-col gap-2">
             {receipt.images.map((img, i) => (
-              <FullWidthImage key={img.drive_file_id ?? i} src={imageUrl(img.drive_file_id)} label={receipt.description} />
+              <CroppableFullImage
+                key={img.id ?? i}
+                src={imageUrl(img.drive_file_id)}
+                label={receipt.description}
+                reuploading={replacingImages?.[img.id]}
+                onCropped={(file) => onReplaceReceiptImage?.(img, receipt.id, file)}
+              />
             ))}
           </div>
         )}
@@ -263,7 +293,14 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
                   {(bt.images ?? []).length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-1">
                       {bt.images.map((img, k) => img.drive_file_id && (
-                        <ImageThumbnail key={img.drive_file_id ?? k} fileId={img.drive_file_id} />
+                        <CroppableThumb
+                          key={img.id ?? k}
+                          src={imageUrl(img.drive_file_id)}
+                          label="BT screenshot"
+                          reuploading={replacingImages?.[img.id]}
+                          onCropped={(file) => onReplaceBtImage?.(img, bt.id, file)}
+                          thumbSize="w-16 h-16"
+                        />
                       ))}
                     </div>
                   )}
@@ -272,9 +309,22 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
                       <InfoRow label={`Refund ${j + 1}`} value={`− ${formatAmount(ref.amount)}`} />
                       {(ref.drive_file_id || (ref.extra_drive_file_ids ?? []).length > 0) && (
                         <div className="flex flex-wrap gap-2">
-                          {ref.drive_file_id && <ImageThumbnail fileId={ref.drive_file_id} />}
+                          {ref.drive_file_id && (
+                            <CroppableThumb
+                              src={imageUrl(ref.drive_file_id)}
+                              label="Refund screenshot"
+                              reuploading={replacingImages?.[ref.id]}
+                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, file)}
+                              thumbSize="w-16 h-16"
+                            />
+                          )}
                           {(ref.extra_drive_file_ids ?? []).map((fid, k) => fid && (
-                            <ImageThumbnail key={fid ?? k} fileId={fid} />
+                            <CroppableThumb
+                              key={fid}
+                              src={imageUrl(fid)}
+                              label="Refund screenshot"
+                              thumbSize="w-16 h-16"
+                            />
                           ))}
                         </div>
                       )}
@@ -351,7 +401,7 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
 
 // ─── Summary screen ───────────────────────────────────────────────────────────
 
-function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBack, onReject, approving }) {
+function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBack, onReject, approving, onReplaceBtImage, onReplaceRefundImage, replacingImages }) {
   // Group receipts by category
   const groups = {}
   for (const r of receipts) {
@@ -447,7 +497,14 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
                   {(bt.images ?? []).length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {bt.images.map((img, k) => img.drive_file_id && (
-                        <ImageThumbnail key={img.drive_file_id ?? k} fileId={img.drive_file_id} />
+                        <CroppableThumb
+                          key={img.id ?? k}
+                          src={imageUrl(img.drive_file_id)}
+                          label="BT screenshot"
+                          reuploading={replacingImages?.[img.id]}
+                          onCropped={(file) => onReplaceBtImage?.(img, bt.id, file)}
+                          thumbSize="w-16 h-16"
+                        />
                       ))}
                     </div>
                   )}
@@ -459,9 +516,22 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
                       </div>
                       {(ref.drive_file_id || (ref.extra_drive_file_ids ?? []).length > 0) && (
                         <div className="flex flex-wrap gap-2">
-                          {ref.drive_file_id && <ImageThumbnail fileId={ref.drive_file_id} />}
+                          {ref.drive_file_id && (
+                            <CroppableThumb
+                              src={imageUrl(ref.drive_file_id)}
+                              label="Refund screenshot"
+                              reuploading={replacingImages?.[ref.id]}
+                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, file)}
+                              thumbSize="w-16 h-16"
+                            />
+                          )}
                           {(ref.extra_drive_file_ids ?? []).map((fid, k) => fid && (
-                            <ImageThumbnail key={fid ?? k} fileId={fid} />
+                            <CroppableThumb
+                              key={fid}
+                              src={imageUrl(fid)}
+                              label="Refund screenshot"
+                              thumbSize="w-16 h-16"
+                            />
                           ))}
                         </div>
                       )}
@@ -530,6 +600,7 @@ export default function ApprovalWizardPage() {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejecting, setRejecting] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [replacingImages, setReplacingImages] = useState({})
   const initializedRef = useRef(false)
 
   // Restore or init draft once claim loads
@@ -556,6 +627,44 @@ export default function ApprovalWizardPage() {
       ...prev,
       [receiptId]: { ...prev[receiptId], ...patch },
     }))
+  }
+
+  async function handleReplaceReceiptImage(img, receiptId, file) {
+    setReplacingImages((prev) => ({ ...prev, [img.id]: true }))
+    try {
+      await deleteReceiptImage({ receiptId, imageId: img.id })
+      await uploadReceiptImageById({ receiptId, file })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+    } catch {
+      alert('Failed to update image. Please try again.')
+    } finally {
+      setReplacingImages((prev) => ({ ...prev, [img.id]: false }))
+    }
+  }
+
+  async function handleReplaceBtImage(img, btId, file) {
+    setReplacingImages((prev) => ({ ...prev, [img.id]: true }))
+    try {
+      await deleteBankTransactionImage({ btId, imageId: img.id })
+      await uploadBankTransactionImage({ btId, file })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+    } catch {
+      alert('Failed to update image. Please try again.')
+    } finally {
+      setReplacingImages((prev) => ({ ...prev, [img.id]: false }))
+    }
+  }
+
+  async function handleReplaceRefundImage(ref, btId, file) {
+    setReplacingImages((prev) => ({ ...prev, [ref.id]: true }))
+    try {
+      await updateBtRefundFile({ btId, refundId: ref.id, file })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+    } catch {
+      alert('Failed to update image. Please try again.')
+    } finally {
+      setReplacingImages((prev) => ({ ...prev, [ref.id]: false }))
+    }
   }
 
   if (!isFinanceTeam) return <Navigate to="/" replace />
@@ -657,6 +766,10 @@ export default function ApprovalWizardPage() {
           onNext={handleNext}
           onBack={handleBack}
           onReject={() => setShowRejectModal(true)}
+          onReplaceReceiptImage={handleReplaceReceiptImage}
+          onReplaceBtImage={handleReplaceBtImage}
+          onReplaceRefundImage={handleReplaceRefundImage}
+          replacingImages={replacingImages}
         />
       </>
     )
@@ -682,6 +795,9 @@ export default function ApprovalWizardPage() {
         onBack={() => setStep(totalSteps - 1)}
         onReject={() => setShowRejectModal(true)}
         approving={approving}
+        onReplaceBtImage={handleReplaceBtImage}
+        onReplaceRefundImage={handleReplaceRefundImage}
+        replacingImages={replacingImages}
       />
     </>
   )
