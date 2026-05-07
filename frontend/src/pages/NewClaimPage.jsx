@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
@@ -29,14 +29,14 @@ function generateId() {
 function StepIndicator({ current }) {
   const steps = ['Who', 'What', 'Transactions']
   return (
-    <div className="flex items-center justify-center gap-2 mb-6">
+    <div className="flex items-start justify-center mb-6">
       {steps.map((label, i) => {
         const step = i + 1
         const active = step === current
         const done = step < current
         return (
-          <div key={step} className="flex items-start gap-2">
-            <div className="flex flex-col items-center">
+          <Fragment key={step}>
+            <div className="flex flex-col items-center w-16">
               <div
                 className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                   done
@@ -49,7 +49,7 @@ function StepIndicator({ current }) {
                 {done ? '✓' : step}
               </div>
               <span
-                className={`text-[10px] mt-0.5 font-medium ${
+                className={`text-[10px] mt-0.5 font-medium text-center ${
                   active ? 'text-blue-600' : done ? 'text-blue-400' : 'text-gray-400'
                 }`}
               >
@@ -61,7 +61,7 @@ function StepIndicator({ current }) {
                 className={`w-8 h-0.5 mt-3.5 ${done ? 'bg-blue-600' : 'bg-gray-200'}`}
               />
             )}
-          </div>
+          </Fragment>
         )
       })}
     </div>
