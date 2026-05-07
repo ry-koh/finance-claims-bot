@@ -85,10 +85,15 @@ export function usePostAnswer(questionId, options = {}) {
 
 export function useDeleteQuestion(options = {}) {
   const queryClient = useQueryClient()
+  const { onSuccess, ...rest } = options
   return useMutation({
     mutationFn: deleteQuestion,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: HELP_KEYS.allQuestions }),
-    ...options,
+    onSuccess: (...args) => {
+      queryClient.invalidateQueries({ queryKey: HELP_KEYS.myQuestions })
+      queryClient.invalidateQueries({ queryKey: HELP_KEYS.allQuestions })
+      onSuccess?.(...args)
+    },
+    ...rest,
   })
 }
 
