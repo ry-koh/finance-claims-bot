@@ -13,6 +13,8 @@ class RegisterRequest(BaseModel):
     role: str          # "member" or "treasurer"
     cca_ids: list[str] = []
     telegram_username: str = ''
+    matric_number: str = ''
+    phone_number: str = ''
 
 
 @router.get("/me")
@@ -74,6 +76,10 @@ async def register(
         raise HTTPException(400, "Finance members must use an @u.nus.edu email address")
     if payload.role == "treasurer" and not payload.cca_ids:
         raise HTTPException(400, "Treasurers must select at least one CCA")
+    if payload.role == "treasurer" and not payload.matric_number.strip():
+        raise HTTPException(400, "Matric number is required for treasurers")
+    if payload.role == "treasurer" and not payload.phone_number.strip():
+        raise HTTPException(400, "Phone number is required for treasurers")
     if not payload.name.strip():
         raise HTTPException(400, "Name is required")
     if not payload.telegram_username.strip():
@@ -97,6 +103,11 @@ async def register(
     }
     if payload.telegram_username.strip():
         insert_data["telegram_username"] = payload.telegram_username.strip().lstrip('@')
+    if payload.role == "treasurer":
+        if payload.matric_number.strip():
+            insert_data["matric_number"] = payload.matric_number.strip().upper()
+        if payload.phone_number.strip():
+            insert_data["phone_number"] = payload.phone_number.strip()
     result = db.table("finance_team").insert(insert_data).execute()
     member = result.data[0]
 
@@ -146,6 +157,9 @@ async def update_registration(
     }
     if payload.telegram_username.strip():
         update_data["telegram_username"] = payload.telegram_username.strip().lstrip('@')
+    if payload.role == "treasurer":
+        update_data["matric_number"] = payload.matric_number.strip().upper() if payload.matric_number.strip() else None
+        update_data["phone_number"] = payload.phone_number.strip() if payload.phone_number.strip() else None
     db.table("finance_team").update(update_data).eq("id", member["id"]).execute()
 
     # Replace CCA links entirely

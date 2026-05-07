@@ -508,10 +508,10 @@ async def update_receipt(
 
     # Determine if category is changing
     new_category = payload.category
-    category_changing = new_category is not None and old_line_item_id is not None
+    category_changing = False
 
-    if category_changing:
-        # Fetch old line item to check combined_description
+    if new_category is not None and old_line_item_id is not None:
+        # Fetch old line item to check combined_description and detect actual change
         old_li_resp = (
             db.table("claim_line_items")
             .select("*")
@@ -552,33 +552,44 @@ async def update_receipt(
     if payload.exchange_rate_screenshot_drive_ids is not None:
         update_data["exchange_rate_screenshot_drive_ids"] = payload.exchange_rate_screenshot_drive_ids
 
-    if category_changing and new_category is not None:
+    if new_category is not None:
         claim_id: str = receipt["claim_id"]
 
-        # Find or create a line item for the new category
-        new_line_item = _get_line_item_for_category(db, claim_id, new_category)
-        if new_line_item is None:
-            count = _count_line_items(db, claim_id)
-            if count >= MAX_CATEGORIES:
-                return {
-                    "split_needed": True,
-                    "reason": "max_categories",
-                    "receipt": None,
-                    "line_item": None,
-                }
-            new_line_item = _create_line_item(
-                db,
-                claim_id=claim_id,
-                category=new_category,
-                gst_code=payload.gst_code or "IE",
-                dr_cr=payload.dr_cr or "DR",
-                index=count + 1,
-            )
-
-        update_data["line_item_id"] = new_line_item["id"]
+        if old_line_item_id is None or category_changing:
+            # No existing line item, or category is actually changing — find or create one
+            new_line_item = _get_line_item_for_category(db, claim_id, new_category)
+            if new_line_item is None:
+                count = _count_line_items(db, claim_id)
+                if count >= MAX_CATEGORIES:
+                    return {
+                        "split_needed": True,
+                        "reason": "max_categories",
+                        "receipt": None,
+                        "line_item": None,
+                    }
+                new_line_item = _create_line_item(
+                    db,
+                    claim_id=claim_id,
+                    category=new_category,
+                    gst_code=payload.gst_code or "IE",
+                    dr_cr=payload.dr_cr or "DR",
+                    index=count + 1,
+                )
+            if new_line_item["id"] != old_line_item_id:
+                update_data["line_item_id"] = new_line_item["id"]
+        else:
+            # Category unchanged — update gst_code/dr_cr on the existing line item
+            li_update: dict = {}
+            if payload.gst_code is not None:
+                li_update["gst_code"] = payload.gst_code
+            if payload.dr_cr is not None:
+                li_update["dr_cr"] = payload.dr_cr
+            if li_update:
+                db.table("claim_line_items").update(li_update).eq("id", old_line_item_id).execute()
 
     if not update_data:
-        raise HTTPException(status_code=422, detail="No updatable fields provided")
+        # Nothing to update on the receipt row — return it as-is
+        return receipt
 
     resp = (
         db.table("receipts")
@@ -592,7 +603,7 @@ async def update_receipt(
     updated_receipt = resp.data[0]
 
     # Clean up old line item if it has no remaining receipts after the move
-    if category_changing and old_line_item_id and old_line_item_id != update_data.get("line_item_id"):
+    if old_line_item_id and "line_item_id" in update_data and old_line_item_id != update_data["line_item_id"]:
         _delete_line_item_if_empty(db, old_line_item_id)
 
     # Handle receipt images replacement

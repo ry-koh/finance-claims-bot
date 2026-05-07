@@ -12,6 +12,8 @@ export default function RegistrationPage() {
     () => window?.Telegram?.WebApp?.initDataUnsafe?.user?.username ?? ''
   )
   const [selectedCcaIds, setSelectedCcaIds] = useState([])
+  const [matricNumber, setMatricNumber] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -34,6 +36,8 @@ export default function RegistrationPage() {
         role,
         cca_ids: role === 'treasurer' ? selectedCcaIds : [],
         telegram_username: telegramUsername.trim().replace(/^@/, ''),
+        matric_number: role === 'treasurer' ? matricNumber.trim() : '',
+        phone_number: role === 'treasurer' ? phoneNumber.trim() : '',
       })
       setUser(result)
     } catch (err) {
@@ -50,7 +54,7 @@ export default function RegistrationPage() {
     name.trim() &&
     email.trim() &&
     telegramUsername.trim() &&
-    (role !== 'treasurer' || selectedCcaIds.length > 0)
+    (role !== 'treasurer' || (selectedCcaIds.length > 0 && matricNumber.trim() && phoneNumber.trim()))
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -130,6 +134,38 @@ export default function RegistrationPage() {
                   />
                 </div>
               </div>
+
+              {role === 'treasurer' && (
+                <>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Matric Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={matricNumber}
+                    onChange={(e) => setMatricNumber(e.target.value)}
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 uppercase"
+                    placeholder="A0XXXXXXX"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Phone Number (PayNow) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    placeholder="9XXXXXXX"
+                  />
+                </div>
+                </>
+              )}
 
               {role === 'treasurer' && (
                 <div>

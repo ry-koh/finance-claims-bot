@@ -141,19 +141,17 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     else:
         remarks_section = ""
 
-    # --- CC reminder line ---
-    cc_reminder_html = (
-        f"<br><strong>CC:</strong> {', '.join(cc_reminder_emails)}"
-        if cc_reminder_emails else ""
-    )
+    # --- CC line for copy-paste block (always includes FD; plus any other_emails) ---
+    cc_all = ["68findirector.rh@gmail.com"] + list(cc_reminder_emails)
+    cc_line_html = f"<br><strong>CC:</strong> {', '.join(cc_all)}"
 
     # --- HTML body ---
     html_body = f"""<div style="font-family: Arial, sans-serif; color: #222; font-size: 14px; line-height: 1.6;">
   <p>Hi {first_name},</p>
   <p>We have received your claim and after sending the following email, this is a confirmation that your claim is being processed. We have also attached the attachments that you have sent for your convenience.</p>
-  <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.{"<br><br><strong>Remember to CC:</strong> " + ", ".join(cc_reminder_emails) if cc_reminder_emails else ""}<br><br><strong>Important:</strong> When replying, please CC <strong>68findirector.rh@gmail.com</strong> so that our finance team can track your response.</p>
+  <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.</p>
   <p>
-    <strong>To:</strong> rh.finance@u.nus.edu{cc_reminder_html}<br>
+    <strong>To:</strong> rh.finance@u.nus.edu{cc_line_html}<br>
     <strong>Subject:</strong> {reference_code}
   </p>
   <hr style="border: none; border-top: 2px solid #000; margin: 20px 0;">

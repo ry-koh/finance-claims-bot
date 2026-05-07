@@ -281,31 +281,23 @@ export default function HomePage() {
           </>
         )}
 
-        {/* Status count chips */}
+        {/* Status filter dropdown */}
         {!selectMode && (
-          <div className="flex gap-2 overflow-x-auto pb-1 mt-2">
-            {STATUSES.map(({ label, value }) => {
-              const count = value === null ? allCount : (countsData?.[value] ?? 0)
-              const isActive = activeStatus === value
-              return (
-                <button
-                  key={label}
-                  onClick={() => setActiveStatus(value)}
-                  className={`shrink-0 flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                    isActive
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  {label}
-                  <span className={`inline-flex items-center justify-center min-w-[1.1rem] h-4 rounded-full text-[10px] font-semibold px-1 ${
-                    isActive ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {countsData ? count : '—'}
-                  </span>
-                </button>
-              )
-            })}
+          <div className="mt-2">
+            <select
+              value={activeStatus ?? ''}
+              onChange={e => setActiveStatus(e.target.value === '' ? null : e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            >
+              {STATUSES.map(({ label, value }) => {
+                const count = value === null ? allCount : (countsData?.[value] ?? 0)
+                return (
+                  <option key={label} value={value ?? ''}>
+                    {label}{countsData ? ` (${count})` : ''}
+                  </option>
+                )
+              })}
+            </select>
           </div>
         )}
       </div>
