@@ -1,4 +1,5 @@
 import asyncio
+import uuid as uuid_lib
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -752,7 +753,6 @@ async def upload_attachment_file(
     db: Client = Depends(get_supabase),
 ):
     """Treasurer uploads a file against the current open attachment request."""
-    import uuid as _uuid
     claim = _get_claim_or_404(db, claim_id)
     if claim["status"] != "attachment_requested":
         raise HTTPException(409, "Claim is not currently awaiting attachments")
@@ -764,7 +764,7 @@ async def upload_attachment_file(
     file_bytes = await file.read()
     filename = file.filename or "upload"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
-    object_name = f"attachments/{claim_id}/{_uuid.uuid4()}.{ext}"
+    object_name = f"attachments/{claim_id}/{uuid_lib.uuid4()}.{ext}"
     r2_service.upload_file(file_bytes, object_name, file.content_type or "application/octet-stream")
 
     file_resp = db.table("claim_attachment_files").insert({
@@ -773,6 +773,7 @@ async def upload_attachment_file(
         "original_filename": filename,
     }).execute()
     if not file_resp.data:
+        r2_service.delete_file(object_name)
         raise HTTPException(500, "Failed to save file record")
 
     return file_resp.data[0]
