@@ -12,16 +12,11 @@ class Settings(BaseSettings):
     GMAIL_REFRESH_TOKEN: str
     GOOGLE_DRIVE_PARENT_FOLDER_ID: str
     DRIVE_REFRESH_TOKEN: str = ""  # OAuth refresh token with Drive+Sheets+Docs scopes
-    FD_NAME: str = ""        # Finance Director display name
-    FD_MATRIC_NO: str = ""   # Finance Director matric number
-    FD_PHONE: str = ""       # Finance Director phone number
-    FD_EMAIL: str = ""       # Finance Director personal email (for transport form)
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = ""
     R2_STORAGE_LIMIT_BYTES: int = 9_500_000_000  # 9.5 GB hard stop
-    ACADEMIC_YEAR: str
     APP_URL: str = ""  # public HTTPS URL of this backend (e.g. https://api.yourdomain.duckdns.org)
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
     SUMMARY_TEMPLATE_ID: str = "1xPPlWy6T_tZqwFYHZlTSFYqciItF0Jm7Q25k1K-GHX4"
