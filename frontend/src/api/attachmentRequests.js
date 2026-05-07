@@ -61,7 +61,10 @@ export function useAcceptAttachments(claimId) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => api.post(`/claims/${claimId}/attachment-accept`).then((r) => r.data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['claims', claimId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claims', claimId] })
+      queryClient.invalidateQueries({ queryKey: ATTACHMENT_KEYS.requests(claimId) })
+    },
   })
 }
 

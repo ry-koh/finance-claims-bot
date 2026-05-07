@@ -1136,6 +1136,7 @@ function AttachmentRequestPanel({ claim }) {
   const [requestMsg, setRequestMsg] = useState('')
   const [rejectMsg, setRejectMsg] = useState('')
   const [showRejectForm, setShowRejectForm] = useState(false)
+  const [showRequestForm, setShowRequestForm] = useState(false)
 
   const requestAttachment = useRequestAttachment(claim.id)
   const uploadFile = useUploadAttachmentFile(claim.id)
@@ -1152,26 +1153,39 @@ function AttachmentRequestPanel({ claim }) {
         <h2 className="text-sm font-semibold text-amber-800 mb-2">
           Request Additional Attachment
         </h2>
-        <textarea
-          className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 mb-3"
-          rows={3}
-          placeholder="Describe what NUS office needs..."
-          value={requestMsg}
-          onChange={(e) => setRequestMsg(e.target.value)}
-        />
-        <ActionButton
-          variant="warning"
-          disabled={!requestMsg.trim()}
-          loading={requestAttachment.isPending}
-          onClick={() =>
-            requestAttachment.mutate(
-              { message: requestMsg },
-              { onSuccess: () => setRequestMsg('') }
-            )
-          }
-        >
-          Send Request
-        </ActionButton>
+        {!showRequestForm ? (
+          <ActionButton variant="warning" onClick={() => setShowRequestForm(true)}>
+            Request Attachment
+          </ActionButton>
+        ) : (
+          <>
+            <textarea
+              className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 mb-3"
+              rows={3}
+              placeholder="Describe what NUS office needs..."
+              value={requestMsg}
+              onChange={(e) => setRequestMsg(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <ActionButton
+                variant="warning"
+                disabled={!requestMsg.trim()}
+                loading={requestAttachment.isPending}
+                onClick={() =>
+                  requestAttachment.mutate(
+                    { message: requestMsg },
+                    { onSuccess: () => { setRequestMsg(''); setShowRequestForm(false) } }
+                  )
+                }
+              >
+                Send Request
+              </ActionButton>
+              <ActionButton variant="secondary" onClick={() => { setShowRequestForm(false); setRequestMsg('') }}>
+                Cancel
+              </ActionButton>
+            </div>
+          </>
+        )}
       </div>
     )
   }
@@ -1219,7 +1233,8 @@ function AttachmentRequestPanel({ claim }) {
                 <span className="truncate text-gray-800">{f.original_filename}</span>
                 <button
                   onClick={() => deleteFile.mutate(f.id)}
-                  className="text-red-400 ml-2 text-xs font-medium active:text-red-600 shrink-0"
+                  disabled={deleteFile.isPending}
+                  className="text-red-400 ml-2 text-xs font-medium active:text-red-600 disabled:opacity-40 shrink-0"
                 >
                   Remove
                 </button>
