@@ -12,6 +12,7 @@ from app.routers import bank_transactions as bank_transactions_router
 from app.routers import registration as registration_router
 from app.routers import admin as admin_router
 from app.routers import messages as messages_router
+from app.routers import analytics as analytics_router
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ app.include_router(images_router.router)
 app.include_router(registration_router.router)
 app.include_router(admin_router.router)
 app.include_router(messages_router.router)
+app.include_router(analytics_router.router)
 
 
 # ---------------------------------------------------------------------------
