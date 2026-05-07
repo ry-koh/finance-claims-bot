@@ -14,6 +14,9 @@ const PAGE_TITLES = {
   '/settings': 'Settings',
   '/contact': 'Contact',
   '/identifiers': 'Identifiers',
+  '/help': 'Help',
+  '/help/new': 'Ask a Question',
+  '/help-inbox': 'Help Inbox',
 }
 
 export default function Layout() {
@@ -25,7 +28,9 @@ export default function Layout() {
 
   const pageTitle =
     PAGE_TITLES[location.pathname] ||
-    (location.pathname.startsWith('/claims/') ? 'Claim' : 'Home')
+    (location.pathname.startsWith('/claims/') ? 'Claim' :
+     location.pathname.startsWith('/help-inbox/') ? 'Question' :
+     location.pathname.startsWith('/help/questions/') ? 'My Question' : 'Home')
 
   if (isDirector) {
     return (
@@ -78,27 +83,46 @@ export default function Layout() {
           <span className="text-xl">➕</span>
           <span>New Claim</span>
         </NavLink>
-        {!isTreasurer && (
+        {isTreasurer ? (
           <NavLink
-            to="/identifiers"
-            className={({ isActive }) =>
-              `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
-            }
-          >
-            <span className="text-xl">👥</span>
-            <span>Identifiers</span>
-          </NavLink>
-        )}
-        {!isTreasurer && (
-          <NavLink
-            to="/contact"
+            to="/help"
             className={({ isActive }) =>
               `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
             }
           >
             <span className="text-xl">💬</span>
-            <span>Contact</span>
+            <span>Help</span>
           </NavLink>
+        ) : (
+          <>
+            <NavLink
+              to="/identifiers"
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              }
+            >
+              <span className="text-xl">👥</span>
+              <span>Identifiers</span>
+            </NavLink>
+            <NavLink
+              to="/contact"
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              }
+            >
+              <span className="text-xl">💬</span>
+              <span>Contact</span>
+            </NavLink>
+            <NavLink
+              to="/help-inbox"
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              }
+            >
+              <span className="text-xl">📬</span>
+              <span>Inbox</span>
+            </NavLink>
+          </>
         )}
       </nav>
     </div>

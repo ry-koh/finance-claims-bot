@@ -15,6 +15,11 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import ApprovalWizardPage from './pages/ApprovalWizardPage'
 import ContactPage from './pages/ContactPage'
 import SettingsPage from './pages/SettingsPage'
+import HelpPage from './pages/HelpPage'
+import HelpNewQuestionPage from './pages/HelpNewQuestionPage'
+import HelpQuestionDetailPage from './pages/HelpQuestionDetailPage'
+import HelpInboxPage from './pages/HelpInboxPage'
+import HelpInboxThreadPage from './pages/HelpInboxThreadPage'
 
 function LoadingScreen() {
   return (
@@ -60,6 +65,9 @@ export default function App() {
             <Route index element={<TreasurerHomePage />} />
             <Route path="claims/new" element={<NewClaimPage />} />
             <Route path="claims/:id" element={<ClaimDetailPage />} />
+            <Route path="help" element={<HelpPage />} />
+            <Route path="help/new" element={<HelpNewQuestionPage />} />
+            <Route path="help/questions/:id" element={<HelpQuestionDetailPage />} />
           </>
         ) : (
           <>
@@ -68,6 +76,8 @@ export default function App() {
             <Route path="claims/:id" element={<ClaimDetailPage />} />
             <Route path="identifiers" element={<IdentifierDataPage />} />
             <Route path="contact" element={<ContactPage />} />
+            <Route path="help-inbox" element={<HelpInboxPage />} />
+            <Route path="help-inbox/:id" element={<HelpInboxThreadPage />} />
             {isDirector && (
               <>
                 <Route path="pending-registrations" element={<PendingRegistrationsPage />} />

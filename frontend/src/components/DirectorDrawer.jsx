@@ -14,6 +14,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/analytics', label: 'Analytics', icon: '📊' },
       { to: '/pending-registrations', label: 'Approvals', icon: '👤', badge: true },
+      { to: '/help-inbox', label: 'Help Inbox', icon: '📬' },
       { to: '/team', label: 'Finance Team', icon: '🛡️' },
       { to: '/cca-treasurers', label: 'CCA Treasurers', icon: '👥' },
       { to: '/settings', label: 'Settings', icon: '⚙️' },
