@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { useClaim } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
 
@@ -8,10 +8,7 @@ export default function ApprovalWizardPage() {
   const isFinanceTeam = useIsFinanceTeam()
   const { data: claim, isLoading } = useClaim(id)
 
-  if (!isFinanceTeam) {
-    navigate('/', { replace: true })
-    return null
-  }
+  if (!isFinanceTeam) return <Navigate to="/" replace />
 
   if (isLoading || !claim) {
     return (
