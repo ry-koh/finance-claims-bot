@@ -338,7 +338,11 @@ async def create_claim(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    academic_year = settings.ACADEMIC_YEAR
+    # Read academic year from DB
+    ay_resp = db.table("app_settings").select("value").eq("key", "academic_year").single().execute()
+    if not ay_resp.data:
+        raise HTTPException(status_code=500, detail="Academic year not configured — update it in Settings")
+    academic_year = ay_resp.data["value"]
 
     # --- Atomically increment document counter (INSERT ... ON CONFLICT DO UPDATE) ---
     counter_resp = db.rpc("increment_document_counter", {"p_year": academic_year}).execute()
@@ -377,7 +381,7 @@ async def create_claim(
         f"{academic_year}"
         f"-{_slug(portfolio_name)}"
         f"-{_slug(cca_name)}"
-        f"-{counter:03d}"
+        f"-{counter:04d}"
     )
 
     # --- Insert claim ---
