@@ -888,4 +888,105 @@ async def reject_attachments(
                 f"📎 Attachments for claim {ref} need revision.\n\n{payload.message}\n\nPlease upload the corrected files in the app."
             ))
 
+
+# ---------------------------------------------------------------------------
+# GET /claims/{claim_id}/attachment-requests  (any authenticated user)
+# ---------------------------------------------------------------------------
+
+@router.get("/{claim_id}/attachment-requests")
+def get_attachment_requests(
+    claim_id: str,
+    member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Return all attachment request cycles for a claim, newest first, with files nested."""
+    _get_claim_or_404(db, claim_id)
+
+    reqs_resp = (
+        db.table("claim_attachment_requests")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    requests = reqs_resp.data or []
+
+    if requests:
+        req_ids = [r["id"] for r in requests]
+        files_resp = (
+            db.table("claim_attachment_files")
+            .select("*")
+            .in_("request_id", req_ids)
+            .order("uploaded_at")
+            .execute()
+        )
+        files_by_req: dict = {}
+        for f in (files_resp.data or []):
+            files_by_req.setdefault(f["request_id"], []).append(f)
+        for r in requests:
+            r["files"] = files_by_req.get(r["id"], [])
+
+    return requests
+
+
+# ---------------------------------------------------------------------------
+# DELETE /claims/{claim_id}/attachment-requests/current/files/{file_id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/{claim_id}/attachment-requests/current/files/{file_id}", status_code=204)
+def delete_attachment_file(
+    claim_id: str,
+    file_id: str,
+    member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Treasurer removes a file from the current open request (before submitting)."""
+    claim = _get_claim_or_404(db, claim_id)
+    if claim["status"] != "attachment_requested":
+        raise HTTPException(409, "Cannot delete files after submitting")
+
+    current_req = _get_current_attachment_request(db, claim_id)
+    if not current_req:
+        raise HTTPException(404, "No open attachment request found")
+
+    file_resp = (
+        db.table("claim_attachment_files")
+        .select("id, file_url")
+        .eq("id", file_id)
+        .eq("request_id", current_req["id"])
+        .execute()
+    )
+    if not file_resp.data:
+        raise HTTPException(404, "File not found on current request")
+
+    r2_service.delete_file(file_resp.data[0]["file_url"])
+    db.table("claim_attachment_files").delete().eq("id", file_id).execute()
+
+
+# ---------------------------------------------------------------------------
+# GET /claims/{claim_id}/attachment-requests/current/files/{file_id}/download
+# ---------------------------------------------------------------------------
+
+@router.get("/{claim_id}/attachment-requests/current/files/{file_id}/download")
+def download_attachment_file(
+    claim_id: str,
+    file_id: str,
+    member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Return a short-lived presigned R2 URL so the director can download a file."""
+    _get_claim_or_404(db, claim_id)
+
+    file_resp = (
+        db.table("claim_attachment_files")
+        .select("id, file_url, original_filename")
+        .eq("id", file_id)
+        .execute()
+    )
+    if not file_resp.data:
+        raise HTTPException(404, "File not found")
+
+    url = r2_service.generate_signed_url(file_resp.data[0]["file_url"])
+    return {"url": url, "filename": file_resp.data[0]["original_filename"]}
+
     return new_req_resp.data[0]
