@@ -14,5 +14,6 @@ export function useAnalyticsSummary({ groupBy, statuses, dateFrom, dateTo }) {
   return useQuery({
     queryKey: ['analytics', 'summary', groupBy, statuses, dateFrom, dateTo],
     queryFn: () => fetchAnalyticsSummary({ groupBy, statuses, dateFrom, dateTo }),
+    staleTime: 60_000,
   })
 }

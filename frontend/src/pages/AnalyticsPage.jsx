@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useAnalyticsSummary } from '../api/analytics'
 
 const STATUS_LABELS = {
@@ -161,9 +161,8 @@ export default function AnalyticsPage() {
                 </tr>
               ) : groupBy === 'cca' ? (
                 portfolioGroups.map((group) => (
-                  <>
+                  <React.Fragment key={`hdr-${group.portfolio}`}>
                     <tr
-                      key={`hdr-${group.portfolio}`}
                       className="bg-gray-100 border-b border-gray-200"
                     >
                       <td className="px-4 py-1.5 font-semibold text-gray-700 text-xs uppercase tracking-wide">
@@ -175,7 +174,7 @@ export default function AnalyticsPage() {
                     </tr>
                     {group.rows.map((row) => (
                       <tr
-                        key={`row-${row.name}`}
+                        key={`row-${group.portfolio}-${row.name}`}
                         className="border-b border-gray-100"
                       >
                         <td className="px-4 py-2 pl-8 text-gray-700">
@@ -186,7 +185,7 @@ export default function AnalyticsPage() {
                         </td>
                       </tr>
                     ))}
-                  </>
+                  </React.Fragment>
                 ))
               ) : (
                 data.rows.map((row) => (
