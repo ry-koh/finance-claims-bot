@@ -57,19 +57,22 @@ def _get_full_claim(claim_id: str, db) -> dict:
 
 
 def _get_finance_director(db) -> dict:
-    if settings.FD_NAME:
-        return {
-            "name": settings.FD_NAME,
-            "matric_no": settings.FD_MATRIC_NO,
-            "phone": settings.FD_PHONE,
-            "email": settings.FD_EMAIL,
-        }
-    result = db.table("finance_team").select("*").eq("role", "director").limit(1).execute()
+    result = (
+        db.table("finance_team")
+        .select("name,email,matric_number,phone_number")
+        .eq("role", "director")
+        .limit(1)
+        .execute()
+    )
     if not result.data:
-        raise HTTPException(500, "No Finance Director configured — set FD_NAME/FD_MATRIC_NO/FD_PHONE env vars")
+        raise HTTPException(500, "No Finance Director configured — update profile in Settings")
     fd = result.data[0]
-    fd.setdefault("email", settings.FD_EMAIL)
-    return fd
+    return {
+        "name": fd.get("name") or "",
+        "matric_no": fd.get("matric_number") or "",
+        "phone": fd.get("phone_number") or "",
+        "email": fd.get("email") or "",
+    }
 
 
 def _download_doc(drive_file_id: str) -> bytes:
