@@ -7,6 +7,16 @@ import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUplo
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import {
+  useAttachmentRequests,
+  useRequestAttachment,
+  useUploadAttachmentFile,
+  useDeleteAttachmentFile,
+  useSubmitAttachments,
+  useAcceptAttachments,
+  useRejectAttachments,
+  useDownloadAttachmentFile,
+} from '../api/attachmentRequests'
+import {
   createBankTransaction, uploadBankTransactionImage, updateBankTransaction, createBtRefund,
   deleteBankTransactionImage, deleteBtRefund, updateBtRefundFile,
   useDeleteBankTransaction,
@@ -106,7 +116,12 @@ function ActionButton({ onClick, disabled, loading, children, variant = 'primary
 
 // Vertical stepper pipeline
 function StatusPipeline({ claim, onAction, isTreasurer }) {
-  const displayStatus = claim.status === 'error' ? 'screenshot_uploaded' : claim.status
+  const displayStatus =
+    claim.status === 'error'
+      ? 'screenshot_uploaded'
+      : claim.status === 'attachment_requested' || claim.status === 'attachment_uploaded'
+      ? 'submitted'
+      : claim.status
   const currentIdx = statusIndex(displayStatus)
 
   const screenshotUploading = onAction.loading?.screenshot
@@ -1108,6 +1123,219 @@ function ReviewPanel({ claim, onReject, onStartApproval }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+function AttachmentRequestPanel({ claim }) {
+  const isFinanceTeam = useIsFinanceTeam()
+  const isTreasurer = useIsTreasurer()
+  const status = claim.status
+
+  const { data: requests = [] } = useAttachmentRequests(claim.id)
+  const currentRequest = requests.find(
+    (r) => r.status === 'pending' || r.status === 'submitted'
+  )
+
+  const [requestMsg, setRequestMsg] = useState('')
+  const [rejectMsg, setRejectMsg] = useState('')
+  const [showRejectForm, setShowRejectForm] = useState(false)
+
+  const requestAttachment = useRequestAttachment(claim.id)
+  const uploadFile = useUploadAttachmentFile(claim.id)
+  const deleteFile = useDeleteAttachmentFile(claim.id)
+  const submitAttachments = useSubmitAttachments(claim.id)
+  const acceptAttachments = useAcceptAttachments(claim.id)
+  const rejectAttachments = useRejectAttachments(claim.id)
+  const downloadFile = useDownloadAttachmentFile(claim.id)
+
+  // Finance team: "Request Attachment" form shown on submitted claims
+  if (status === 'submitted' && isFinanceTeam) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-amber-800 mb-2">
+          Request Additional Attachment
+        </h2>
+        <textarea
+          className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 mb-3"
+          rows={3}
+          placeholder="Describe what NUS office needs..."
+          value={requestMsg}
+          onChange={(e) => setRequestMsg(e.target.value)}
+        />
+        <ActionButton
+          variant="warning"
+          disabled={!requestMsg.trim()}
+          loading={requestAttachment.isPending}
+          onClick={() =>
+            requestAttachment.mutate(
+              { message: requestMsg },
+              { onSuccess: () => setRequestMsg('') }
+            )
+          }
+        >
+          Send Request
+        </ActionButton>
+      </div>
+    )
+  }
+
+  // Treasurer: upload files
+  if (status === 'attachment_requested' && isTreasurer) {
+    const uploadedFiles = currentRequest?.files ?? []
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-amber-800 mb-1">
+            Additional Attachment Required
+          </h2>
+          {currentRequest && (
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">
+              {currentRequest.request_message}
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Upload files
+          </label>
+          <input
+            type="file"
+            multiple
+            className="text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 active:file:bg-blue-100"
+            onChange={(e) => {
+              Array.from(e.target.files || []).forEach((f) => uploadFile.mutate(f))
+              e.target.value = ''
+            }}
+            disabled={uploadFile.isPending}
+          />
+          {uploadFile.isPending && (
+            <p className="text-xs text-gray-500 mt-1">Uploading…</p>
+          )}
+        </div>
+        {uploadedFiles.length > 0 && (
+          <ul className="space-y-1">
+            {uploadedFiles.map((f) => (
+              <li
+                key={f.id}
+                className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100 text-sm"
+              >
+                <span className="truncate text-gray-800">{f.original_filename}</span>
+                <button
+                  onClick={() => deleteFile.mutate(f.id)}
+                  className="text-red-400 ml-2 text-xs font-medium active:text-red-600 shrink-0"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <ActionButton
+          disabled={uploadedFiles.length === 0}
+          loading={submitAttachments.isPending}
+          onClick={() => submitAttachments.mutate()}
+        >
+          Submit Attachments
+        </ActionButton>
+      </div>
+    )
+  }
+
+  // Finance team: waiting banner
+  if (status === 'attachment_requested' && isFinanceTeam) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-amber-800 mb-1">
+          Waiting for Treasurer
+        </h2>
+        {currentRequest && (
+          <p className="text-sm text-gray-600 whitespace-pre-wrap">
+            {currentRequest.request_message}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // Finance team: review uploaded files
+  if (status === 'attachment_uploaded' && isFinanceTeam) {
+    const uploadedFiles = currentRequest?.files ?? []
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-800">
+          Treasurer Attachments — Review Required
+        </h2>
+        {uploadedFiles.length > 0 ? (
+          <ul className="space-y-1">
+            {uploadedFiles.map((f) => (
+              <li
+                key={f.id}
+                className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm"
+              >
+                <span className="truncate text-gray-800">{f.original_filename}</span>
+                <button
+                  onClick={() =>
+                    downloadFile.mutate(f.id, {
+                      onSuccess: ({ url }) => window.open(url, '_blank'),
+                    })
+                  }
+                  className="text-blue-600 ml-2 text-xs font-medium active:text-blue-800 shrink-0"
+                >
+                  Download
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">No files found.</p>
+        )}
+        <div className="flex gap-2 pt-1">
+          <ActionButton
+            loading={acceptAttachments.isPending}
+            onClick={() => acceptAttachments.mutate()}
+          >
+            Accept
+          </ActionButton>
+          <ActionButton
+            variant="secondary"
+            onClick={() => setShowRejectForm((v) => !v)}
+          >
+            Reject
+          </ActionButton>
+        </div>
+        {showRejectForm && (
+          <div>
+            <textarea
+              className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400 mb-2"
+              rows={3}
+              placeholder="Describe what still needs to be provided…"
+              value={rejectMsg}
+              onChange={(e) => setRejectMsg(e.target.value)}
+            />
+            <ActionButton
+              variant="danger"
+              disabled={!rejectMsg.trim()}
+              loading={rejectAttachments.isPending}
+              onClick={() =>
+                rejectAttachments.mutate(
+                  { message: rejectMsg },
+                  {
+                    onSuccess: () => {
+                      setShowRejectForm(false)
+                      setRejectMsg('')
+                    },
+                  }
+                )
+              }
+            >
+              Send &amp; Request Again
+            </ActionButton>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
+
 export default function ClaimDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1473,6 +1701,11 @@ export default function ClaimDetailPage() {
             <p className="text-xs font-semibold text-red-700 mb-1">Action Required — Finance Team Feedback:</p>
             <p className="text-sm text-red-800">{claim.rejection_comment}</p>
           </div>
+        )}
+
+        {/* ── Attachment request panel ── */}
+        {['submitted', 'attachment_requested', 'attachment_uploaded'].includes(claim.status) && (
+          <AttachmentRequestPanel claim={claim} />
         )}
 
         {/* ── Claim info card ── */}
