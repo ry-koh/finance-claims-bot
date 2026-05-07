@@ -41,7 +41,7 @@ When the finance team picks a category that has already been assigned to an earl
 ### A. Per-receipt screen (step 0 … N-1)
 
 **Header row:**
-- Left: back arrow (disabled on step 0)
+- Left: back arrow (navigates to claim detail page on step 0, since sessionStorage preserves progress)
 - Centre: `Receipt X of Y`
 - Right: "Reject Claim" button (red/destructive)
 
