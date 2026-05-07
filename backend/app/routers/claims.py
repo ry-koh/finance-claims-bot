@@ -888,6 +888,8 @@ async def reject_attachments(
                 f"📎 Attachments for claim {ref} need revision.\n\n{payload.message}\n\nPlease upload the corrected files in the app."
             ))
 
+    return new_req_resp.data[0]
+
 
 # ---------------------------------------------------------------------------
 # GET /claims/{claim_id}/attachment-requests  (any authenticated user)
@@ -959,8 +961,9 @@ def delete_attachment_file(
     if not file_resp.data:
         raise HTTPException(404, "File not found on current request")
 
-    r2_service.delete_file(file_resp.data[0]["file_url"])
     db.table("claim_attachment_files").delete().eq("id", file_id).execute()
+    if file_resp.data[0].get("file_url"):
+        r2_service.delete_file(file_resp.data[0]["file_url"])
 
 
 # ---------------------------------------------------------------------------
@@ -977,10 +980,19 @@ def download_attachment_file(
     """Return a short-lived presigned R2 URL so the director can download a file."""
     _get_claim_or_404(db, claim_id)
 
+    req_ids_resp = (
+        db.table("claim_attachment_requests")
+        .select("id")
+        .eq("claim_id", claim_id)
+        .execute()
+    )
+    req_ids = [r["id"] for r in (req_ids_resp.data or [])]
+
     file_resp = (
         db.table("claim_attachment_files")
         .select("id, file_url, original_filename")
         .eq("id", file_id)
+        .in_("request_id", req_ids)
         .execute()
     )
     if not file_resp.data:
@@ -988,5 +1000,3 @@ def download_attachment_file(
 
     url = r2_service.generate_signed_url(file_resp.data[0]["file_url"])
     return {"url": url, "filename": file_resp.data[0]["original_filename"]}
-
-    return new_req_resp.data[0]
