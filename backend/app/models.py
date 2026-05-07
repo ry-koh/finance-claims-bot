@@ -26,6 +26,8 @@ class ClaimStatus(str, Enum):
     DOCS_GENERATED = "docs_generated"
     COMPILED = "compiled"
     SUBMITTED = "submitted"
+    ATTACHMENT_REQUESTED = "attachment_requested"
+    ATTACHMENT_UPLOADED = "attachment_uploaded"
     REIMBURSED = "reimbursed"
     ERROR = "error"
 
