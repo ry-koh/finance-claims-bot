@@ -979,7 +979,7 @@ function BtCard({
 // ─── Review Panel (finance team, pending_review status) ──────────────────────
 
 
-function ReviewPanel({ claim, onApprove, onReject, approving }) {
+function ReviewPanel({ claim, onReject, onStartApproval }) {
   const [rejectComment, setRejectComment] = useState('')
   const [showRejectModal, setShowRejectModal] = useState(false)
 
@@ -1026,12 +1026,10 @@ function ReviewPanel({ claim, onApprove, onReject, approving }) {
 
       <div className="flex gap-2">
         <button
-          onClick={onApprove}
-          disabled={approving}
-          className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
+          onClick={onStartApproval}
+          className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-1 active:bg-blue-700"
         >
-          {approving && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {approving ? 'Sending…' : 'Approve & Send Email'}
+          Start Approval Process
         </button>
         <button
           onClick={() => setShowRejectModal(true)}
@@ -1645,8 +1643,7 @@ export default function ClaimDetailPage() {
         {isFinanceTeam && claim.status === 'pending_review' && (
           <ReviewPanel
             claim={claim}
-            approving={sendEmailMut.isPending}
-            onApprove={() => sendEmailMut.mutate(id, { onSuccess: invalidateClaim, onError: (err) => setActionError(extractError(err, 'Failed to send email.')) })}
+            onStartApproval={() => navigate(`/claims/${id}/approve`)}
             onReject={(comment) =>
               rejectReviewMut.mutate(
                 { claimId: id, comment },
