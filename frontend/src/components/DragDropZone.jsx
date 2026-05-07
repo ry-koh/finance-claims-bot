@@ -94,6 +94,10 @@ export default function DragDropZone({
           {converting ? 'Converting…' : busy ? 'Uploading…' : isDragging ? 'Drop to upload' : label}
         </p>
         <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
+        <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+          Crop the photo so only the important parts are in it, crop out all whitespace.{' '}
+          (If you are on phone, it might be easier to crop it before uploading, or use Telegram Desktop)
+        </p>
       </div>
       <input
         ref={fileRef}

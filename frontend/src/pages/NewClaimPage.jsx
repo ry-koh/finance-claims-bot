@@ -1330,7 +1330,7 @@ const DEFAULT_STEP1 = { portfolioId: '', ccaId: '', claimerId: '' }
 const DEFAULT_STEP2 = {
   claimDescription: '',
   date: today(),
-  wbsAccount: '',
+  wbsAccount: 'SA',
   remarks: '',
   transportFormNeeded: false,
   transportTrips: [],
