@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
-import api from './api'
+import api from './client'
 
 export const useTreasurers = () =>
   useQuery({
