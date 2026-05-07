@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { useClaim } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
@@ -25,6 +25,7 @@ function initSelections(claim) {
 }
 
 function loadDraft(claimId) {
+  if (!claimId) return null
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY(claimId))
     return raw ? JSON.parse(raw) : null
@@ -34,12 +35,14 @@ function loadDraft(claimId) {
 }
 
 function saveDraft(claimId, state) {
+  if (!claimId) return
   try {
     sessionStorage.setItem(STORAGE_KEY(claimId), JSON.stringify(state))
   } catch {}
 }
 
 export function clearDraft(claimId) {
+  if (!claimId) return
   sessionStorage.removeItem(STORAGE_KEY(claimId))
 }
 
@@ -53,11 +56,12 @@ export default function ApprovalWizardPage() {
 
   const [step, setStep] = useState(0)
   const [selections, setSelections] = useState({})
-  const [initialized, setInitialized] = useState(false)
+  const initializedRef = useRef(false)
 
   // Restore or init draft once claim loads
   useEffect(() => {
-    if (!claim || initialized) return
+    if (!claim || initializedRef.current) return
+    initializedRef.current = true
     const draft = loadDraft(id)
     if (draft) {
       setStep(draft.step)
@@ -65,14 +69,13 @@ export default function ApprovalWizardPage() {
     } else {
       setSelections(initSelections(claim))
     }
-    setInitialized(true)
-  }, [claim, id, initialized])
+  }, [claim, id])
 
   // Persist on every change
   useEffect(() => {
-    if (!initialized) return
+    if (!initializedRef.current) return
     saveDraft(id, { step, selections })
-  }, [step, selections, id, initialized])
+  }, [step, selections, id])
 
   function updateSelection(receiptId, patch) {
     setSelections((prev) => ({
@@ -83,7 +86,7 @@ export default function ApprovalWizardPage() {
 
   if (!isFinanceTeam) return <Navigate to="/" replace />
 
-  if (isLoading || !claim || !initialized) {
+  if (isLoading || !claim || !initializedRef.current) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
