@@ -1526,6 +1526,11 @@ export default function ClaimDetailPage() {
                     </option>
                   ))}
                 </select>
+                {editFields.wbs_account === 'MF' && (
+                  <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    MF account requires a Master&apos;s Approval screenshot — upload it after saving.
+                  </p>
+                )}
               </div>
 
               {/* Transport form needed */}

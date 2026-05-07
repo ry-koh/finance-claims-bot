@@ -12,6 +12,7 @@ class RegisterRequest(BaseModel):
     email: str
     role: str          # "member" or "treasurer"
     cca_ids: list[str] = []
+    telegram_username: str = ''
 
 
 @router.get("/me")
@@ -85,13 +86,16 @@ async def register(
     if existing.data:
         raise HTTPException(409, "Already registered")
 
-    result = db.table("finance_team").insert({
+    insert_data = {
         "telegram_id": tg_id,
         "name": payload.name.strip(),
         "email": payload.email.strip().lower(),
         "role": payload.role,
         "status": "pending",
-    }).execute()
+    }
+    if payload.telegram_username.strip():
+        insert_data["telegram_username"] = payload.telegram_username.strip().lstrip('@')
+    result = db.table("finance_team").insert(insert_data).execute()
     member = result.data[0]
 
     if payload.role == "treasurer":
@@ -133,11 +137,14 @@ async def update_registration(
     if payload.role == "treasurer" and not payload.cca_ids:
         raise HTTPException(400, "Treasurers must select at least one CCA")
 
-    db.table("finance_team").update({
+    update_data = {
         "name": payload.name.strip(),
         "email": payload.email.strip().lower(),
         "role": payload.role,
-    }).eq("id", member["id"]).execute()
+    }
+    if payload.telegram_username.strip():
+        update_data["telegram_username"] = payload.telegram_username.strip().lstrip('@')
+    db.table("finance_team").update(update_data).eq("id", member["id"]).execute()
 
     # Replace CCA links entirely
     db.table("treasurer_ccas").delete().eq("finance_team_id", member["id"]).execute()

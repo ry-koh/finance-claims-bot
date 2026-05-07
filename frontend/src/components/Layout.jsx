@@ -70,6 +70,14 @@ export default function Layout() {
             <span>Identifiers</span>
           </NavLink>
         )}
+        {!isTreasurer && (
+          <NavLink to="/contact" className={({ isActive }) =>
+            `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+          }>
+            <span className="text-xl">💬</span>
+            <span>Contact</span>
+          </NavLink>
+        )}
         {isDirector && <DirectorNav />}
       </nav>
     </div>

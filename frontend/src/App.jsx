@@ -12,6 +12,7 @@ import PendingRegistrationsPage from './pages/PendingRegistrationsPage'
 import TeamPage from './pages/TeamPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import ApprovalWizardPage from './pages/ApprovalWizardPage'
+import ContactPage from './pages/ContactPage'
 
 function LoadingScreen() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="claims/:id" element={<ClaimDetailPage />} />
             <Route path="claims/:id/approve" element={<ApprovalWizardPage />} />
             <Route path="identifiers" element={<IdentifierDataPage />} />
+            <Route path="contact" element={<ContactPage />} />
             {isDirector && (
               <>
                 <Route path="pending-registrations" element={<PendingRegistrationsPage />} />
