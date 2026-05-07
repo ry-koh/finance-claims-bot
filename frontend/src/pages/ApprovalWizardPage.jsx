@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
-import { useClaim } from '../api/claims'
+import { useClaim, rejectReview } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 
@@ -127,6 +127,55 @@ function saveDraft(claimId, state) {
 export function clearDraft(claimId) {
   if (!claimId) return
   sessionStorage.removeItem(STORAGE_KEY(claimId))
+}
+
+// ─── Rejection modal ──────────────────────────────────────────────────────────
+
+function RejectModal({ receipts, selections, onConfirm, onCancel, loading }) {
+  const prefilled = receipts
+    .map((r, i) => {
+      const remark = selections[r.id]?.remark?.trim()
+      return remark ? `Receipt ${i + 1} — ${remark}` : null
+    })
+    .filter(Boolean)
+    .join('\n')
+
+  const [comment, setComment] = useState(prefilled)
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end p-4">
+      <div className="bg-white rounded-2xl w-full p-4 max-w-sm mx-auto">
+        <h3 className="font-bold text-gray-900 mb-1">Reject Submission</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Tell the treasurer what needs to be fixed. Flagged receipts are pre-filled below.
+        </p>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={5}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 mb-3 resize-none"
+          placeholder="e.g. Receipt 2 — amount doesn't match bank transaction."
+        />
+        <div className="flex gap-2">
+          <button
+            onClick={() => onConfirm(comment)}
+            disabled={!comment.trim() || loading}
+            className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+          >
+            {loading ? 'Sending…' : 'Send Rejection'}
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
 }
 
 // ─── Per-receipt screen ───────────────────────────────────────────────────────
@@ -268,6 +317,7 @@ export default function ApprovalWizardPage() {
   const [step, setStep] = useState(0)
   const [selections, setSelections] = useState({})
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
   const initializedRef = useRef(false)
 
   // Restore or init draft once claim loads
@@ -310,6 +360,19 @@ export default function ApprovalWizardPage() {
   const bankTransactions = claim.bank_transactions ?? []
   const totalSteps = receipts.length
 
+  async function handleReject(comment) {
+    setRejecting(true)
+    try {
+      await rejectReview({ claimId: id, comment })
+      clearDraft(id)
+      navigate(`/claims/${id}`)
+    } catch {
+      // leave modal open — user can retry
+    } finally {
+      setRejecting(false)
+    }
+  }
+
   function handleNext() {
     setStep((s) => s + 1)
   }
@@ -326,7 +389,15 @@ export default function ApprovalWizardPage() {
     const receipt = receipts[step]
     return (
       <>
-        {showRejectModal && <div />}  {/* placeholder — Task 4 replaces this */}
+        {showRejectModal && (
+          <RejectModal
+            receipts={receipts}
+            selections={selections}
+            onConfirm={handleReject}
+            onCancel={() => setShowRejectModal(false)}
+            loading={rejecting}
+          />
+        )}
         <ReceiptStep
           receipt={receipt}
           selection={selections[receipt.id]}
