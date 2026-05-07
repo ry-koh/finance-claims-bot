@@ -20,10 +20,25 @@ function LoadingScreen() {
   )
 }
 
+function ErrorScreen({ onRetry }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-screen gap-4 px-6 text-center">
+      <p className="text-gray-500 text-sm">The server is busy. Please try again in a moment.</p>
+      <button
+        onClick={onRetry}
+        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg active:bg-blue-700"
+      >
+        Retry
+      </button>
+    </div>
+  )
+}
+
 export default function App() {
-  const { user } = useAuth()
+  const { user, retryAuth } = useAuth()
 
   if (user === undefined) return <LoadingScreen />
+  if (user.status === 'error') return <ErrorScreen onRetry={retryAuth} />
   if (!user || user.status === 'unregistered') return <RegistrationPage />
   if (user.status === 'pending') return <PendingApprovalPage />
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { getMe } from '../api/auth'
 
 const AuthContext = createContext(null)
@@ -6,13 +6,24 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined) // undefined = still loading
 
-  useEffect(() => {
+  const retryAuth = useCallback(() => {
+    setUser(undefined)
     getMe()
       .then(setUser)
-      .catch(() => setUser({ status: 'unregistered' }))
+      .catch((err) => {
+        if (err?.response?.status === 401) {
+          setUser({ status: 'unregistered' })
+        } else {
+          setUser({ status: 'error' })
+        }
+      })
   }, [])
 
-  return <AuthContext.Provider value={{ user, setUser }}>{children}</AuthContext.Provider>
+  useEffect(() => {
+    retryAuth()
+  }, [retryAuth])
+
+  return <AuthContext.Provider value={{ user, setUser, retryAuth }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

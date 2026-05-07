@@ -11,7 +11,7 @@ from app.services import r2 as r2_service
 from app.config import settings
 from telegram import Bot
 from telegram.request import HTTPXRequest
-import io, tempfile, os, logging, re
+import io, tempfile, os, time, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
@@ -218,16 +218,19 @@ def _do_generate(claim_id: str, db) -> dict:
             doc_key = f"loa{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, doc_key, loa_bytes, f"LOA - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(doc_key)
+            time.sleep(0.02)  # yield CPU between heavy operations
 
             summary_bytes = pdf_service.generate_summary(claim, half_items, finance_director, reference_code_override=ref_code)
             summary_key = f"summary{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, summary_key, summary_bytes, f"Summary - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(summary_key)
+            time.sleep(0.02)
 
             rfp_bytes = pdf_service.generate_rfp(claim, half_items, finance_director, reference_code_override=ref_code)
             rfp_key = f"rfp{'_' + suffix.lower() if suffix else ''}"
             _save_document(claim_id, rfp_key, rfp_bytes, f"RFP - {ref_code}.pdf", ref_code, db, folder_id=claim_folder_id)
             generated.append(rfp_key)
+            time.sleep(0.02)
 
         if claim.get("transport_form_needed") and claim.get("transport_data"):
             transport_bytes = pdf_service.generate_transport(claim, claim["transport_data"], finance_director)
@@ -403,6 +406,10 @@ def _do_screenshot_and_generate(claim_id: str, files_data: list, db) -> None:
 
 def _do_generate_in_thread(claim_id: str) -> None:
     """Thread-safe wrapper: creates its own DB client so it never shares connections with the request thread."""
+    try:
+        os.nice(10)  # lower CPU priority so the event loop stays responsive (Linux/Cloud Run)
+    except (AttributeError, OSError):
+        pass
     from app.database import get_supabase
     db = get_supabase()
     try:
@@ -417,6 +424,10 @@ def _do_generate_in_thread(claim_id: str) -> None:
 
 def _do_screenshot_in_thread(claim_id: str, files_data: list) -> None:
     """Thread-safe wrapper for screenshot + generation pipeline."""
+    try:
+        os.nice(10)
+    except (AttributeError, OSError):
+        pass
     from app.database import get_supabase
     db = get_supabase()
     _do_screenshot_and_generate(claim_id, files_data, db)
