@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel as PydanticBaseModel
 from supabase import Client
 
@@ -21,6 +21,10 @@ class BulkStatusUpdate(PydanticBaseModel):
 
 class RejectReviewRequest(PydanticBaseModel):
     comment: str
+
+
+class AttachmentRequestBody(PydanticBaseModel):
+    message: str
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
@@ -55,6 +59,20 @@ def _get_claim_or_404(db: Client, claim_id: str) -> dict:
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
     return resp.data[0]
+
+
+def _get_current_attachment_request(db: Client, claim_id: str) -> dict | None:
+    """Return the latest pending or submitted attachment request for a claim."""
+    resp = (
+        db.table("claim_attachment_requests")
+        .select("*")
+        .eq("claim_id", claim_id)
+        .in_("status", ["pending", "submitted"])
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
 
 
 # ---------------------------------------------------------------------------
@@ -681,3 +699,192 @@ async def mark_reimbursed(
                 f"✅ Claim {ref} has been reimbursed! Please verify that you have received your payment."
             ))
     return {"success": True, "status": "reimbursed"}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/request-attachment  (finance team only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/request-attachment")
+async def request_attachment(
+    claim_id: str,
+    payload: AttachmentRequestBody,
+    member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Finance team flags a submitted claim to request additional attachments."""
+    claim = _get_claim_or_404(db, claim_id)
+    if claim["status"] != "submitted":
+        raise HTTPException(409, "Claim must be in submitted status to request attachments")
+
+    req_resp = db.table("claim_attachment_requests").insert({
+        "claim_id": claim_id,
+        "director_id": member["id"],
+        "request_message": payload.message,
+    }).execute()
+    if not req_resp.data:
+        raise HTTPException(500, "Failed to create attachment request")
+
+    db.table("claims").update({"status": "attachment_requested"}).eq("id", claim_id).execute()
+
+    filled_by_id = claim.get("filled_by")
+    if filled_by_id:
+        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+        if ft.data and ft.data[0].get("telegram_id"):
+            ref = claim.get("reference_code", claim_id)
+            asyncio.create_task(send_bot_notification(
+                ft.data[0]["telegram_id"],
+                f"📎 Additional attachment requested for claim {ref}\n\n{payload.message}\n\nPlease upload the required files in the app."
+            ))
+
+    return req_resp.data[0]
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/attachment-upload  (any authenticated user)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/attachment-upload")
+async def upload_attachment_file(
+    claim_id: str,
+    file: UploadFile = File(...),
+    member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Treasurer uploads a file against the current open attachment request."""
+    import uuid as _uuid
+    claim = _get_claim_or_404(db, claim_id)
+    if claim["status"] != "attachment_requested":
+        raise HTTPException(409, "Claim is not currently awaiting attachments")
+
+    current_req = _get_current_attachment_request(db, claim_id)
+    if not current_req:
+        raise HTTPException(404, "No open attachment request found")
+
+    file_bytes = await file.read()
+    filename = file.filename or "upload"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    object_name = f"attachments/{claim_id}/{_uuid.uuid4()}.{ext}"
+    r2_service.upload_file(file_bytes, object_name, file.content_type or "application/octet-stream")
+
+    file_resp = db.table("claim_attachment_files").insert({
+        "request_id": current_req["id"],
+        "file_url": object_name,
+        "original_filename": filename,
+    }).execute()
+    if not file_resp.data:
+        raise HTTPException(500, "Failed to save file record")
+
+    return file_resp.data[0]
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/attachment-submit  (any authenticated user)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/attachment-submit")
+async def submit_attachments(
+    claim_id: str,
+    member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Treasurer marks their uploads as complete; notifies finance director."""
+    claim = _get_claim_or_404(db, claim_id)
+    if claim["status"] != "attachment_requested":
+        raise HTTPException(409, "Claim is not currently awaiting attachments")
+
+    current_req = _get_current_attachment_request(db, claim_id)
+    if not current_req:
+        raise HTTPException(404, "No open attachment request found")
+
+    files_resp = (
+        db.table("claim_attachment_files")
+        .select("id")
+        .eq("request_id", current_req["id"])
+        .execute()
+    )
+    if not files_resp.data:
+        raise HTTPException(422, "Upload at least one file before submitting")
+
+    db.table("claim_attachment_requests").update({"status": "submitted"}).eq("id", current_req["id"]).execute()
+    db.table("claims").update({"status": "attachment_uploaded"}).eq("id", claim_id).execute()
+
+    director_resp = db.table("finance_team").select("telegram_id").eq("role", "director").execute()
+    if director_resp.data and director_resp.data[0].get("telegram_id"):
+        ref = claim.get("reference_code", claim_id)
+        asyncio.create_task(send_bot_notification(
+            director_resp.data[0]["telegram_id"],
+            f"📎 Attachments uploaded for claim {ref} — ready for your review."
+        ))
+
+    return {"success": True, "status": "attachment_uploaded"}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/attachment-accept  (finance team only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/attachment-accept")
+async def accept_attachments(
+    claim_id: str,
+    member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Director accepts uploaded attachments; claim returns to submitted."""
+    claim = _get_claim_or_404(db, claim_id)
+    if claim["status"] != "attachment_uploaded":
+        raise HTTPException(409, "Claim is not awaiting attachment review")
+
+    current_req = _get_current_attachment_request(db, claim_id)
+    if not current_req:
+        raise HTTPException(404, "No open attachment request found")
+
+    db.table("claim_attachment_requests").update({"status": "accepted"}).eq("id", current_req["id"]).execute()
+    db.table("claims").update({"status": "submitted"}).eq("id", claim_id).execute()
+
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/attachment-reject  (finance team only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/attachment-reject")
+async def reject_attachments(
+    claim_id: str,
+    payload: AttachmentRequestBody,
+    member: dict = Depends(require_finance_team),
+    db: Client = Depends(get_supabase),
+):
+    """Director rejects uploads, creates a new request cycle, notifies treasurer."""
+    claim = _get_claim_or_404(db, claim_id)
+    if claim["status"] != "attachment_uploaded":
+        raise HTTPException(409, "Claim is not awaiting attachment review")
+
+    current_req = _get_current_attachment_request(db, claim_id)
+    if not current_req:
+        raise HTTPException(404, "No open attachment request found")
+
+    db.table("claim_attachment_requests").update({"status": "rejected"}).eq("id", current_req["id"]).execute()
+
+    new_req_resp = db.table("claim_attachment_requests").insert({
+        "claim_id": claim_id,
+        "director_id": member["id"],
+        "request_message": payload.message,
+    }).execute()
+    if not new_req_resp.data:
+        raise HTTPException(500, "Failed to create new attachment request")
+
+    db.table("claims").update({"status": "attachment_requested"}).eq("id", claim_id).execute()
+
+    filled_by_id = claim.get("filled_by")
+    if filled_by_id:
+        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+        if ft.data and ft.data[0].get("telegram_id"):
+            ref = claim.get("reference_code", claim_id)
+            asyncio.create_task(send_bot_notification(
+                ft.data[0]["telegram_id"],
+                f"📎 Attachments for claim {ref} need revision.\n\n{payload.message}\n\nPlease upload the corrected files in the app."
+            ))
+
+    return new_req_resp.data[0]
