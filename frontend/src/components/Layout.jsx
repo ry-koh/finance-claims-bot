@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useIsDirector, useIsTreasurer } from '../context/AuthContext'
+import { usePendingCount } from '../api/admin'
 import DirectorDrawer from './DirectorDrawer'
 
 const PAGE_TITLES = {
@@ -20,6 +21,7 @@ export default function Layout() {
   const isTreasurer = useIsTreasurer()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
+  const { data: pendingCount = 0 } = usePendingCount()
 
   const pageTitle =
     PAGE_TITLES[location.pathname] ||
@@ -31,10 +33,15 @@ export default function Layout() {
         <header className="fixed top-0 left-0 right-0 z-20 h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="text-2xl text-gray-700 p-1 -ml-1"
+            className="relative text-2xl text-gray-700 p-1 -ml-1"
             aria-label="Open menu"
           >
             ☰
+            {pendingCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                {pendingCount > 9 ? '9+' : pendingCount}
+              </span>
+            )}
           </button>
           <span className="font-semibold text-gray-900 text-base">{pageTitle}</span>
         </header>
