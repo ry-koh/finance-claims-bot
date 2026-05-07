@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.auth import require_director
@@ -31,8 +31,11 @@ async def get_settings(
     _director: dict = Depends(require_director),
     db=Depends(get_supabase),
 ):
-    ay_resp = db.table("app_settings").select("value").eq("key", "academic_year").single().execute()
-    ay = ay_resp.data["value"] if ay_resp.data else ""
+    try:
+        ay_resp = db.table("app_settings").select("value").eq("key", "academic_year").single().execute()
+        ay = ay_resp.data["value"] if ay_resp.data else ""
+    except Exception:
+        ay = ""
 
     fd_resp = (
         db.table("finance_team")
