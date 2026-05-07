@@ -424,6 +424,10 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
     .map((r, i) => ({ i, remark: selections[r.id]?.remark?.trim() }))
     .filter(({ remark }) => remark)
 
+  const uncategorised = receipts
+    .map((r, i) => ({ i, description: r.description || `Receipt ${i + 1}` }))
+    .filter(({ i }) => !selections[receipts[i].id]?.category)
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Header */}
@@ -438,6 +442,17 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4 pb-32">
+        {/* Uncategorised banner */}
+        {uncategorised.length > 0 && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-orange-800 mb-1">Receipts Without Category</p>
+            {uncategorised.map(({ i, description }) => (
+              <p key={i} className="text-xs text-orange-700">Receipt {i + 1} — {description}</p>
+            ))}
+            <p className="text-xs text-orange-600 mt-1">These receipts will be saved without a category. You can still approve.</p>
+          </div>
+        )}
+
         {/* Flagged banner */}
         {flagged.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
