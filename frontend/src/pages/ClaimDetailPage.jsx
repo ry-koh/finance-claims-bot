@@ -158,9 +158,9 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <Spinner small />
-                <span className="text-xs text-gray-500">Generating documents…</span>
+                <span className="text-xs text-gray-500">Preparing documents…</span>
               </div>
-              <p className="text-xs text-gray-400">This may take 1–2 minutes. Please wait.</p>
+              <p className="text-xs text-gray-400">Usually takes 1–2 minutes. No action needed.</p>
             </div>
           )
         }
@@ -1379,8 +1379,8 @@ export default function ClaimDetailPage() {
           <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
             <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-blue-700">Generating documents…</p>
-              <p className="text-xs text-blue-600">This may take 1–2 minutes. The page will update automatically when done.</p>
+              <p className="text-sm font-semibold text-blue-700">Your claim is being processed</p>
+              <p className="text-xs text-blue-600">The finance team is preparing your claim documents. This usually takes 1–2 minutes — you don't need to do anything. This page will refresh automatically.</p>
             </div>
           </div>
         )}
