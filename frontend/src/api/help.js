@@ -25,6 +25,12 @@ export const postAnswer = (questionId, data) =>
 export const deleteQuestion = (questionId) =>
   api.delete(`/help/questions/${questionId}`).then((r) => r.data)
 
+export const editQuestion = (questionId, data) =>
+  api.patch(`/help/questions/${questionId}`, data).then((r) => r.data)
+
+export const editAnswer = (questionId, answerId, data) =>
+  api.patch(`/help/questions/${questionId}/answers/${answerId}`, data).then((r) => r.data)
+
 export const uploadHelpImage = (file) => {
   const form = new FormData()
   form.append('file', file)
@@ -82,6 +88,27 @@ export function useDeleteQuestion(options = {}) {
   return useMutation({
     mutationFn: deleteQuestion,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: HELP_KEYS.allQuestions }),
+    ...options,
+  })
+}
+
+export function useEditQuestion(questionId, options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => editQuestion(questionId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: HELP_KEYS.question(questionId) })
+      queryClient.invalidateQueries({ queryKey: HELP_KEYS.myQuestions })
+    },
+    ...options,
+  })
+}
+
+export function useEditAnswer(questionId, answerId, options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => editAnswer(questionId, answerId, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HELP_KEYS.question(questionId) }),
     ...options,
   })
 }

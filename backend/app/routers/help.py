@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
-from app.auth import require_auth, require_finance_team, require_director
+from app.auth import require_auth, require_finance_team
 from app.database import get_supabase
 from app.services import r2 as r2_service
 
@@ -21,6 +21,14 @@ class QuestionCreate(BaseModel):
 
 
 class AnswerCreate(BaseModel):
+    answer_text: str
+
+
+class QuestionUpdate(BaseModel):
+    question_text: str
+
+
+class AnswerUpdate(BaseModel):
     answer_text: str
 
 
@@ -156,7 +164,7 @@ def get_question_detail(
 
     ans_resp = (
         db.table("help_answers")
-        .select("id, answer_text, created_at, answerer:finance_team!answerer_id(name)")
+        .select("id, answerer_id, answer_text, created_at, answerer:finance_team!answerer_id(name)")
         .eq("question_id", question_id)
         .order("created_at")
         .execute()
@@ -165,6 +173,7 @@ def get_question_detail(
     for a in (ans_resp.data or []):
         answers.append({
             "id": a["id"],
+            "answerer_id": a["answerer_id"],
             "answer_text": a["answer_text"],
             "answerer_name": (a.get("answerer") or {}).get("name", ""),
             "created_at": a["created_at"],
@@ -232,10 +241,73 @@ async def post_answer(
 @router.delete("/questions/{question_id}", status_code=204)
 def delete_question(
     question_id: str,
-    _director: dict = Depends(require_director),
+    current_user: dict = Depends(require_auth),
     db=Depends(get_supabase),
 ):
-    resp = db.table("help_questions").select("id").eq("id", question_id).single().execute()
+    resp = db.table("help_questions").select("id, asker_id").eq("id", question_id).single().execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Question not found")
+    question = resp.data
+    is_asker = question["asker_id"] == current_user["id"]
+    is_finance_team = current_user.get("role") in ("director", "member")
+    if not is_asker and not is_finance_team:
+        raise HTTPException(status_code=403, detail="Not authorised to delete this question")
     db.table("help_questions").delete().eq("id", question_id).execute()
+
+
+@router.patch("/questions/{question_id}")
+def edit_question(
+    question_id: str,
+    payload: QuestionUpdate,
+    current_user: dict = Depends(require_auth),
+    db=Depends(get_supabase),
+):
+    resp = db.table("help_questions").select("id, asker_id").eq("id", question_id).single().execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if resp.data["asker_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your question")
+    updated = (
+        db.table("help_questions")
+        .update({"question_text": payload.question_text})
+        .eq("id", question_id)
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(status_code=500, detail="Failed to update question")
+    return updated.data[0]
+
+
+@router.patch("/questions/{question_id}/answers/{answer_id}")
+def edit_answer(
+    question_id: str,
+    answer_id: str,
+    payload: AnswerUpdate,
+    current_user: dict = Depends(require_finance_team),
+    db=Depends(get_supabase),
+):
+    resp = (
+        db.table("help_answers")
+        .select("id, answerer_id")
+        .eq("id", answer_id)
+        .eq("question_id", question_id)
+        .single()
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    if resp.data["answerer_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your answer")
+    updated = (
+        db.table("help_answers")
+        .update({"answer_text": payload.answer_text})
+        .eq("id", answer_id)
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(status_code=500, detail="Failed to update answer")
+    return {
+        "id": updated.data[0]["id"],
+        "answer_text": updated.data[0]["answer_text"],
+        "created_at": updated.data[0]["created_at"],
+    }

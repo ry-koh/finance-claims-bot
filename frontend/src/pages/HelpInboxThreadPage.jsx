@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuestion, usePostAnswer, useDeleteQuestion } from '../api/help'
-import { useIsDirector } from '../context/AuthContext'
+import { useQuestion, usePostAnswer, useDeleteQuestion, useEditAnswer } from '../api/help'
+import { useAuth, useIsFinanceTeam } from '../context/AuthContext'
 
 function imageUrl(path) {
   return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(path)}`
@@ -21,10 +21,78 @@ function formatDate(str) {
       })
 }
 
+function AnswerCard({ answer, questionId }) {
+  const { user } = useAuth()
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState('')
+  const editAnswer = useEditAnswer(questionId, answer.id)
+
+  const isOwn = answer.answerer_id === user?.id
+
+  function handleEditStart() {
+    setEditText(answer.answer_text)
+    setEditing(true)
+  }
+
+  function handleEditSave() {
+    if (!editText.trim()) return
+    editAnswer.mutate(
+      { answer_text: editText.trim() },
+      { onSuccess: () => setEditing(false) }
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <p className="text-[11px] font-semibold text-blue-600 mb-1">{answer.answerer_name}</p>
+      {editing ? (
+        <>
+          <textarea
+            className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+            rows={4}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleEditSave}
+              disabled={!editText.trim() || editAnswer.isPending}
+              className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg active:bg-blue-700 disabled:opacity-50"
+            >
+              {editAnswer.isPending ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="px-3 py-1.5 text-gray-500 text-xs active:opacity-70"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-gray-900 whitespace-pre-wrap mb-2">{answer.answer_text}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-400">{formatDate(answer.created_at)}</p>
+            {isOwn && (
+              <button
+                onClick={handleEditStart}
+                className="text-xs text-blue-500 active:opacity-70"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function HelpInboxThreadPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const isDirector = useIsDirector()
+  const isFinanceTeam = useIsFinanceTeam()
   const { data: question, isLoading } = useQuestion(id)
   const [answerText, setAnswerText] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -67,7 +135,7 @@ export default function HelpInboxThreadPage() {
         )}
         <div className="flex items-center justify-between">
           <p className="text-xs text-gray-400">{formatDate(question.created_at)}</p>
-          {isDirector && (
+          {isFinanceTeam && (
             confirmDelete ? (
               <div className="flex items-center gap-2">
                 <p className="text-xs text-gray-500">Delete this question?</p>
@@ -100,11 +168,7 @@ export default function HelpInboxThreadPage() {
       {question.answers?.length > 0 && (
         <div className="space-y-3">
           {question.answers.map((a) => (
-            <div key={a.id} className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-[11px] font-semibold text-blue-600 mb-1">{a.answerer_name}</p>
-              <p className="text-sm text-gray-900 whitespace-pre-wrap mb-2">{a.answer_text}</p>
-              <p className="text-xs text-gray-400">{formatDate(a.created_at)}</p>
-            </div>
+            <AnswerCard key={a.id} answer={a} questionId={id} />
           ))}
         </div>
       )}
