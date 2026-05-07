@@ -317,8 +317,10 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
   for (const r of receipts) {
     const sel = selections[r.id] ?? {}
     const cat = sel.category || '(unassigned)'
-    if (!groups[cat]) groups[cat] = { receipts: [], gst_code: sel.gst_code, dr_cr: sel.dr_cr }
+    if (!groups[cat]) groups[cat] = { receipts: [], gst_codes: new Set(), dr_crs: new Set() }
     groups[cat].receipts.push(r)
+    if (sel.gst_code) groups[cat].gst_codes.add(sel.gst_code)
+    if (sel.dr_cr) groups[cat].dr_crs.add(sel.dr_cr)
   }
 
   const totalReceipts = receipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
@@ -360,13 +362,16 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
         {/* Receipts grouped by category */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-3 pb-1">Receipts by Category</p>
-          {Object.entries(groups).map(([cat, group]) => (
+          {Object.entries(groups).map(([cat, group]) => {
+            const gstLabel = group.gst_codes.size === 1 ? [...group.gst_codes][0] : 'varies'
+            const drCrLabel = group.dr_crs.size === 1 ? [...group.dr_crs][0] : 'varies'
+            return (
             <div key={cat} className="border-t border-gray-100 first:border-t-0">
               <div className="flex items-center justify-between px-4 py-2 bg-gray-50">
                 <span className="text-sm font-semibold text-gray-800">{cat}</span>
                 <div className="flex gap-1">
-                  <span className="text-[10px] bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 font-medium">{group.gst_code}</span>
-                  <span className="text-[10px] bg-gray-200 text-gray-700 rounded px-1.5 py-0.5 font-medium">{group.dr_cr}</span>
+                  <span className="text-[10px] bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 font-medium">{gstLabel}</span>
+                  <span className="text-[10px] bg-gray-200 text-gray-700 rounded px-1.5 py-0.5 font-medium">{drCrLabel}</span>
                 </div>
               </div>
               {group.receipts.map((r) => (
@@ -382,7 +387,8 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
                 </span>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Bank transactions */}
