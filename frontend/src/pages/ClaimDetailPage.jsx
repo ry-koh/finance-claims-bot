@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
@@ -109,8 +110,9 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
   const currentIdx = statusIndex(displayStatus)
 
   const screenshotUploading = onAction.loading?.screenshot
-  // Status is screenshot_uploaded but NOT during an active upload → docs may still be processing server-side
-  const docsProcessingOnLoad = claim.status === 'screenshot_uploaded' && !screenshotUploading
+  const isGeneratingOnServer = claim.error_message === '__generating__'
+  // Docs are processing if: actively uploading screenshot, OR server sentinel is set
+  const docsProcessing = screenshotUploading || isGeneratingOnServer
 
   const steps = [
     {
@@ -151,24 +153,14 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
       doneAt: 'docs_generated',
       activeAt: ['screenshot_uploaded', 'docs_generated'],
       render: ({ isDone, isCurrent }) => {
-        if (screenshotUploading) {
+        if (docsProcessing) {
           return (
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <Spinner small />
                 <span className="text-xs text-gray-500">Generating documents…</span>
               </div>
-              <p className="text-xs text-gray-400">This may take 1–2 minutes</p>
-            </div>
-          )
-        }
-        if (docsProcessingOnLoad) {
-          return (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs text-amber-600">Documents may still be processing…</p>
-              <ActionButton onClick={() => onAction('generate')} loading={onAction.loading?.generate}>
-                Generate Now
-              </ActionButton>
+              <p className="text-xs text-gray-400">This may take 1–2 minutes. Please wait.</p>
             </div>
           )
         }
@@ -194,7 +186,7 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
       doneAt: 'compiled',
       activeAt: ['docs_generated'],
       render: ({ isDone, isCurrent }) => {
-        if (screenshotUploading) {
+        if (docsProcessing) {
           return (
             <div className="flex items-center gap-1.5">
               <Spinner small />
@@ -427,6 +419,54 @@ function TagInput({ value = [], onChange }) {
         className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
       />
     </div>
+  )
+}
+
+// ─── Fullscreen image viewer (read-only, no crop) ────────────────────────────
+
+function FullscreenImageViewer({ src, onClose }) {
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-black" onClick={onClose}>
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-white/70 text-sm font-medium px-2 py-1 active:text-white"
+        >
+          ✕ Close
+        </button>
+      </div>
+      <div
+        className="flex-1 flex items-center justify-center p-4 overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img src={src} alt="Attachment" className="max-w-full max-h-full object-contain rounded" />
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function ViewOnlyThumb({ src, label, thumbSize = 'w-24 h-24' }) {
+  const [viewing, setViewing] = useState(false)
+  return (
+    <>
+      {viewing && <FullscreenImageViewer src={src} onClose={() => setViewing(false)} />}
+      <button
+        type="button"
+        onClick={() => setViewing(true)}
+        className={`block ${thumbSize} rounded-lg overflow-hidden bg-gray-200 focus:outline-none active:opacity-75 relative`}
+        title="Tap to view"
+      >
+        <img src={src} alt={label} className="w-full h-full object-cover" />
+        <span
+          className="absolute bottom-0 left-0 bg-black/60 text-white text-[9px] leading-none px-1 py-0.5 pointer-events-none select-none"
+          style={{ borderBottomLeftRadius: '8px', borderTopRightRadius: '6px' }}
+        >
+          👁
+        </span>
+      </button>
+    </>
   )
 }
 
@@ -959,13 +999,20 @@ function ReviewPanel({ claim, onApprove, onReject, approving }) {
     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
       <h2 className="text-sm font-bold text-amber-900 mb-3">Review Submission</h2>
 
+      {claim.rejection_comment && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+          <p className="text-xs font-semibold text-red-700 mb-1">Previously Rejected — Treasurer's resubmission:</p>
+          <p className="text-sm text-red-800">{claim.rejection_comment}</p>
+        </div>
+      )}
+
       {allImages.length > 0 && (
         <div className="mb-4">
-          <p className="text-xs font-semibold text-gray-600 mb-2">Attachments — tap to view fullscreen or crop</p>
+          <p className="text-xs font-semibold text-gray-600 mb-2">Attachments — tap to view</p>
           <div className="flex flex-wrap gap-3">
             {allImages.map((img) => (
               <div key={img.key} className="flex flex-col items-center gap-1">
-                <CroppableThumb
+                <ViewOnlyThumb
                   src={imageUrl(img.driveId)}
                   label={img.label}
                   thumbSize="w-24 h-24"
@@ -1327,6 +1374,17 @@ export default function ClaimDetailPage() {
       </div>
 
       <div className="px-4 pt-3 flex flex-col gap-4">
+        {/* ── Generating banner — shown while docs are being built server-side ── */}
+        {claim.error_message === '__generating__' && (
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+            <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-blue-700">Generating documents…</p>
+              <p className="text-xs text-blue-600">This may take 1–2 minutes. The page will update automatically when done.</p>
+            </div>
+          </div>
+        )}
+
         {/* ── Error banner (claim.status === 'error') ── */}
         {showErrorBanner && (
           <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3">

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -9,6 +10,7 @@ from app.auth import require_auth, require_director, require_finance_team
 from app.config import settings
 from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
+from app.routers.bot import send_bot_notification
 from app.services import r2 as r2_service
 
 
@@ -80,6 +82,15 @@ async def list_claims(
     # Treasurers can only see claims they created
     if _member.get("role") == "treasurer":
         query = query.eq("filled_by", _member["id"])
+    else:
+        # Finance team / directors: hide draft claims owned by treasurers.
+        # These are only visible to the treasurer until they submit for review.
+        treasurer_resp = db.table("finance_team").select("id").eq("role", "treasurer").execute()
+        treasurer_ids = [t["id"] for t in (treasurer_resp.data or [])]
+        if treasurer_ids:
+            id_list = ",".join(treasurer_ids)
+            # Include row if: no filled_by, OR filled_by is not a treasurer, OR status is not draft
+            query = query.or_(f"filled_by.is.null,filled_by.not.in.({id_list}),status.neq.draft")
 
     if status:
         query = query.eq("status", status)
@@ -567,7 +578,6 @@ async def submit_for_review(
     # Atomic: only update if still in draft — catches concurrent double-submit
     resp = db.table("claims").update({
         "status": ClaimStatus.PENDING_REVIEW.value,
-        "rejection_comment": None,
     }).eq("id", claim_id).eq("status", ClaimStatus.DRAFT.value).execute()
     if not resp.data:
         raise HTTPException(409, "Claim is no longer in draft status")
@@ -593,6 +603,17 @@ async def reject_review(
     }).eq("id", claim_id).eq("status", ClaimStatus.PENDING_REVIEW.value).execute()
     if not resp.data:
         raise HTTPException(409, "Claim is no longer in pending_review status")
+    # Notify the treasurer who submitted the claim
+    claim_row = resp.data[0]
+    filled_by_id = claim_row.get("filled_by")
+    if filled_by_id:
+        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+        if ft.data and ft.data[0].get("telegram_id"):
+            ref = claim_row.get("reference_code", "your claim")
+            asyncio.create_task(send_bot_notification(
+                ft.data[0]["telegram_id"],
+                f"❌ Claim {ref} was rejected.\n\nFeedback: {payload.comment}\n\nPlease update and resubmit via the Claims App."
+            ))
     return {"success": True, "status": ClaimStatus.DRAFT.value}
 
 
@@ -610,6 +631,16 @@ async def mark_submitted(
     resp = db.table("claims").update({"status": "submitted"}).eq("id", claim_id).eq("status", "compiled").execute()
     if not resp.data:
         raise HTTPException(409, "Claim is not in compiled status")
+    claim_row = resp.data[0]
+    filled_by_id = claim_row.get("filled_by")
+    if filled_by_id:
+        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+        if ft.data and ft.data[0].get("telegram_id"):
+            ref = claim_row.get("reference_code", "your claim")
+            asyncio.create_task(send_bot_notification(
+                ft.data[0]["telegram_id"],
+                f"📬 Claim {ref} has been submitted to the school finance office. We will notify you when it is reimbursed."
+            ))
     return {"success": True, "status": "submitted"}
 
 
@@ -627,4 +658,14 @@ async def mark_reimbursed(
     resp = db.table("claims").update({"status": "reimbursed"}).eq("id", claim_id).eq("status", "submitted").execute()
     if not resp.data:
         raise HTTPException(409, "Claim is not in submitted status")
+    claim_row = resp.data[0]
+    filled_by_id = claim_row.get("filled_by")
+    if filled_by_id:
+        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+        if ft.data and ft.data[0].get("telegram_id"):
+            ref = claim_row.get("reference_code", "your claim")
+            asyncio.create_task(send_bot_notification(
+                ft.data[0]["telegram_id"],
+                f"✅ Claim {ref} has been reimbursed! Please verify that you have received your payment."
+            ))
     return {"success": True, "status": "reimbursed"}

@@ -60,7 +60,9 @@ export function useClaim(id) {
     queryKey: CLAIM_KEYS.detail(id),
     queryFn: () => fetchClaim(id),
     enabled: !!id,
-    refetchInterval: 15_000,
+    // Poll every 3s while docs are being generated, 15s otherwise
+    refetchInterval: (query) =>
+      query.state.data?.error_message === '__generating__' ? 3_000 : 15_000,
   })
 }
 

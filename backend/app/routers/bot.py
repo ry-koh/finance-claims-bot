@@ -28,6 +28,26 @@ async def _send_message(bot, chat_id: int, text: str, **kwargs) -> None:
         logger.error("Failed to send Telegram message to %s: %s", chat_id, exc)
 
 
+async def send_bot_notification(telegram_id, text: str) -> None:
+    """Fire-and-forget: send a Telegram message to a user. Silently ignores all errors."""
+    try:
+        from telegram import Bot
+        from telegram.request import HTTPXRequest
+        bot = Bot(
+            token=settings.TELEGRAM_BOT_TOKEN,
+            request=HTTPXRequest(connect_timeout=10, read_timeout=30),
+        )
+        try:
+            await bot.send_message(chat_id=int(telegram_id), text=text)
+        finally:
+            try:
+                await bot.close()
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning("Bot notification failed for %s: %s", telegram_id, exc)
+
+
 async def _get_member(db, telegram_id: int) -> dict | None:
     """Return the finance_team row for telegram_id, or None."""
     resp = (
@@ -53,14 +73,14 @@ async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> N
         await _send_message(
             bot,
             chat_id,
-            "Welcome! Tap below to open the Claims App and complete your registration.",
+            "Welcome! Tap below to open the Claims App and complete your registration.\n\n💡 Tip: Pin this message so you can easily open the app anytime.",
             reply_markup=keyboard,
         )
         return
     await _send_message(
         bot,
         chat_id,
-        f"Welcome, {member['name']}! Use the button below to open the Claims App.",
+        f"Welcome, {member['name']}! Use the button below to open the Claims App.\n\n💡 Tip: Pin this message so you can easily open the app anytime.",
         reply_markup=keyboard,
     )
 

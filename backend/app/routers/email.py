@@ -1,6 +1,8 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_supabase
 from app.auth import require_finance_team
+from app.routers.bot import send_bot_notification
 from app.services import gmail as gmail_service
 from app.services import pdf as pdf_service
 
@@ -91,6 +93,17 @@ async def send_claim_email(
         db.table("claims").update(
             {"status": "email_sent", "error_message": None}
         ).eq("id", claim_id).execute()
+
+        # Notify the treasurer who created the claim
+        filled_by_id = claim.get("filled_by")
+        if filled_by_id:
+            ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+            if ft.data and ft.data[0].get("telegram_id"):
+                ref = claim.get("reference_code", "your claim")
+                asyncio.create_task(send_bot_notification(
+                    ft.data[0]["telegram_id"],
+                    f"📧 The confirmation email for claim {ref} has been sent to the claimer.\n\nPlease remind them to check their email and follow the instructions to reply."
+                ))
 
     except HTTPException:
         raise

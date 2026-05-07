@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+import asyncio
+import json
+from concurrent.futures import ThreadPoolExecutor
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from app.database import get_supabase
@@ -12,6 +15,8 @@ import io, tempfile, os, logging, re
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
+
+_gen_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="docgen")
 
 
 # ---------------------------------------------------------------------------
@@ -313,23 +318,130 @@ def _do_generate(claim_id: str, db) -> dict:
         return {"success": True, "documents": generated, "claim_status": fallback_status}
 
 
+def _do_screenshot_and_generate(claim_id: str, files_data: list, db) -> None:
+    """
+    Sync: process screenshot images, save to Drive, then compile or generate docs.
+    Runs in _gen_executor so it never blocks the event loop.
+    All errors update the claim status to 'error'.
+    """
+    from PIL import Image as PILImage
+    from fpdf import FPDF
+    from app.services import image as image_service
+    import gc
+
+    A4_W, A4_H = 210.0, 297.0
+    MARGIN = 5.0
+    avail_w = A4_W - 2 * MARGIN
+    avail_h = A4_H - 2 * MARGIN
+
+    try:
+        claim = _get_full_claim(claim_id, db)
+        pdf = FPDF(orientation='P', unit='mm', format='A4')
+        pdf.set_auto_page_break(False)
+
+        tmp_paths = []
+        try:
+            for raw_bytes, content_type, filename in files_data:
+                try:
+                    processed = image_service.process_receipt_image(raw_bytes, content_type, filename)
+                except Exception as e:
+                    raise ValueError(f"Image processing failed: {e}")
+
+                img_info = PILImage.open(io.BytesIO(processed))
+                img_w, img_h = img_info.size
+                img_info.close()
+
+                scale = min(avail_w / img_w, avail_h / img_h)
+                render_w = img_w * scale
+                render_h = img_h * scale
+                x_pos = (A4_W - render_w) / 2
+                y_pos = (A4_H - render_h) / 2
+
+                pdf.add_page()
+                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                    tmp.write(processed)
+                    tmp_paths.append(tmp.name)
+                del processed
+                pdf.image(tmp_paths[-1], x=x_pos, y=y_pos, w=render_w, h=render_h)
+        finally:
+            for p in tmp_paths:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+
+        screenshot_pdf_bytes = bytes(pdf.output())
+        del pdf
+        gc.collect()
+
+        claim_folder_id = _get_claim_folder(claim["reference_code"])
+        _save_document(
+            claim_id, "email_screenshot", screenshot_pdf_bytes,
+            f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db,
+            folder_id=claim_folder_id,
+        )
+        del screenshot_pdf_bytes
+        db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
+
+        # Check if docs already exist
+        existing_docs = db.table("claim_documents").select("type").eq("claim_id", claim_id).eq("is_current", True).execute()
+        existing_types = {d["type"] for d in (existing_docs.data or [])}
+        docs_already_generated = any(t == "loa" or t.startswith("loa_") for t in existing_types)
+
+        if docs_already_generated:
+            try:
+                _do_compile(claim_id, claim["reference_code"], db)
+            except Exception as e:
+                logger.warning("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
+        else:
+            _do_generate(claim_id, db)
+
+    except Exception as e:
+        logger.exception("Screenshot + generation failed for claim %s: %s", claim_id, e)
+        db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
+
+
+def _do_generate_in_thread(claim_id: str) -> None:
+    """Thread-safe wrapper: creates its own DB client so it never shares connections with the request thread."""
+    from app.database import get_supabase
+    db = get_supabase()
+    try:
+        _do_generate(claim_id, db)
+    except Exception as e:
+        logger.exception("Generation thread failed for claim %s: %s", claim_id, e)
+        try:
+            db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
+        except Exception:
+            pass
+
+
+def _do_screenshot_in_thread(claim_id: str, files_data: list) -> None:
+    """Thread-safe wrapper for screenshot + generation pipeline."""
+    from app.database import get_supabase
+    db = get_supabase()
+    _do_screenshot_and_generate(claim_id, files_data, db)
+
+
 @router.post("/generate/{claim_id}")
-def generate_documents(
+async def generate_documents(
     claim_id: str,
     db=Depends(get_supabase),
     _auth=Depends(require_finance_team),
 ):
-    """Generate LOA, Summary, RFP (and optionally Transport) PDFs for a claim."""
+    """Start document generation in the background. Returns immediately."""
     claim = _get_full_claim(claim_id, db)
-    if claim.get("status") == "draft":
-        raise HTTPException(400, "Cannot generate documents for a draft claim.")
+    blocked = {"draft", "pending_review"}
+    if claim.get("status") in blocked:
+        raise HTTPException(400, f"Cannot generate documents for a claim with status '{claim.get('status')}'.")
 
-    # Atomic lock — prevents two users triggering simultaneous generation
     lock = db.rpc("claim_start_generation", {"p_claim_id": claim_id}).execute()
     if not lock.data:
         raise HTTPException(409, "Document generation is already in progress for this claim.")
 
-    return _do_generate(claim_id, db)
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
+
+    return {"success": True, "claim_status": "generating"}
 
 
 @router.post("/compile/{claim_id}")
@@ -366,101 +478,23 @@ async def upload_screenshot(
     db=Depends(get_supabase),
     _auth=Depends(require_finance_team),
 ):
-    """Upload one or more email screenshots, create a multi-page A4 PDF, and mark claim as screenshot_uploaded."""
-    from PIL import Image as PILImage  # lazy import
-    from fpdf import FPDF  # lazy import
-    from app.services import image as image_service  # lazy import
-    import gc
+    """Upload screenshot(s), save as PDF, then generate/compile docs in the background."""
+    # Read all bytes while still in async context
+    files_data = []
+    for file in files:
+        raw = await file.read()
+        files_data.append((raw, file.content_type or "", file.filename or ""))
 
-    A4_W, A4_H = 210.0, 297.0
-    MARGIN = 5.0
-    avail_w = A4_W - 2 * MARGIN
-    avail_h = A4_H - 2 * MARGIN
-
-    claim = _get_full_claim(claim_id, db)
-
-    pdf = FPDF(orientation='P', unit='mm', format='A4')
-    pdf.set_auto_page_break(False)
-
-    tmp_paths = []
-    try:
-        for file in files:
-            raw_bytes = await file.read()
-            try:
-                processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-            except ValueError as e:
-                raise HTTPException(status_code=422, detail=str(e))
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
-            finally:
-                del raw_bytes
-
-            img_info = PILImage.open(io.BytesIO(processed))
-            img_w, img_h = img_info.size
-            img_info.close()
-
-            scale = min(avail_w / img_w, avail_h / img_h)
-            render_w = img_w * scale
-            render_h = img_h * scale
-            x_pos = (A4_W - render_w) / 2
-            y_pos = (A4_H - render_h) / 2
-
-            pdf.add_page()
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                tmp.write(processed)
-                tmp_paths.append(tmp.name)
-            del processed
-            pdf.image(tmp_paths[-1], x=x_pos, y=y_pos, w=render_w, h=render_h)
-    finally:
-        for p in tmp_paths:
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
-
-    screenshot_pdf_bytes = bytes(pdf.output())
-    del pdf
-    gc.collect()
-
-    claim_folder_id = _get_claim_folder(claim["reference_code"])
-    _save_document(
-        claim_id, "email_screenshot", screenshot_pdf_bytes,
-        f"Screenshot - {claim['reference_code']}.pdf", claim["reference_code"], db,
-        folder_id=claim_folder_id,
-    )
-    del screenshot_pdf_bytes
-    db.table("claims").update({"status": "screenshot_uploaded"}).eq("id", claim_id).execute()
-
-    # If docs already exist (loa/summary/rfp generated), skip regeneration and compile directly
-    existing_docs = db.table("claim_documents").select("type").eq("claim_id", claim_id).eq("is_current", True).execute()
-    existing_types = {d["type"] for d in (existing_docs.data or [])}
-    docs_already_generated = any(t == "loa" or t.startswith("loa_") for t in existing_types)
-
-    if docs_already_generated:
-        try:
-            compile_result = _do_compile(claim_id, claim["reference_code"], db)
-            return {"success": True, "claim_status": "compiled", "page_count": compile_result["page_count"]}
-        except ValueError as e:
-            logger.warning("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
-            return {"success": True, "claim_status": "screenshot_uploaded"}
-        except Exception as e:
-            logger.exception("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
-            return {"success": True, "claim_status": "screenshot_uploaded"}
-
-    # Docs don't exist yet — acquire generation lock before generating
+    # Acquire generation lock
     lock = db.rpc("claim_start_generation", {"p_claim_id": claim_id}).execute()
     if not lock.data:
-        # Another request already started generation; return current status
-        return {"success": True, "claim_status": "screenshot_uploaded"}
+        raise HTTPException(409, "Processing already in progress for this claim.")
 
-    try:
-        result = _do_generate(claim_id, db)
-        return {"success": True, "claim_status": result["claim_status"], "documents": result.get("documents", [])}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Auto-generation failed after screenshot upload for claim %s: %s", claim_id, e)
-        return {"success": True, "claim_status": "screenshot_uploaded"}
+    # Fire off in dedicated thread pool with its own DB client — returns immediately
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
+
+    return {"success": True, "claim_status": "processing"}
 
 
 @router.post("/transport-data/{claim_id}")

@@ -6,7 +6,6 @@ import { useSendToTelegram } from '../api/documents'
 // Status definitions: [tabLabel, backendValue, tailwind colour classes for badge]
 const STATUSES = [
   { label: 'All',                  value: null,                  badge: 'bg-gray-100 text-gray-700' },
-  { label: 'Draft',                value: 'draft',               badge: 'bg-gray-200 text-gray-800' },
   { label: 'Pending Review',       value: 'pending_review',      badge: 'bg-amber-100 text-amber-800' },
   { label: 'Email Sent',           value: 'email_sent',          badge: 'bg-blue-100 text-blue-800' },
   { label: 'Screenshot Pending',   value: 'screenshot_pending',  badge: 'bg-amber-100 text-amber-800' },
