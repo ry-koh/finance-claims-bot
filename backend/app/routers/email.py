@@ -102,7 +102,7 @@ async def send_claim_email(
                 ref = claim.get("reference_code", "your claim")
                 asyncio.create_task(send_bot_notification(
                     ft.data[0]["telegram_id"],
-                    f"📧 Confirmation email sent for claim {ref}.\n\nRemind the treasurer to reply to the email with:\n• To: rh.finance@u.nus.edu\n• CC: 68findirector.rh@gmail.com\n• Subject: {ref}\n\nThey should copy-paste the email body (below the line) into a new email — no need to reattach files."
+                    f"📧 Confirmation email sent for claim {ref}."
                 ))
 
     except HTTPException:
