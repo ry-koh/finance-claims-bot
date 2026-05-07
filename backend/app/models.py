@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from datetime import date, datetime
+from datetime import date as _date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import List, Optional
@@ -187,7 +185,7 @@ class Receipt(BaseModel):
     receipt_no: Optional[str] = None
     description: str
     company: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[_date] = None
     amount: Decimal
     receipt_image_drive_id: Optional[str] = None
     bank_screenshot_drive_id: Optional[str] = None
@@ -251,7 +249,7 @@ class Claim(BaseModel):
     processed_by: Optional[UUID] = None
     claim_description: str
     total_amount: Decimal
-    date: date
+    date: _date
     wbs_account: WBSAccount
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
@@ -269,7 +267,7 @@ class ClaimCreate(BaseModel):
     filled_by: Optional[UUID] = None
     claim_description: str
     total_amount: Decimal
-    date: date
+    date: _date
     wbs_account: WBSAccount
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
@@ -285,7 +283,7 @@ class ClaimUpdate(BaseModel):
     processed_by: Optional[UUID] = None
     claim_description: Optional[str] = None
     total_amount: Optional[Decimal] = None
-    date: Optional[date] = None
+    date: Optional[_date] = None
     wbs_account: Optional[WBSAccount] = None
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
