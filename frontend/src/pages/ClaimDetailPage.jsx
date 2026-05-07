@@ -1574,7 +1574,7 @@ export default function ClaimDetailPage() {
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                 />
                 <label htmlFor="transport_needed" className="text-sm text-gray-700">
-                  Transport form needed
+                  Transport form needed <span className="text-gray-400">(mark this if you are claiming a Grab/Gojek/Tada transport claim)</span>
                 </label>
               </div>
 

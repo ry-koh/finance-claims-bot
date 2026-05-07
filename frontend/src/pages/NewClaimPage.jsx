@@ -523,7 +523,7 @@ function Step2({ data, onChange, isTreasurer, wbsOptions }) {
             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
           />
           <label htmlFor="transport-form" className="text-sm text-gray-700">
-            Transport form needed
+            Transport form needed <span className="text-gray-400">(mark this if you are claiming a Grab/Gojek/Tada transport claim)</span>
           </label>
         </div>
         {data.transportFormNeeded && (
