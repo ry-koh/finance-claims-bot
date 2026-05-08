@@ -71,17 +71,39 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Finance Claims Bot API", lifespan=lifespan)
 
-# CORS — allow all origins by default; restrict via ALLOWED_ORIGINS env var
-origins = (
-    [o.strip() for o in settings.ALLOWED_ORIGINS.split(",")]
-    if settings.ALLOWED_ORIGINS != "*"
-    else ["*"]
-)
+# CORS: allow all origins by default; restrict via ALLOWED_ORIGINS env var.
+def _normalise_origin(origin: str) -> str:
+    """Match browser Origin headers: scheme + host + optional port, no trailing slash."""
+    return (origin or "").strip().rstrip("/")
+
+
+def _cors_origins() -> list[str]:
+    raw_allowed = settings.ALLOWED_ORIGINS or ""
+    raw_parts = [part.strip() for part in raw_allowed.split(",") if part.strip()]
+
+    if "*" in raw_parts or raw_allowed.strip() == "*":
+        return ["*"]
+
+    origins: list[str] = []
+    for origin in raw_parts:
+        normalised = _normalise_origin(origin)
+        if normalised and normalised not in origins:
+            origins.append(normalised)
+
+    mini_app_origin = _normalise_origin(settings.MINI_APP_URL)
+    if mini_app_origin and mini_app_origin not in origins:
+        origins.append(mini_app_origin)
+
+    return origins or ["*"]
+
+
+origins = _cors_origins()
+logger.info("CORS allowed origins: %s", "*" if origins == ["*"] else ", ".join(origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=settings.ALLOWED_ORIGINS != "*",
+    allow_credentials=origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
