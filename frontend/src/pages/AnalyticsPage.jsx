@@ -31,6 +31,52 @@ function fmt(amount) {
   })}`
 }
 
+function fmtRaw(amount) {
+  return Number(amount).toFixed(2)
+}
+
+function escapeCSV(val) {
+  const s = String(val ?? '')
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function buildCSV(groupBy, isFundBreakdown, data) {
+  const rows = []
+  if (isFundBreakdown) {
+    const hasPortfolio = groupBy === 'cca_fund'
+    rows.push(hasPortfolio ? ['Name', 'Portfolio', 'SA', 'MF', 'Total'] : ['Name', 'SA', 'MF', 'Total'])
+    data.rows.forEach((r) => {
+      rows.push(hasPortfolio
+        ? [r.name, r.portfolio ?? '', fmtRaw(r.sa_total), fmtRaw(r.mf_total), fmtRaw((r.sa_total ?? 0) + (r.mf_total ?? 0))]
+        : [r.name, fmtRaw(r.sa_total), fmtRaw(r.mf_total), fmtRaw((r.sa_total ?? 0) + (r.mf_total ?? 0))])
+    })
+    rows.push(hasPortfolio
+      ? ['Grand Total', '', fmtRaw(data.sa_total), fmtRaw(data.mf_total), fmtRaw(data.grand_total)]
+      : ['Grand Total', fmtRaw(data.sa_total), fmtRaw(data.mf_total), fmtRaw(data.grand_total)])
+  } else {
+    const hasPortfolio = groupBy === 'cca'
+    rows.push(hasPortfolio ? ['Name', 'Portfolio', 'Total'] : ['Name', 'Total'])
+    data.rows.forEach((r) => {
+      rows.push(hasPortfolio ? [r.name, r.portfolio ?? '', fmtRaw(r.total)] : [r.name, fmtRaw(r.total)])
+    })
+    rows.push(hasPortfolio ? ['Grand Total', '', fmtRaw(data.grand_total)] : ['Grand Total', fmtRaw(data.grand_total)])
+  }
+  return rows.map((r) => r.map(escapeCSV).join(',')).join('\r\n')
+}
+
+function downloadCSV(groupBy, isFundBreakdown, data, dateFrom, dateTo) {
+  const csv = buildCSV(groupBy, isFundBreakdown, data)
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const label = GROUP_BY_OPTIONS.find(([v]) => v === groupBy)?.[1] ?? groupBy
+  const datePart = dateFrom || dateTo ? `_${dateFrom || ''}_${dateTo || ''}` : ''
+  a.href = url
+  a.download = `analytics_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}${datePart}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function groupRowsByPortfolio(rows) {
   const map = {}
   rows.forEach((row) => {
@@ -290,9 +336,23 @@ export default function AnalyticsPage() {
       )}
 
       {!isLoading && !isError && data && (
-        isFundBreakdown
-          ? <FundBreakdownTable groupBy={groupBy} data={data} />
-          : <SummaryTable groupBy={groupBy} data={data} />
+        <>
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={() => downloadCSV(groupBy, isFundBreakdown, data, dateFrom, dateTo)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 active:bg-gray-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+              Export CSV
+            </button>
+          </div>
+          {isFundBreakdown
+            ? <FundBreakdownTable groupBy={groupBy} data={data} />
+            : <SummaryTable groupBy={groupBy} data={data} />}
+        </>
       )}
     </div>
   )
