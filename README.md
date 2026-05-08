@@ -4,9 +4,10 @@
 
 Finance Claims Bot is an internal claims management system built for the **Raffles Hall finance team** to process CCA reimbursement claims. The system is a **Telegram Mini App** — a React web app that opens inside Telegram, with a FastAPI backend and a Telegram bot for notifications.
 
-Two types of users interact with the system:
+Three types of users interact with the system:
 - **Finance team** (directors and members): manage the full claims lifecycle
 - **CCA Treasurers**: submit claims as drafts for finance team review, and receive messages from the finance team via the bot
+- **One-off claimers**: individuals without an account (e.g. alumni, guests); claims are created on their behalf by the finance team; they have no app access
 
 ---
 
@@ -17,8 +18,9 @@ Two types of users interact with the system:
 | **Finance Director** | Full access + director tools | Approves team registrations, manages team membership, views analytics; Gmail account used to send emails |
 | **Finance Member** | Claims + approval wizard | Creates and processes claims end-to-end |
 | **CCA Treasurer** | Own claims only | Registers via the mini app, creates draft claims, submits for finance review, receives bot messages |
+| **One-off Claimer** | None | Not an app user; name/email/matric/phone stored directly on the claim |
 
-All users register through the mini app. Treasurer registrations require director approval. Finance team member registrations go live immediately (pending director approval for treasurers).
+All users register through the mini app. Treasurer registrations require director approval.
 
 ---
 
@@ -37,6 +39,15 @@ draft (treasurer edits)
   → [rejected back to draft, or approved:]
   → email_sent → screenshot_pending → ...→ reimbursed
 ```
+
+### Attachment request branch (from submitted)
+```
+submitted → attachment_requested  (finance team flags missing attachment)
+              → attachment_uploaded   (treasurer/finance team uploads files)
+              → [accepted → submitted, or rejected → attachment_requested]
+```
+
+For one-off claimers in `attachment_requested` state, the finance team uploads files directly since those claimers have no app access.
 
 Any step can land in `error` with a stored message; the UI shows a retry button.
 
@@ -61,7 +72,7 @@ Any step can land in `error` with a stored message; the UI shows a retry button.
 - Kept alive by a GitHub Actions weekly cron (Sunday midnight UTC) that pings `/health`
 
 ### File Storage — two systems
-- **Cloudflare R2** (S3-compatible): receipt images, bank transaction screenshots, MF approval scans, exchange rate screenshots
+- **Cloudflare R2** (S3-compatible): receipt images, bank transaction screenshots, MF approval scans, exchange rate screenshots, attachment request files
 - **Google Drive** (user OAuth2 refresh token): all generated PDFs, organised into per-claim subfolders named after the reference code
 
 ### Document Generation
@@ -85,10 +96,10 @@ For each claim the system generates:
 | **LOA** | fpdf2 | MF approval scan (first page, if Master's Fund), receipt images, bank transaction screenshots |
 | **Summary Sheet** | Google Sheets | Financial breakdown: line items, GST codes, DR/CR, WBS account, grand total |
 | **RFP** | Google Docs | Formal payment request document |
-| **Transport Form** | Google Sheets | Trip-by-trip breakdown (from/to, purpose, date, distance, amount) — only if claim has transport trips |
+| **Transport Form** | Google Sheets | Trip-by-trip breakdown (from/to, purpose, date DD/MM/YYYY, time HH:MM AM/PM, distance, amount) — only if claim has transport trips |
 | **Compiled PDF** | pypdf | All of the above + email screenshot merged in order |
 
-All files are saved to a Google Drive subfolder named after the claim reference code.
+All files are saved to a Google Drive subfolder named after the claim reference code. Re-generating documents marks existing generated docs stale but preserves the email screenshot.
 
 ---
 
@@ -126,36 +137,69 @@ Wizard progress is saved to `sessionStorage` so accidental back-navigation doesn
 
 ---
 
+## Attachment Requests
+
+When NUS office requests additional documentation after a claim is submitted:
+
+1. Finance team opens the claim and clicks **Request Attachment**, describing what is needed
+2. Claim status moves to `attachment_requested`
+3. For **registered claimers**: the finance member who created the claim is notified via Telegram bot
+4. For **one-off claimers**: no Telegram notification (they have no app access); the request message is visible in the claim detail so finance team can collect files on their behalf
+5. The relevant party uploads files via the attachment panel in the app
+6. Finance team reviews uploads — Accept returns the claim to `submitted`; Reject creates a new request cycle
+
+---
+
+## Analytics
+
+Available to the finance director at `/analytics`.
+
+**Group-by options:**
+- By CCA (rows per CCA, grouped under portfolio headers)
+- By Portfolio
+- By Fund (SA vs MF vs MBH total)
+- Portfolio × Fund (SA and MF columns per portfolio)
+- CCA × Fund (SA and MF columns per CCA, grouped under portfolio headers)
+
+**Filters:** date range and status multi-select.
+
+**Export:** the current view can be downloaded as a CSV file (opens in Excel) via the Export CSV button.
+
+---
+
 ## Data Model
 
 ```
-Portfolio → CCA → Claimer
-                     ↓
-                  Claim ──→ ClaimLineItems
-                     ↓              ↓
-                 Receipts ←─────────┘
-                     ↓
-             ReceiptImages
-             BankTransactions → BankTransactionImages
-                                BankTransactionRefunds → RefundImages
-             ClaimDocuments (LOA, Summary, RFP, Transport, Screenshot, Compiled)
+Portfolio → CCA → finance_team (treasurer) ─┐
+                                             ↓
+                               Claim ──→ ClaimLineItems
+                                 ↓              ↓
+                             Receipts ←─────────┘
+                                 ↓
+                         ReceiptImages
+                         BankTransactions → BankTransactionImages
+                                            BankTransactionRefunds → RefundImages
+                         ClaimDocuments (LOA, Summary, RFP, Transport, Screenshot, Compiled)
+                         ClaimAttachmentRequests → ClaimAttachmentFiles
 
 finance_team (directors, members, treasurers)
   ↕ (treasurer_ccas junction)
 CCA
+
+One-off claimers: no separate row — name/matric/phone/email stored directly on Claim
 ```
 
 | Entity | Description |
 |---|---|
 | **Portfolio** | Group of CCAs (e.g. Sports, Arts) |
 | **CCA** | Individual club/activity |
-| **Claimer** | Person being reimbursed — name, matric number, PayNow phone, email |
-| **Claim** | Core object: description, WBS account, total amount, date, remarks, transport flag, partial claim flag |
+| **Claim** | Core object: description, WBS account, total amount, date, remarks, transport flag, partial claim flag; links to either a registered treasurer (`claimer_id`) or stores one-off details inline |
 | **ClaimLineItem** | Category grouping of receipts — category, GST code, DR/CR, combined description |
 | **Receipt** | Individual expense — amount, description, company, date, receipt images, bank transaction link |
 | **BankTransaction** | A bank debit linked to receipts; can have multiple images and refunds |
 | **BankTransactionRefund** | A refund against a BT — amount and screenshot |
-| **ClaimDocument** | A generated file — versioned; only `is_current=true` is used per type |
+| **ClaimDocument** | A generated file — versioned; only `is_current=true` is used per type; email screenshot is never marked stale |
+| **ClaimAttachmentRequest** | A request cycle for additional attachments — tracks request message, status, and uploaded files |
 
 ---
 
@@ -173,16 +217,16 @@ CCA
 
 | Page | Path | Roles | Purpose |
 |---|---|---|---|
-| Home | `/` | Director, Member | Claims list with status badges and filters |
+| Home | `/` | Director, Member | Claims list with status tabs, search, date filters, bulk actions, and CSV export |
 | Treasurer Home | `/` | Treasurer | Own draft/submitted claims |
 | New Claim | `/claims/new` | All | Multi-step form: claimer → receipts → bank transactions → transport |
-| Claim Detail | `/claims/:id` | All | Full claim view — edit fields, manage receipts/BTs, run pipeline |
+| Claim Detail | `/claims/:id` | All | Full claim view — edit fields, manage receipts/BTs, run pipeline, handle attachment requests |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
 | Identifier Data | `/identifiers` | Director, Member | Manage portfolios, CCAs, claimers |
 | Contact | `/contact` | Director, Member | Send a message to a CCA treasurer via the Telegram bot |
 | Pending Registrations | `/pending-registrations` | Director | Approve or reject treasurer registrations |
 | Team | `/team` | Director | View and manage active team members |
-| Analytics | `/analytics` | Director | Claims volume and status breakdown |
+| Analytics | `/analytics` | Director | Claims volume by CCA/portfolio/fund with SA+MF breakdown and CSV export |
 
 ---
 
@@ -219,7 +263,7 @@ Treasurers must have previously started the bot for delivery to work.
 | Frontend | Vercel | Free tier; SPA rewrite in `vercel.json` |
 | Backend | Google Cloud Run | `asia-southeast1`; 1 GB RAM; auto-deploy on push to `main` |
 | Database | Supabase | Free tier; kept alive by weekly GitHub Actions cron |
-| Images | Cloudflare R2 | Free tier; S3-compatible |
+| Images & Attachments | Cloudflare R2 | Free tier; S3-compatible |
 | Documents | Google Drive | User OAuth; per-claim subfolders |
 
 ---
