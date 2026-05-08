@@ -68,9 +68,7 @@ jobs:
             --memory 1Gi \
             --timeout 300 \
             --concurrency 10 \
-            --min-instances 1 \
             --max-instances 2 \
-            --cpu-boost \
             --env-vars-file /tmp/env-vars.yaml
 
       - name: Print service URL
