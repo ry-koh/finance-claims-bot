@@ -96,3 +96,11 @@ export function useRemoveTeamMember(options = {}) {
     ...options,
   })
 }
+
+export function useTreasurerOptions(ccaId) {
+  return useQuery({
+    queryKey: ['admin', 'treasurer-options', ccaId],
+    queryFn: () => api.get('/admin/treasurer-options', { params: { cca_id: ccaId } }).then((r) => r.data),
+    enabled: !!ccaId,
+  })
+}
