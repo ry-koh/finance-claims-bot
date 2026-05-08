@@ -244,7 +244,7 @@ def delete_question(
     current_user: dict = Depends(require_auth),
     db=Depends(get_supabase),
 ):
-    resp = db.table("help_questions").select("id, asker_id").eq("id", question_id).single().execute()
+    resp = db.table("help_questions").select("id, asker_id, image_urls").eq("id", question_id).single().execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Question not found")
     question = resp.data
@@ -253,6 +253,8 @@ def delete_question(
     if not is_asker and not is_finance_team:
         raise HTTPException(status_code=403, detail="Not authorised to delete this question")
     db.table("help_questions").delete().eq("id", question_id).execute()
+    for key in (question.get("image_urls") or []):
+        r2_service.delete_file(key)
 
 
 @router.patch("/questions/{question_id}")
