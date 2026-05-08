@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str  # service role key
     TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_INIT_DATA_MAX_AGE_SECONDS: int = 86400
+    TELEGRAM_WEBHOOK_SECRET_TOKEN: str = ""
+    REGISTER_TELEGRAM_WEBHOOK_ON_STARTUP: bool = False
     ALLOWED_ORIGINS: str = "*"
     GOOGLE_SERVICE_ACCOUNT_JSON: str  # JSON string of service account credentials
     GMAIL_CLIENT_ID: str
@@ -17,6 +20,9 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = ""
     R2_STORAGE_LIMIT_BYTES: int = 9_500_000_000  # 9.5 GB hard stop
+    DOCGEN_MAX_WORKERS: int = 1
+    MAX_UPLOAD_BYTES: int = 8_000_000
+    MAX_PDF_PAGES: int = 20
     APP_URL: str = ""  # public HTTPS URL of this backend (e.g. https://api.yourdomain.duckdns.org)
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
     SUMMARY_TEMPLATE_ID: str = "1xPPlWy6T_tZqwFYHZlTSFYqciItF0Jm7Q25k1K-GHX4"
@@ -24,6 +30,15 @@ class Settings(BaseSettings):
     TRANSPORT_TEMPLATE_ID: str = "15UjYOf0sI1dVzaNJuXKqBnu8nvACPsmXmLYJD08vkY0"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    @property
+    def telegram_webhook_secret(self) -> str:
+        """Stable secret used by Telegram to authenticate webhook delivery."""
+        if self.TELEGRAM_WEBHOOK_SECRET_TOKEN:
+            return self.TELEGRAM_WEBHOOK_SECRET_TOKEN
+        import hashlib
+
+        return hashlib.sha256(self.TELEGRAM_BOT_TOKEN.encode("utf-8")).hexdigest()
 
 
 settings = Settings()

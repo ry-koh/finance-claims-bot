@@ -1,7 +1,7 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -34,10 +34,16 @@ async def _register_webhook() -> None:
         f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/setWebhook"
     )
     try:
+        import httpx
+
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 api_url,
-                json={"url": webhook_url, "allowed_updates": ["message"], "drop_pending_updates": True},
+                json={
+                    "url": webhook_url,
+                    "allowed_updates": ["message"],
+                    "secret_token": settings.telegram_webhook_secret,
+                },
             )
             data = resp.json()
             if data.get("ok"):
@@ -53,7 +59,8 @@ async def _register_webhook() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Finance Claims Bot API starting up")
-    await _register_webhook()
+    if settings.REGISTER_TELEGRAM_WEBHOOK_ON_STARTUP:
+        asyncio.create_task(_register_webhook())
     yield
     logger.info("Finance Claims Bot API shutting down")
 
@@ -74,7 +81,7 @@ origins = (
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=settings.ALLOWED_ORIGINS != "*",
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import Cropper from 'react-cropper'
 import 'cropperjs/dist/cropper.css'
 import { useProcessReceiptImage, useUploadReceiptImage } from '../api/receipts'
+import { DEFAULT_MAX_UPLOAD_BYTES, canvasToUploadFile, formatBytes, getUploadSizeError } from '../utils/uploadLimits'
 
 // State machine values
 const STATE_IDLE = 'idle'
@@ -60,6 +61,12 @@ export default function ReceiptUploader({
 
   function startProcessing(file) {
     setProcessError(null)
+    const sizeError = getUploadSizeError([file], { maxBytes: DEFAULT_MAX_UPLOAD_BYTES })
+    if (sizeError) {
+      setProcessError(sizeError)
+      setUiState(STATE_IDLE)
+      return
+    }
     setUiState(STATE_PROCESSING)
     processImageMutation.mutate(file, {
       onSuccess(data) {
@@ -104,14 +111,8 @@ export default function ReceiptUploader({
     const cropper = cropperInstance
     if (!cropper) return
 
-    cropper.getCroppedCanvas().toBlob(
-      (blob) => {
-        if (!blob) {
-          setProcessError('Could not read the cropped image. Please try again.')
-          setUiState(STATE_IDLE)
-          return
-        }
-        const file = new File([blob], 'cropped.jpg', { type: 'image/jpeg' })
+    canvasToUploadFile(cropper.getCroppedCanvas(), 'cropped.jpg')
+      .then((file) => {
         uploadImageMutation.mutate(
           { file, claim_id: claimId, image_type: imageType },
           {
@@ -125,10 +126,11 @@ export default function ReceiptUploader({
             },
           }
         )
-      },
-      'image/jpeg',
-      0.92
-    )
+      })
+      .catch((err) => {
+        setProcessError(err?.message || 'Could not prepare image for upload.')
+        setUiState(STATE_IDLE)
+      })
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -261,6 +263,7 @@ export default function ReceiptUploader({
               {isDragging ? 'Drop to upload' : `Upload ${label}`}
             </p>
             <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
+            <p className="text-[10px] text-gray-400 mt-1">Max {formatBytes(DEFAULT_MAX_UPLOAD_BYTES)} per file</p>
           </div>
           {processError && (
             <div className="flex flex-col gap-1 mt-1">

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from app.auth import require_auth, require_finance_team
+from app.config import settings
 from app.database import get_supabase
 from app.services import r2 as r2_service
 
@@ -40,6 +41,11 @@ async def upload_help_image(
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Only image files are allowed")
     file_bytes = await file.read()
+    if len(file_bytes) > settings.MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File is too large. Maximum upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.",
+        )
     filename = file.filename or "upload"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
     object_name = f"help/{uuid_lib.uuid4()}.{ext}"

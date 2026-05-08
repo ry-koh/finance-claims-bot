@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel as PydanticBaseModel
 from supabase import Client
 
-from app.auth import require_auth, require_director, require_finance_team
+from app.auth import get_claim_for_member, require_auth, require_director, require_finance_team
 from app.config import settings
 from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
@@ -78,6 +78,80 @@ def _get_current_attachment_request(db: Client, claim_id: str) -> dict | None:
         .execute()
     )
     return resp.data[0] if resp.data else None
+
+
+def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
+    """Attach lightweight missing-attachment counters used by list cards."""
+    claim_ids = [c["id"] for c in claims if c.get("id")]
+    if not claim_ids:
+        return
+
+    receipts_resp = (
+        db.table("receipts")
+        .select(
+            "id, claim_id, bank_transaction_id, receipt_image_drive_id, "
+            "bank_screenshot_drive_id, is_foreign_currency, "
+            "exchange_rate_screenshot_drive_id, exchange_rate_screenshot_drive_ids"
+        )
+        .in_("claim_id", claim_ids)
+        .execute()
+    )
+    receipts = receipts_resp.data or []
+    receipts_by_claim: dict[str, list[dict]] = {}
+    for receipt in receipts:
+        receipts_by_claim.setdefault(receipt["claim_id"], []).append(receipt)
+
+    receipt_ids = [r["id"] for r in receipts]
+    receipt_image_counts: dict[str, int] = {}
+    if receipt_ids:
+        image_resp = db.table("receipt_images").select("receipt_id").in_("receipt_id", receipt_ids).execute()
+        for image in image_resp.data or []:
+            receipt_id = image["receipt_id"]
+            receipt_image_counts[receipt_id] = receipt_image_counts.get(receipt_id, 0) + 1
+
+    bt_resp = db.table("bank_transactions").select("id, claim_id").in_("claim_id", claim_ids).execute()
+    bank_transactions = bt_resp.data or []
+    bts_by_claim: dict[str, list[dict]] = {}
+    for bt in bank_transactions:
+        bts_by_claim.setdefault(bt["claim_id"], []).append(bt)
+
+    bt_ids = [bt["id"] for bt in bank_transactions]
+    bt_image_counts: dict[str, int] = {}
+    if bt_ids:
+        bt_image_resp = db.table("bank_transaction_images").select("bank_transaction_id").in_("bank_transaction_id", bt_ids).execute()
+        for image in bt_image_resp.data or []:
+            bt_id = image["bank_transaction_id"]
+            bt_image_counts[bt_id] = bt_image_counts.get(bt_id, 0) + 1
+
+    for claim in claims:
+        claim_receipts = receipts_by_claim.get(claim["id"], [])
+        claim_bts = bts_by_claim.get(claim["id"], [])
+        missing_receipt_images = 0
+        missing_bank_links = 0
+        missing_fx = 0
+
+        for receipt in claim_receipts:
+            if not receipt.get("receipt_image_drive_id") and receipt_image_counts.get(receipt["id"], 0) == 0:
+                missing_receipt_images += 1
+            if not receipt.get("bank_transaction_id") and not receipt.get("bank_screenshot_drive_id"):
+                missing_bank_links += 1
+            fx_ids = receipt.get("exchange_rate_screenshot_drive_ids") or []
+            if receipt.get("is_foreign_currency") and not receipt.get("exchange_rate_screenshot_drive_id") and not fx_ids:
+                missing_fx += 1
+
+        missing_bt_images = sum(1 for bt in claim_bts if bt_image_counts.get(bt["id"], 0) == 0)
+        mf_ids = claim.get("mf_approval_drive_ids") or []
+        mf_missing = claim.get("wbs_account") == "MF" and not claim.get("mf_approval_drive_id") and not mf_ids
+
+        claim["readiness"] = {
+            "receipt_count": len(claim_receipts),
+            "receipt_missing_images_count": missing_receipt_images,
+            "receipt_missing_bank_link_count": missing_bank_links,
+            "bank_transaction_count": len(claim_bts),
+            "bank_transaction_missing_images_count": missing_bt_images,
+            "foreign_receipt_missing_fx_count": missing_fx,
+            "mf_approval_missing": mf_missing,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -151,9 +225,11 @@ async def list_claims(
 
     resp = query.execute()
     total = resp.count if resp.count is not None else len(resp.data)
+    items = resp.data or []
+    _attach_readiness_summaries(db, items)
 
     return {
-        "items": resp.data,
+        "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -269,12 +345,20 @@ async def get_claim_counts(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    resp = (
+    query = (
         db.table("claims")
-        .select("status")
+        .select("status, filled_by")
         .is_("deleted_at", "null")
-        .execute()
     )
+    if _member.get("role") == "treasurer":
+        query = query.eq("filled_by", _member["id"])
+    else:
+        treasurer_resp = db.table("finance_team").select("id").eq("role", "treasurer").execute()
+        treasurer_ids = [t["id"] for t in (treasurer_resp.data or [])]
+        if treasurer_ids:
+            id_list = ",".join(treasurer_ids)
+            query = query.or_(f"filled_by.is.null,filled_by.not.in.({id_list}),status.neq.draft")
+    resp = query.execute()
     counts: dict = {}
     for item in (resp.data or []):
         s = item["status"]
@@ -384,6 +468,7 @@ async def get_claim(
     claim["receipts"] = receipts_resp.data
     claim["documents"] = docs_resp.data
     claim["bank_transactions"] = bank_transactions
+    _attach_readiness_summaries(db, [claim])
 
     return claim
 
@@ -572,13 +657,21 @@ async def create_claim(
 @router.patch("/bulk")
 async def bulk_update_status(
     payload: BulkStatusUpdate,
-    _member: dict = Depends(require_auth),
+    _member: dict = Depends(require_finance_team),
     db: Client = Depends(get_supabase),
 ):
     if not payload.claim_ids:
         raise HTTPException(status_code=422, detail="claim_ids must not be empty")
-    resp = db.table("claims").update({"status": payload.status.value}).in_("id", payload.claim_ids).execute()
-    return {"updated": len(resp.data) if resp.data else 0}
+    if payload.status == ClaimStatus.SUBMITTED:
+        query = db.table("claims").update({"status": "submitted"}).in_("id", payload.claim_ids).eq("status", "compiled")
+    elif payload.status == ClaimStatus.REIMBURSED:
+        query = db.table("claims").update({"status": "reimbursed"}).in_("id", payload.claim_ids).eq("status", "submitted")
+    else:
+        raise HTTPException(status_code=400, detail="Bulk status update only supports submitted or reimbursed")
+
+    resp = query.execute()
+    updated = len(resp.data) if resp.data else 0
+    return {"updated": updated, "skipped": len(payload.claim_ids) - updated}
 
 
 # ---------------------------------------------------------------------------
@@ -592,12 +685,7 @@ async def update_claim(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    claim = _get_claim_or_404(db, claim_id)
-
-    if _member.get("role") == "treasurer" and str(claim.get("filled_by")) != str(_member["id"]):
-        raise HTTPException(status_code=403, detail="Access denied")
-    if _member.get("role") == "treasurer" and claim.get("status") != "draft":
-        raise HTTPException(status_code=403, detail="This claim can no longer be edited")
+    claim = get_claim_for_member(db, claim_id, _member, require_treasurer_draft=True)
 
     # Build update dict from only provided fields, excluding immutable/meta fields
     # wbs_no is GENERATED ALWAYS (computed from wbs_account) and cannot be set directly
@@ -616,6 +704,8 @@ async def update_claim(
 
     if not update_data:
         raise HTTPException(status_code=422, detail="No updatable fields provided")
+    if _member.get("role") == "treasurer" and "status" in update_data:
+        raise HTTPException(status_code=403, detail="Treasurers cannot change claim status directly")
 
     # Convert Decimal to string for JSON serialisation
     for k, v in update_data.items():
@@ -629,6 +719,7 @@ async def update_claim(
     stale_trigger = STALE_TRIGGER_FIELDS.intersection(update_data.keys())
 
     stale_document_types = []
+    stale_ids = []
     if stale_trigger:
         # Find current documents for this claim
         docs_resp = (
@@ -644,8 +735,6 @@ async def update_claim(
             stale_docs = [d for d in docs_resp.data if d["type"] not in PRESERVE_TYPES]
             stale_document_types = [d["type"] for d in stale_docs]
             stale_ids = [d["id"] for d in stale_docs]
-            if stale_ids:
-                db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
 
     # Perform the update — with optional optimistic concurrency check
     client_ts = payload.client_updated_at
@@ -661,6 +750,9 @@ async def update_claim(
                 detail="This claim was modified by someone else. Please refresh and try again.",
             )
         raise HTTPException(status_code=500, detail="Failed to update claim")
+
+    if stale_ids:
+        db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
 
     return {
         "claim": update_resp.data[0],
@@ -737,7 +829,7 @@ async def submit_for_review(
     guard(f"submit-review:{claim_id}", max_calls=2, window_seconds=15)
     if member.get("role") != "treasurer":
         raise HTTPException(403, "Only treasurers can submit for review")
-    claim = _get_claim_or_404(db, claim_id)
+    claim = get_claim_for_member(db, claim_id, member)
     if str(claim.get("filled_by")) != str(member["id"]):
         raise HTTPException(403, "You can only submit your own claims")
     # Atomic: only update if still in draft — catches concurrent double-submit
@@ -850,7 +942,7 @@ async def request_attachment(
     db: Client = Depends(get_supabase),
 ):
     """Finance team flags a submitted claim to request additional attachments."""
-    claim = _get_claim_or_404(db, claim_id)
+    claim = get_claim_for_member(db, claim_id, member)
     if claim["status"] != "submitted":
         raise HTTPException(409, "Claim must be in submitted status to request attachments")
 
@@ -892,7 +984,7 @@ async def upload_attachment_file(
     db: Client = Depends(get_supabase),
 ):
     """Treasurer uploads a file against the current open attachment request."""
-    claim = _get_claim_or_404(db, claim_id)
+    claim = get_claim_for_member(db, claim_id, member)
     if claim["status"] != "attachment_requested":
         raise HTTPException(409, "Claim is not currently awaiting attachments")
 
@@ -901,6 +993,11 @@ async def upload_attachment_file(
         raise HTTPException(404, "No open attachment request found")
 
     file_bytes = await file.read()
+    if len(file_bytes) > settings.MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File is too large. Maximum upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.",
+        )
     filename = file.filename or "upload"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
     object_name = f"attachments/{claim_id}/{uuid_lib.uuid4()}.{ext}"
@@ -929,7 +1026,7 @@ async def submit_attachments(
     db: Client = Depends(get_supabase),
 ):
     """Treasurer marks their uploads as complete; notifies finance director."""
-    claim = _get_claim_or_404(db, claim_id)
+    claim = get_claim_for_member(db, claim_id, member)
     if claim["status"] != "attachment_requested":
         raise HTTPException(409, "Claim is not currently awaiting attachments")
 
@@ -1044,7 +1141,7 @@ def get_attachment_requests(
     db: Client = Depends(get_supabase),
 ):
     """Return all attachment request cycles for a claim, newest first, with files nested."""
-    _get_claim_or_404(db, claim_id)
+    get_claim_for_member(db, claim_id, member)
 
     reqs_resp = (
         db.table("claim_attachment_requests")
@@ -1085,7 +1182,7 @@ def delete_attachment_file(
     db: Client = Depends(get_supabase),
 ):
     """Treasurer removes a file from the current open request (before submitting)."""
-    claim = _get_claim_or_404(db, claim_id)
+    claim = get_claim_for_member(db, claim_id, member)
     if claim["status"] != "attachment_requested":
         raise HTTPException(409, "Cannot delete files after submitting")
 
@@ -1120,7 +1217,7 @@ def download_attachment_file(
     db: Client = Depends(get_supabase),
 ):
     """Return a short-lived presigned R2 URL so the director can download a file."""
-    _get_claim_or_404(db, claim_id)
+    get_claim_for_member(db, claim_id, member)
 
     req_ids_resp = (
         db.table("claim_attachment_requests")

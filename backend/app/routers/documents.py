@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from app.database import get_supabase
-from app.auth import require_auth, require_finance_team
+from app.auth import get_claim_for_member, require_auth, require_finance_team
 from app.services import r2 as r2_service
 from app.config import settings
 from app.utils.rate_limit import guard
@@ -17,7 +17,7 @@ import io, tempfile, os, time, logging, re
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
 
-_gen_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="docgen")
+_gen_executor = ThreadPoolExecutor(max_workers=settings.DOCGEN_MAX_WORKERS, thread_name_prefix="docgen")
 
 
 # ---------------------------------------------------------------------------
@@ -417,15 +417,18 @@ def _do_screenshot_and_generate(claim_id: str, files_data: list, db) -> None:
 
         if docs_already_generated:
             try:
-                _do_compile(claim_id, claim["reference_code"], db)
+                result = _do_compile(claim_id, claim["reference_code"], db)
+                return {"success": True, "claim_status": "compiled", "page_count": result["page_count"]}
             except Exception as e:
                 logger.warning("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
+                return {"success": True, "claim_status": "screenshot_uploaded"}
         else:
-            _do_generate(claim_id, db)
+            return _do_generate(claim_id, db)
 
     except Exception as e:
         logger.exception("Screenshot + generation failed for claim %s: %s", claim_id, e)
         db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
+        raise
 
 
 def _do_generate_in_thread(claim_id: str) -> None:
@@ -437,13 +440,14 @@ def _do_generate_in_thread(claim_id: str) -> None:
     from app.database import get_supabase
     db = get_supabase()
     try:
-        _do_generate(claim_id, db)
+        return _do_generate(claim_id, db)
     except Exception as e:
         logger.exception("Generation thread failed for claim %s: %s", claim_id, e)
         try:
             db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
         except Exception:
             pass
+        raise
 
 
 def _do_screenshot_in_thread(claim_id: str, files_data: list) -> None:
@@ -454,7 +458,7 @@ def _do_screenshot_in_thread(claim_id: str, files_data: list) -> None:
         pass
     from app.database import get_supabase
     db = get_supabase()
-    _do_screenshot_and_generate(claim_id, files_data, db)
+    return _do_screenshot_and_generate(claim_id, files_data, db)
 
 
 @router.post("/generate/{claim_id}")
@@ -463,7 +467,7 @@ async def generate_documents(
     db=Depends(get_supabase),
     _auth=Depends(require_finance_team),
 ):
-    """Start document generation in the background. Returns immediately."""
+    """Run document generation in the one-worker executor while the request stays open."""
     guard(f"generate:{claim_id}", max_calls=2, window_seconds=15)
     claim = _get_full_claim(claim_id, db)
     blocked = {"draft", "pending_review"}
@@ -475,9 +479,7 @@ async def generate_documents(
         raise HTTPException(409, "Document generation is already in progress for this claim.")
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
-
-    return {"success": True, "claim_status": "generating"}
+    return await loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
 
 
 @router.post("/compile/{claim_id}")
@@ -515,11 +517,23 @@ async def upload_screenshot(
     db=Depends(get_supabase),
     _auth=Depends(require_finance_team),
 ):
-    """Upload screenshot(s), save as PDF, then generate/compile docs in the background."""
+    """Upload screenshot(s), save as PDF, then generate/compile docs in the one-worker executor."""
     # Read all bytes while still in async context
     files_data = []
+    total_bytes = 0
     for file in files:
         raw = await file.read()
+        if len(raw) > settings.MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File is too large. Maximum upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.",
+            )
+        total_bytes += len(raw)
+        if total_bytes > settings.MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Combined upload is too large. Maximum total upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.",
+            )
         files_data.append((raw, file.content_type or "", file.filename or ""))
 
     # Acquire generation lock
@@ -527,11 +541,9 @@ async def upload_screenshot(
     if not lock.data:
         raise HTTPException(409, "Processing already in progress for this claim.")
 
-    # Fire off in dedicated thread pool with its own DB client — returns immediately
+    # Keep this request open so Cloud Run keeps CPU allocated for the worker.
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
-
-    return {"success": True, "claim_status": "processing"}
+    return await loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
 
 
 @router.post("/transport-data/{claim_id}")
@@ -542,6 +554,7 @@ async def save_transport_data(
     _auth=Depends(require_auth),
 ):
     """Save transport trip data to the claim record."""
+    get_claim_for_member(db, claim_id, _auth, require_treasurer_draft=True)
     db.table("claims").update({"transport_data": data.model_dump()}).eq("id", claim_id).execute()
     return {"success": True}
 
@@ -653,6 +666,7 @@ async def list_documents(
     _auth=Depends(require_auth),
 ):
     """List all current documents for a claim."""
+    get_claim_for_member(db, claim_id, _auth)
     result = (
         db.table("claim_documents")
         .select("*")

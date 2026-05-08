@@ -1,4 +1,4 @@
-export const WBS_ACCOUNTS = ['SA', 'MBH', 'MF']
+export const WBS_ACCOUNTS = ['SA', 'MBH', 'MF', 'OTHERS']
 
 export const CATEGORIES = [
   'Office Supplies', 'Consumables', 'Sports & Cultural Materials',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Cropper from 'react-cropper'
 import 'cropperjs/dist/cropper.css'
+import { canvasToUploadFile } from '../utils/uploadLimits'
 
 // Header ~52px + footer ~80px
 const CHROME_HEIGHT = 132
@@ -21,6 +22,7 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
   const [cropperInstance, setCropperInstance] = useState(null)
   const [cropperKey, setCropperKey] = useState(0)
   const [rotating, setRotating] = useState(false)
+  const [compressError, setCompressError] = useState(null)
 
   // Track the latest rotated blob URL so we can revoke it on the next rotation
   const rotatedUrlRef = useRef(null)
@@ -98,18 +100,17 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
     }
   }
 
-  function confirm() {
+  async function confirm() {
     const canvas = cropperInstance?.getCroppedCanvas()
     if (!canvas) return
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return
-        const name = file?.name.replace(/\.[^.]+$/, '.jpg') ?? 'cropped.jpg'
-        onConfirm(new File([blob], name, { type: 'image/jpeg' }))
-      },
-      'image/jpeg',
-      0.92
-    )
+    const name = file?.name.replace(/\.[^.]+$/, '.jpg') ?? 'cropped.jpg'
+    try {
+      setCompressError(null)
+      const uploadFile = await canvasToUploadFile(canvas, name)
+      onConfirm(uploadFile)
+    } catch (err) {
+      setCompressError(err?.message || 'Could not prepare image for upload.')
+    }
   }
 
   const isLast = fileNumber >= fileTotal
@@ -226,6 +227,11 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
           {isLast ? 'Use Photo' : 'Next →'}
         </button>
       </div>
+      {compressError && (
+        <div className="fixed bottom-20 left-4 right-4 rounded-lg bg-red-600 px-3 py-2 text-center text-xs font-medium text-white">
+          {compressError}
+        </div>
+      )}
     </div>,
     document.body
   )

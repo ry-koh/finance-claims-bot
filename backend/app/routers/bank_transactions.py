@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from supabase import Client
 from datetime import datetime
 
-from app.auth import require_auth
+from app.auth import get_claim_for_member, require_auth
 from app.database import get_supabase
 from app.services import r2, image
 
@@ -13,14 +13,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bank-transactions", tags=["bank-transactions"])
 
 
+def _get_bt_or_404(bt_id: str, db: Client) -> dict:
+    bt_resp = db.table("bank_transactions").select("*").eq("id", bt_id).execute()
+    if not bt_resp.data:
+        raise HTTPException(status_code=404, detail="Bank transaction not found")
+    return bt_resp.data[0]
+
+
 async def _get_bt_and_upload_file(
-    bt_id: str, file: UploadFile, db: Client, filename_prefix: str
+    bt_id: str, file: UploadFile, db: Client, filename_prefix: str, member: dict
 ) -> tuple[dict, str]:
     """Verify BT exists, process image, upload to Drive. Returns (bt_row, drive_file_id)."""
     bt_resp = db.table("bank_transactions").select("*, claim:claims(reference_code)").eq("id", bt_id).execute()
     if not bt_resp.data:
         raise HTTPException(status_code=404, detail="Bank transaction not found")
     bt = bt_resp.data[0]
+    get_claim_for_member(db, bt["claim_id"], member, require_treasurer_draft=True)
     reference_code = bt.get("claim", {}).get("reference_code", bt["claim_id"])
 
     raw_bytes = await file.read()
@@ -49,6 +57,7 @@ async def create_bank_transaction(
     db: Client = Depends(get_supabase),
 ):
     """Create an empty bank transaction for a claim."""
+    get_claim_for_member(db, claim_id, _auth, require_treasurer_draft=True)
     resp = db.table("bank_transactions").insert({"claim_id": claim_id, "amount": amount}).execute()
     if not resp.data:
         raise HTTPException(status_code=500, detail="Failed to create bank transaction")
@@ -63,7 +72,7 @@ async def upload_bank_transaction_image(
     db: Client = Depends(get_supabase),
 ):
     """Upload an image for a bank transaction, store in Drive, persist Drive ID."""
-    _bt, drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "bank")
+    _bt, drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "bank", _auth)
 
     img_resp = db.table("bank_transaction_images").insert({
         "bank_transaction_id": bt_id,
@@ -82,6 +91,8 @@ async def delete_bank_transaction_image(
     db: Client = Depends(get_supabase),
 ):
     """Delete a bank transaction image record and remove the file from Drive."""
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
     resp = db.table("bank_transaction_images").select("id, drive_file_id").eq("id", image_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -107,7 +118,7 @@ async def create_bt_refund(
 
     drive_file_ids = []
     for f in files:
-        _, fid = await _get_bt_and_upload_file(bt_id, f, db, "refund")
+        _, fid = await _get_bt_and_upload_file(bt_id, f, db, "refund", _auth)
         drive_file_ids.append(fid)
 
     refund_resp = db.table("bank_transaction_refunds").insert({
@@ -130,12 +141,14 @@ async def update_bt_refund_file(
     db: Client = Depends(get_supabase),
 ):
     """Replace the file attached to a refund."""
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
     resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Refund not found")
     old_file_id = resp.data[0].get("drive_file_id")
 
-    _bt, new_drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "refund")
+    _bt, new_drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "refund", _auth)
 
     db.table("bank_transaction_refunds").update({"drive_file_id": new_drive_file_id}).eq("id", refund_id).execute()
 
@@ -156,6 +169,8 @@ async def delete_bt_refund(
     db: Client = Depends(get_supabase),
 ):
     """Delete a bank transaction refund record and remove the file from GCS."""
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
     resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -175,9 +190,8 @@ async def update_bank_transaction(
     db: Client = Depends(get_supabase),
 ):
     """Update a bank transaction's total amount."""
-    check = db.table("bank_transactions").select("id").eq("id", bt_id).execute()
-    if not check.data:
-        raise HTTPException(status_code=404, detail="Bank transaction not found")
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
     resp = db.table("bank_transactions").update({"amount": amount}).eq("id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=500, detail="Failed to update bank transaction")
@@ -191,9 +205,8 @@ async def delete_bank_transaction(
     db: Client = Depends(get_supabase),
 ):
     """Delete a bank transaction; unlinks all receipts (sets their bank_transaction_id to null)."""
-    check = db.table("bank_transactions").select("id").eq("id", bt_id).execute()
-    if not check.data:
-        raise HTTPException(status_code=404, detail="Bank transaction not found")
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
     db.table("receipts").update({"bank_transaction_id": None}).eq("bank_transaction_id", bt_id).execute()
     db.table("bank_transactions").delete().eq("id", bt_id).execute()
     return {"deleted": True}

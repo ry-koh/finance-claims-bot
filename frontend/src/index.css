@@ -20,3 +20,16 @@ input, select, textarea {
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+@keyframes indeterminate-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.indeterminate-progress {
+  animation: indeterminate-progress 1.4s ease-in-out infinite;
+}

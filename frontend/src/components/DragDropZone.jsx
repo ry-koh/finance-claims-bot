@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import ImageCropModal from './ImageCropModal'
 import { pdfToImageFiles, isPdfFile } from '../utils/pdfToImages'
+import { DEFAULT_MAX_UPLOAD_BYTES, formatBytes, getUploadSizeError } from '../utils/uploadLimits'
 
 export default function DragDropZone({
   label = 'Drop file here',
@@ -13,10 +14,13 @@ export default function DragDropZone({
   dragBorder = 'border-blue-400 bg-blue-50',
   idleBorder = 'border-gray-300 bg-gray-50 hover:bg-gray-100',
   withCrop = false,
+  maxBytes = DEFAULT_MAX_UPLOAD_BYTES,
+  maxTotalBytes = null,
 }) {
   const [isDragging, setIsDragging] = useState(false)
   const [cropQueue, setCropQueue] = useState([])
   const [converting, setConverting] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
   const cropResultsRef = useRef([])
   const cropTotalRef = useRef(0)
   const fileRef = useRef(null)
@@ -24,6 +28,13 @@ export default function DragDropZone({
   async function dispatch(files) {
     if (!files?.length) return
     const fileArray = Array.from(files)
+    const sizeError = getUploadSizeError(fileArray, { maxBytes, maxTotalBytes })
+    if (sizeError) {
+      setUploadError(sizeError)
+      return
+    }
+    setUploadError(null)
+
     if (!withCrop) {
       if (multiple && onFiles) onFiles(fileArray)
       else if (onFile) onFile(fileArray[0])
@@ -49,6 +60,13 @@ export default function DragDropZone({
 
   function handleCropConfirm(croppedFile) {
     const allConfirmed = [...cropResultsRef.current, croppedFile]
+    const sizeError = getUploadSizeError(allConfirmed, { maxBytes, maxTotalBytes })
+    if (sizeError) {
+      cropResultsRef.current = []
+      setCropQueue([])
+      setUploadError(sizeError)
+      return
+    }
     cropResultsRef.current = allConfirmed
     // Advance queue — side effects outside the updater to avoid Strict Mode double-invoke
     setCropQueue((prev) => prev.slice(1))
@@ -95,10 +113,16 @@ export default function DragDropZone({
         </p>
         <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
         <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+          Max {formatBytes(maxTotalBytes ?? maxBytes)}{maxTotalBytes ? ' total' : ' per file'}
+        </p>
+        <p className="text-[10px] text-gray-400 mt-1 leading-tight">
           Crop the photo so only the important parts are in it, crop out all whitespace.{' '}
           (If you are on phone, it might be easier to crop it before uploading, or use Telegram Desktop)
         </p>
       </div>
+      {uploadError && (
+        <p className="mt-1 text-xs text-red-500">{uploadError}</p>
+      )}
       <input
         ref={fileRef}
         type="file"

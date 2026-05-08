@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
+import { getClaimReadiness } from '../utils/claimReadiness'
 
 // Status definitions: [tabLabel, backendValue, tailwind colour classes for badge]
 const STATUSES = [
@@ -84,6 +85,7 @@ function SkeletonCard() {
 function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
   const statusLabel = STATUSES.find(s => s.value === claim.status)?.label ?? claim.status
   const borderColor = STATUS_BORDER[claim.status] ?? 'border-l-gray-200'
+  const readiness = getClaimReadiness(claim)
   return (
     <button
       onClick={selectMode ? onToggle : onClick}
@@ -119,6 +121,11 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
       {claim.internal_notes && (
         <p className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 truncate">
           📝 {claim.internal_notes}
+        </p>
+      )}
+      {readiness.firstIssue && ['draft', 'pending_review', 'email_sent', 'screenshot_pending'].includes(claim.status) && (
+        <p className="mt-1 truncate rounded px-1.5 py-0.5 text-xs font-medium text-amber-700 bg-amber-50">
+          Missing: {readiness.firstIssue.issue}
         </p>
       )}
 
@@ -206,6 +213,10 @@ export default function HomePage() {
     return next
   })
   const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()) }
+  const selectedClaims = claims.filter((c) => selectedIds.has(c.id))
+  const canSendSelected = selectedIds.size > 0
+  const canSubmitSelected = selectedClaims.some((c) => c.status === 'compiled')
+  const canReimburseSelected = selectedClaims.some((c) => c.status === 'submitted')
 
   const handleConfirm = async () => {
     const action = confirmAction  // capture before clearing
@@ -217,10 +228,10 @@ export default function HomePage() {
         setActionResult(`Sent ${result.sent} PDF${result.sent !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
       } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
-        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted`)
+        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
       } else if (action === 'reimburse') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'reimbursed' })
-        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as reimbursed`)
+        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as reimbursed${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
       }
     } catch {
       setActionResult('Action failed. Please try again.')
@@ -321,7 +332,7 @@ export default function HomePage() {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search ref code, CCA, portfolio…"
+                placeholder="Search ref code or claimer…"
                 className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400"
               />
               <button
@@ -480,22 +491,22 @@ export default function HomePage() {
       {selectMode && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shadow-lg z-40">
           <button
-            disabled={selectedIds.size === 0 || sendMutation.isPending}
-            onClick={() => selectedIds.size > 0 && setConfirmAction('send')}
+            disabled={!canSendSelected || sendMutation.isPending}
+            onClick={() => canSendSelected && setConfirmAction('send')}
             className="flex-1 bg-blue-600 disabled:bg-blue-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
             {sendMutation.isPending ? 'Sending…' : `Send (${selectedIds.size})`}
           </button>
           <button
-            disabled={selectedIds.size === 0 || bulkStatusMutation.isPending}
-            onClick={() => selectedIds.size > 0 && setConfirmAction('submit')}
+            disabled={!canSubmitSelected || bulkStatusMutation.isPending}
+            onClick={() => canSubmitSelected && setConfirmAction('submit')}
             className="flex-1 bg-green-600 disabled:bg-green-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
             {bulkStatusMutation.isPending ? 'Updating…' : `Submitted (${selectedIds.size})`}
           </button>
           <button
-            disabled={selectedIds.size === 0 || bulkStatusMutation.isPending}
-            onClick={() => selectedIds.size > 0 && setConfirmAction('reimburse')}
+            disabled={!canReimburseSelected || bulkStatusMutation.isPending}
+            onClick={() => canReimburseSelected && setConfirmAction('reimburse')}
             className="flex-1 bg-teal-600 disabled:bg-teal-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
             {bulkStatusMutation.isPending ? 'Updating…' : `Reimbursed (${selectedIds.size})`}

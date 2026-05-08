@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request, Depends, HTTPException
+import hmac
+
+from fastapi import APIRouter, Request, Depends, HTTPException, Header
 from telegram import Bot, Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from telegram.request import HTTPXRequest
 from app.config import settings
@@ -307,8 +309,14 @@ async def _handle_removemember(
 # ---------------------------------------------------------------------------
 
 @router.post("/webhook")
-async def webhook(request: Request):
+async def webhook(
+    request: Request,
+    telegram_secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
+):
     """Receive Telegram updates via webhook."""
+    if not hmac.compare_digest(telegram_secret or "", settings.telegram_webhook_secret):
+        raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret")
+
     try:
         data = await request.json()
     except Exception as exc:
@@ -411,6 +419,7 @@ async def set_webhook(director: dict = Depends(require_director)):
         result = await bot.set_webhook(
             url=webhook_url,
             allowed_updates=["message"],
+            secret_token=settings.telegram_webhook_secret,
         )
     except Exception as exc:
         logger.error("Failed to set webhook: %s", exc)

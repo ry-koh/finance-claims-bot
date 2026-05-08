@@ -9,6 +9,9 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: asia-southeast1
   SERVICE: finance-claims-bot
+  CLOUD_RUN_MEMORY: 512Mi
+  CLOUD_RUN_CONCURRENCY: 20
+  CLOUD_RUN_MAX_INSTANCES: 1
 
 jobs:
   deploy:
@@ -41,20 +44,23 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           MINI_APP_URL: ${{ secrets.MINI_APP_URL }}
           APP_URL: ${{ secrets.APP_URL }}
+          ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
+          TELEGRAM_WEBHOOK_SECRET_TOKEN: ${{ secrets.TELEGRAM_WEBHOOK_SECRET_TOKEN }}
         run: |
           python3 - <<'EOF'
-          import os, yaml
+          import json, os
           keys = [
               'SUPABASE_URL', 'SUPABASE_KEY', 'TELEGRAM_BOT_TOKEN',
               'GOOGLE_SERVICE_ACCOUNT_JSON', 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
               'GMAIL_REFRESH_TOKEN', 'GOOGLE_DRIVE_PARENT_FOLDER_ID', 'DRIVE_REFRESH_TOKEN',
               'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME',
-              'MINI_APP_URL', 'APP_URL',
+              'MINI_APP_URL', 'APP_URL', 'ALLOWED_ORIGINS', 'TELEGRAM_WEBHOOK_SECRET_TOKEN',
           ]
           data = {k: os.environ.get(k, '') for k in keys}
-          data['ALLOWED_ORIGINS'] = '*'
+          data['ALLOWED_ORIGINS'] = data.get('ALLOWED_ORIGINS') or data.get('MINI_APP_URL') or '*'
           with open('/tmp/env-vars.yaml', 'w') as f:
-              yaml.dump(data, f, default_flow_style=False, allow_unicode=True, width=float('inf'))
+              for key, value in data.items():
+                  f.write(f"{key}: {json.dumps(value)}\n")
           EOF
 
       - name: Build and deploy to Cloud Run
@@ -65,11 +71,58 @@ jobs:
             --project $PROJECT_ID \
             --platform managed \
             --allow-unauthenticated \
-            --memory 1Gi \
+            --memory $CLOUD_RUN_MEMORY \
             --timeout 300 \
-            --concurrency 10 \
-            --max-instances 2 \
+            --concurrency $CLOUD_RUN_CONCURRENCY \
+            --min-instances 0 \
+            --max-instances $CLOUD_RUN_MAX_INSTANCES \
             --env-vars-file /tmp/env-vars.yaml
+
+      - name: Register Telegram webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET_TOKEN: ${{ secrets.TELEGRAM_WEBHOOK_SECRET_TOKEN }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, os, subprocess, urllib.request
+
+          bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+          if not bot_token:
+              print("TELEGRAM_BOT_TOKEN is not set; skipping webhook registration.")
+              raise SystemExit(0)
+
+          app_url = os.environ.get("APP_URL", "")
+          if not app_url:
+              app_url = subprocess.check_output([
+                  "gcloud", "run", "services", "describe", os.environ["SERVICE"],
+                  "--region", os.environ["REGION"],
+                  "--project", os.environ["PROJECT_ID"],
+                  "--format", "value(status.url)",
+              ], text=True).strip()
+
+          secret_token = os.environ.get("TELEGRAM_WEBHOOK_SECRET_TOKEN", "")
+          if not secret_token:
+              secret_token = hashlib.sha256(bot_token.encode("utf-8")).hexdigest()
+
+          payload = {
+              "url": f"{app_url.rstrip('/')}/bot/webhook",
+              "allowed_updates": ["message"],
+              "secret_token": secret_token,
+          }
+          req = urllib.request.Request(
+              f"https://api.telegram.org/bot{bot_token}/setWebhook",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=20) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+
+          if not data.get("ok"):
+              raise RuntimeError(f"Telegram rejected webhook registration: {data}")
+          print(f"Telegram webhook registered: {payload['url']}")
+          EOF
 
       - name: Print service URL
         run: |

@@ -11,6 +11,8 @@ using Pillow.  Responsibilities include:
 
 import io
 
+from app.config import settings
+
 SUPPORTED_MIME_TYPES = {
     'image/jpeg', 'image/jpg', 'image/png',
     'image/heic', 'image/heif', 'image/webp',
@@ -122,6 +124,8 @@ def normalise_to_a4(jpeg_bytes: bytes) -> bytes:
 
 
 def process_receipt_image(file_bytes: bytes, content_type: str, filename: str) -> bytes:
+    if len(file_bytes) > settings.MAX_UPLOAD_BYTES:
+        raise ValueError(f"File is too large. Maximum upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.")
     validate_mime_type(content_type, filename)
     jpeg_bytes = convert_to_jpeg(file_bytes, content_type)
     return normalise_to_a4(jpeg_bytes)
@@ -129,6 +133,8 @@ def process_receipt_image(file_bytes: bytes, content_type: str, filename: str) -
 
 def process_pdf_pages(file_bytes: bytes) -> list[bytes]:
     """Convert every page of a PDF to a normalised JPEG. Returns a list of JPEG bytes."""
+    if len(file_bytes) > settings.MAX_UPLOAD_BYTES:
+        raise ValueError(f"File is too large. Maximum upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.")
     from PIL import Image  # lazy import
     try:
         import fitz  # PyMuPDF
@@ -142,6 +148,8 @@ def process_pdf_pages(file_bytes: bytes) -> list[bytes]:
 
     if doc.page_count == 0:
         raise ValueError("PDF contained no pages.")
+    if doc.page_count > settings.MAX_PDF_PAGES:
+        raise ValueError(f"PDF has too many pages. Maximum is {settings.MAX_PDF_PAGES} pages.")
 
     results = []
     mat = fitz.Matrix(2.0, 2.0)

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from supabase import Client
 
+from app.auth import require_telegram_user
 from app.database import get_supabase
 
 router = APIRouter(tags=["registration"])
@@ -19,7 +20,7 @@ class RegisterRequest(BaseModel):
 
 @router.get("/me")
 async def get_me(
-    telegram_id: str = Header(..., alias="X-Telegram-User-Id"),
+    telegram_user: dict = Depends(require_telegram_user),
     db: Client = Depends(get_supabase),
 ):
     """
@@ -29,10 +30,7 @@ async def get_me(
     {...member, "ccas": [...]} if active treasurer.
     {...member} if active member/director.
     """
-    try:
-        tg_id = int(telegram_id)
-    except ValueError:
-        raise HTTPException(400, "Invalid Telegram user ID")
+    tg_id = int(telegram_user["id"])
 
     response = (
         db.table("finance_team")
@@ -61,14 +59,11 @@ async def get_me(
 @router.post("/register")
 async def register(
     payload: RegisterRequest,
-    telegram_id: str = Header(..., alias="X-Telegram-User-Id"),
+    telegram_user: dict = Depends(require_telegram_user),
     db: Client = Depends(get_supabase),
 ):
     """Create a pending finance_team registration."""
-    try:
-        tg_id = int(telegram_id)
-    except ValueError:
-        raise HTTPException(400, "Invalid Telegram user ID")
+    tg_id = int(telegram_user["id"])
 
     if payload.role not in ("member", "treasurer"):
         raise HTTPException(400, "role must be 'member' or 'treasurer'")
@@ -123,14 +118,11 @@ async def register(
 @router.put("/register")
 async def update_registration(
     payload: RegisterRequest,
-    telegram_id: str = Header(..., alias="X-Telegram-User-Id"),
+    telegram_user: dict = Depends(require_telegram_user),
     db: Client = Depends(get_supabase),
 ):
     """Update a pending registration (allows editing before approval)."""
-    try:
-        tg_id = int(telegram_id)
-    except ValueError:
-        raise HTTPException(400, "Invalid Telegram user ID")
+    tg_id = int(telegram_user["id"])
 
     existing = (
         db.table("finance_team")

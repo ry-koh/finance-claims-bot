@@ -3,17 +3,13 @@ import WebApp from '@twa-dev/sdk'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  timeout: 90000,
+  timeout: 300000,
 })
 
-// Attach Telegram user ID to every request for auth
+// Attach signed Telegram Mini App initData to every authenticated request.
 api.interceptors.request.use(config => {
-  const userId = WebApp.initDataUnsafe?.user?.id
-  if (userId) config.headers['X-Telegram-User-Id'] = String(userId)
+  if (WebApp.initData) config.headers['X-Telegram-Init-Data'] = WebApp.initData
   return config
 })
-
-// Pre-warm: ping health on import (non-blocking)
-api.get('/health').catch(() => {})
 
 export default api

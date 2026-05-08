@@ -166,7 +166,7 @@ Go to your GitHub repo → **Settings** → **Secrets and variables** → **Acti
 | `R2_ACCESS_KEY_ID` | From Step 3 |
 | `R2_SECRET_ACCESS_KEY` | From Step 3 |
 | `R2_BUCKET_NAME` | From Step 3 |
-| `ALLOWED_ORIGINS` | `*` |
+| `ALLOWED_ORIGINS` | Leave unset until Step 8, then set to your Vercel URL |
 
 > `APP_URL` and `MINI_APP_URL` cannot be set yet — you'll add them in Steps 6–8.
 
@@ -193,6 +193,7 @@ Go to your GitHub repo → **Settings** → **Secrets and variables** → **Acti
 | Key | Value |
 |---|---|
 | `VITE_API_URL` | Your Cloud Run URL from Step 5 (e.g. `https://finance-claims-bot-xxxx-as.a.run.app`) |
+| `VITE_MAX_UPLOAD_BYTES` | `8000000` |
 
 5. Click **Deploy** (~1–2 minutes)
 6. Copy your Vercel URL (e.g. `https://finance-claims-bot.vercel.app`) → save as `MINI_APP_URL`
@@ -216,8 +217,11 @@ Now that you have both URLs, add them as GitHub secrets:
 |---|---|
 | `APP_URL` | Your Cloud Run URL from Step 5 |
 | `MINI_APP_URL` | Your Vercel URL from Step 6 |
+| `ALLOWED_ORIGINS` | Your Vercel URL from Step 6 |
 
-Then push a trivial change to `main` (or trigger the workflow manually via **Actions** → **Deploy to Google Cloud Run** → **Run workflow**) so the backend redeploys with `APP_URL` and `MINI_APP_URL` set. This is needed for the Telegram webhook to register on startup.
+Then push a trivial change to `main` (or trigger the workflow manually via **Actions** → **Deploy to Google Cloud Run** → **Run workflow**) so the backend redeploys with `APP_URL` and `MINI_APP_URL` set. The deploy workflow registers the Telegram webhook after Cloud Run finishes deploying.
+
+The deploy workflow is tuned for free-tier usage by default: 512 MiB memory, one Cloud Run instance maximum, zero minimum instances, one backend worker, and one document-generation worker. This favors low cost over burst throughput, which fits occasional use by CCA treasurers and a small finance team.
 
 ---
 
@@ -297,6 +301,19 @@ ALTER TABLE claims DROP CONSTRAINT IF EXISTS claims_wbs_account_check;
 ALTER TABLE claims ADD CONSTRAINT claims_wbs_account_check CHECK (wbs_account IN ('SA', 'MBH', 'MF', 'OTHERS'));
 ```
 
+### Add multi-image columns for MF approvals, exchange-rate screenshots, and refunds
+
+```sql
+ALTER TABLE claims
+  ADD COLUMN IF NOT EXISTS mf_approval_drive_ids text[] DEFAULT '{}';
+
+ALTER TABLE receipts
+  ADD COLUMN IF NOT EXISTS exchange_rate_screenshot_drive_ids text[] DEFAULT '{}';
+
+ALTER TABLE bank_transaction_refunds
+  ADD COLUMN IF NOT EXISTS extra_drive_file_ids text[] DEFAULT '{}';
+```
+
 ### Add B&C CCA under Welfare portfolio
 
 ```sql
@@ -310,7 +327,7 @@ ON CONFLICT DO NOTHING;
 
 ## If the Bot Stops Responding
 
-The backend is always-on on Cloud Run — it should not go cold. If something breaks:
+The backend scales to zero on Cloud Run to avoid idle billing, so the first request after inactivity can take longer. If something breaks:
 
 1. Go to your GitHub repo → **Actions** → **Deploy to Google Cloud Run** → **Run workflow**
 2. Wait ~3 minutes for the deploy to complete

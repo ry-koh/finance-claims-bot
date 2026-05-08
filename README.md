@@ -62,8 +62,8 @@ Any step can land in `error` with a stored message; the UI shows a retry button.
 - Runs inside Telegram as a **Mini App**; user identity comes from `window.Telegram.WebApp.initData`
 
 ### Backend
-- **Python 3.11, FastAPI**
-- Hosted on **Google Cloud Run** (`asia-southeast1`, 1 GB RAM)
+- **Python 3.12, FastAPI**
+- Hosted on **Google Cloud Run** (`asia-southeast1`, 512 MiB RAM by default)
 - Auto-deploys on push to `main` via GitHub Actions (`.github/workflows/deploy.yml`)
 - Auth: Telegram `initData` HMAC-SHA256 validated on every request; users identified by Telegram ID
 
@@ -265,10 +265,20 @@ Treasurers must have previously started the bot for delivery to work.
 | Component | Hosting | Notes |
 |---|---|---|
 | Frontend | Vercel | Free tier; SPA rewrite in `vercel.json` |
-| Backend | Google Cloud Run | `asia-southeast1`; 1 GB RAM; auto-deploy on push to `main` |
+| Backend | Google Cloud Run | `asia-southeast1`; 512 MiB RAM, max 1 instance, scales to zero; auto-deploy on push to `main` |
 | Database | Supabase | Free tier; kept alive by weekly GitHub Actions cron |
 | Images & Attachments | Cloudflare R2 | Free tier; S3-compatible |
 | Documents | Google Drive | User OAuth; per-claim subfolders |
+
+---
+
+## Free-Tier Guardrails
+
+- Cloud Run deploys with one worker, `512Mi` memory, `min-instances 0`, and `max-instances 1` to avoid idle or burst billing.
+- Telegram webhook registration happens in the deploy workflow, not during every Cloud Run startup, so cold `/start` requests do not wait on a webhook setup call.
+- Document generation is serialized with `DOCGEN_MAX_WORKERS=1` so PDF/image work does not run in parallel and spike RAM.
+- Uploads are capped with `MAX_UPLOAD_BYTES=8000000` / `VITE_MAX_UPLOAD_BYTES=8000000`, and PDF conversion is capped with `MAX_PDF_PAGES=20`.
+- The expected usage pattern is low concurrency: 60-70 CCA treasurers, about 8 finance team members, and 1 director. Bulk finance operations are supported, but heavy document generation is intentionally queued.
 
 ---
 

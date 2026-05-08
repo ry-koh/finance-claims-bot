@@ -188,30 +188,49 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     msg = MIMEMultipart("mixed")
     msg.attach(MIMEText(html_body, "html"))
 
-    # --- Attach receipt images and bank screenshots ---
+    def _download_attachment(file_id: str) -> bytes:
+        if "/" in file_id:
+            from app.services import r2 as r2_service
+
+            return r2_service.download_file(file_id)
+        return pdf_service.download_drive_file(file_id)
+
+    def _attach_image(file_id: str, label: str, attached: set[str]) -> None:
+        if not file_id or file_id in attached:
+            return
+        try:
+            file_bytes = _download_attachment(file_id)
+            part = MIMEBase("image", "jpeg")
+            part.set_payload(file_bytes)
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment", filename=f"{label}.jpg")
+            msg.attach(part)
+            attached.add(file_id)
+        except Exception as exc:
+            logger.warning("Failed to attach file %s (%s): %s", file_id, label, exc)
+
+    # --- Attach receipt images, bank screenshots, and refund screenshots ---
+    attached_ids: set[str] = set()
     for n, receipt in enumerate(receipts, start=1):
+        for img_idx, img in enumerate(receipt.get("images") or [], start=1):
+            _attach_image(img.get("drive_file_id"), f"receipt_{n}_{img_idx}", attached_ids)
         for field, label in [
             ("receipt_image_drive_id", f"receipt_{n}"),
             ("bank_screenshot_drive_id", f"bank_screenshot_{n}"),
         ]:
-            drive_id = receipt.get(field)
-            if not drive_id:
-                continue
-            try:
-                file_bytes = pdf_service.download_drive_file(drive_id)
-                part = MIMEBase("image", "jpeg")
-                part.set_payload(file_bytes)
-                encoders.encode_base64(part)
-                part.add_header(
-                    "Content-Disposition",
-                    "attachment",
-                    filename=f"{label}.jpg",
-                )
-                msg.attach(part)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to attach drive file %s (%s): %s", drive_id, label, exc
-                )
+            _attach_image(receipt.get(field), label, attached_ids)
+        for fx_idx, fx_id in enumerate(receipt.get("exchange_rate_screenshot_drive_ids") or [], start=1):
+            _attach_image(fx_id, f"exchange_rate_{n}_{fx_idx}", attached_ids)
+        if not receipt.get("exchange_rate_screenshot_drive_ids"):
+            _attach_image(receipt.get("exchange_rate_screenshot_drive_id"), f"exchange_rate_{n}", attached_ids)
+
+    for bt_idx, bt in enumerate(bank_transactions, start=1):
+        for img_idx, img in enumerate(bt.get("images") or [], start=1):
+            _attach_image(img.get("drive_file_id"), f"bank_transaction_{bt_idx}_{img_idx}", attached_ids)
+        for refund_idx, refund in enumerate(bt.get("refunds") or [], start=1):
+            _attach_image(refund.get("drive_file_id"), f"refund_{bt_idx}_{refund_idx}", attached_ids)
+            for extra_idx, extra_id in enumerate(refund.get("extra_drive_file_ids") or [], start=1):
+                _attach_image(extra_id, f"refund_{bt_idx}_{refund_idx}_{extra_idx}", attached_ids)
 
     return msg
 

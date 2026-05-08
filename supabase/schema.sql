@@ -76,6 +76,7 @@ CREATE TABLE claims (
     END
   ) STORED,
   mf_approval_drive_id text,
+  mf_approval_drive_ids text[] DEFAULT '{}',
   internal_notes    text,
   remarks           text,
   other_emails      text[] DEFAULT '{}',
@@ -136,6 +137,7 @@ CREATE TABLE receipts (
   claimed_amount                  numeric(10,2),
   is_foreign_currency             boolean NOT NULL DEFAULT false,
   exchange_rate_screenshot_drive_id text,
+  exchange_rate_screenshot_drive_ids text[] DEFAULT '{}',
   receipt_image_drive_id          text,
   bank_screenshot_drive_id        text,
   created_at                      timestamptz DEFAULT now(),
@@ -161,6 +163,7 @@ CREATE TABLE bank_transaction_refunds (
   bank_transaction_id uuid NOT NULL REFERENCES bank_transactions(id) ON DELETE CASCADE,
   amount              decimal(10,2) NOT NULL CHECK (amount > 0),
   drive_file_id       text NOT NULL,
+  extra_drive_file_ids text[] DEFAULT '{}',
   created_at          timestamptz DEFAULT now()
 );
 

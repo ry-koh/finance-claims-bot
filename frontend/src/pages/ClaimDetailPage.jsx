@@ -27,6 +27,8 @@ import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
 import { IconChevronLeft } from '../components/Icons'
+import { getClaimReadiness } from '../utils/claimReadiness'
+import { DEFAULT_MAX_UPLOAD_BYTES } from '../utils/uploadLimits'
 
 // ─── Transport trips input ───────────────────────────────────────────────────
 
@@ -195,6 +197,18 @@ function Spinner({ small }) {
   )
 }
 
+function LoadingBar({ tone = 'blue', className = '' }) {
+  const tones = {
+    blue: 'bg-blue-100 text-blue-600',
+    gray: 'bg-gray-100 text-gray-500',
+  }
+  return (
+    <div className={`h-1.5 w-full min-w-[180px] overflow-hidden rounded-full ${tones[tone]} ${className}`}>
+      <div className="indeterminate-progress h-full w-1/2 rounded-full bg-current" />
+    </div>
+  )
+}
+
 function ActionButton({ onClick, disabled, loading, children, variant = 'primary', className = '' }) {
   const base = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50'
   const variants = {
@@ -213,6 +227,53 @@ function ActionButton({ onClick, disabled, loading, children, variant = 'primary
       {loading && <Spinner small />}
       {children}
     </button>
+  )
+}
+
+function ReadinessPanel({ claim, isTreasurer }) {
+  const readiness = getClaimReadiness(claim)
+  if (!readiness.checks.length) return null
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">
+            {isTreasurer ? 'Before Submit' : 'Pre-Review Checks'}
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {isTreasurer
+              ? 'Fix missing items before sending this to finance.'
+              : 'Use this to catch missing files before the receipt-by-receipt review.'}
+          </p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+          readiness.isReady ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+        }`}>
+          {readiness.isReady ? 'Ready' : `${readiness.missing.length} missing`}
+        </span>
+      </div>
+
+      <div className="space-y-1.5">
+        {readiness.checks.map((check) => (
+          <div key={check.id} className="flex items-start gap-2 text-xs">
+            <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+              check.ok ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              {check.ok ? '✓' : '!'}
+            </span>
+            <div className="min-w-0">
+              <p className={check.ok ? 'text-gray-600' : 'font-medium text-amber-800'}>
+                {check.ok ? check.label : check.issue}
+              </p>
+              {!check.ok && !isTreasurer && (
+                <p className="text-gray-400">Still verify the actual receipt and bank transaction in the approval wizard.</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -296,12 +357,13 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
       render: ({ isDone, isCurrent }) => {
         if (docsProcessing) {
           return (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex w-full max-w-[260px] flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
                 <Spinner small />
-                <span className="text-xs text-gray-500">Preparing documents…</span>
+                <span className="text-xs font-medium text-gray-600">Preparing documents...</span>
               </div>
-              <p className="text-xs text-gray-400">Usually takes 1–2 minutes. No action needed.</p>
+              <LoadingBar />
+              <p className="text-xs text-gray-400">Usually takes 1-3 minutes. Keep this page open.</p>
             </div>
           )
         }
@@ -329,9 +391,12 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
       render: ({ isDone, isCurrent }) => {
         if (docsProcessing) {
           return (
-            <div className="flex items-center gap-1.5">
-              <Spinner small />
-              <span className="text-xs text-gray-400">Will compile after generation</span>
+            <div className="flex w-full max-w-[240px] flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Spinner small />
+                <span className="text-xs text-gray-400">Queued after generation</span>
+              </div>
+              <LoadingBar tone="gray" />
             </div>
           )
         }
@@ -448,9 +513,13 @@ function ScreenshotUploadButton({ claimId, onAction, variant = 'primary' }) {
         loading={loading}
         compact
         withCrop
+        maxTotalBytes={DEFAULT_MAX_UPLOAD_BYTES}
       />
       {loading && (
-        <p className="text-xs text-gray-500">Uploading &amp; generating documents — this may take 1–2 minutes</p>
+        <div className="w-full max-w-[260px] space-y-1.5">
+          <LoadingBar />
+          <p className="text-xs text-gray-500">Uploading and generating documents. This may take 1-3 minutes.</p>
+        </div>
       )}
     </div>
   )
@@ -2045,6 +2114,8 @@ export default function ClaimDetailPage() {
         {['submitted', 'attachment_requested', 'attachment_uploaded'].includes(claim.status) && (
           <AttachmentRequestPanel claim={claim} />
         )}
+
+        <ReadinessPanel claim={claim} isTreasurer={isTreasurer} />
 
         {/* ── Claim info card ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">

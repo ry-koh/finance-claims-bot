@@ -9,7 +9,8 @@ from supabase import Client
 
 from pydantic import BaseModel
 
-from app.auth import require_auth
+from app.auth import get_claim_for_member, require_auth
+from app.config import settings
 from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
 from app.services import r2, image
@@ -142,14 +143,7 @@ def _delete_line_item_if_empty(db: Client, line_item_id: str) -> None:
 
 def _assert_claim_editable(db: Client, claim_id: str, member: dict) -> None:
     """Raise 403 if a treasurer is trying to mutate a claim that is no longer in draft."""
-    if member.get("role") != "treasurer":
-        return
-    resp = db.table("claims").select("status, filled_by").eq("id", claim_id).execute()
-    claim = resp.data[0] if resp.data else {}
-    if str(claim.get("filled_by", "")) != str(member.get("id", "")):
-        raise HTTPException(403, "Access denied")
-    if claim.get("status") != "draft":
-        raise HTTPException(403, "This claim can no longer be edited")
+    get_claim_for_member(db, claim_id, member, require_treasurer_draft=True)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +231,7 @@ async def upload_image(
     )
     if not claim_resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
+    get_claim_for_member(db, claim_id, auth, require_treasurer_draft=True)
 
     reference_code = claim_resp.data[0].get("reference_code")
     if not reference_code:
@@ -251,6 +246,11 @@ async def upload_image(
     # Upload to R2
     try:
         file_bytes = await file.read()
+        if len(file_bytes) > settings.MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File is too large. Maximum upload size is {settings.MAX_UPLOAD_BYTES // 1_000_000} MB.",
+            )
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         object_name = r2.make_object_name(reference_code, image_type, timestamp)
         r2.upload_file(file_bytes, object_name)
@@ -431,7 +431,7 @@ async def list_receipts(
     db: Client = Depends(get_supabase),
 ):
     """List all receipts for a claim, ordered by created_at, with line_item info."""
-    _get_claim_or_404(db, claim_id)
+    get_claim_for_member(db, claim_id, _member)
 
     resp = (
         db.table("receipts")
@@ -461,6 +461,7 @@ async def get_receipt(
     )
     if not resp.data:
         raise HTTPException(status_code=404, detail="Receipt not found")
+    get_claim_for_member(db, resp.data[0]["claim_id"], _member)
     return resp.data[0]
 
 
@@ -479,9 +480,10 @@ async def update_line_item(
 ):
     """Update only combined_description, gst_code, or dr_cr on a line item."""
     # Verify exists
-    check = db.table("claim_line_items").select("id").eq("id", line_item_id).execute()
+    check = db.table("claim_line_items").select("id, claim_id").eq("id", line_item_id).execute()
     if not check.data:
         raise HTTPException(status_code=404, detail="Line item not found")
+    get_claim_for_member(db, check.data[0]["claim_id"], _member, require_treasurer_draft=True)
 
     update_data: dict = {}
     if payload.combined_description is not None:

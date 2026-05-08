@@ -10,6 +10,84 @@ from app.utils.rate_limit import guard
 router = APIRouter(prefix="/email", tags=["email"])
 
 
+def _fetch_claim_email_data(db, claim_id: str) -> tuple[dict, list[dict], list[dict]]:
+    claim_resp = (
+        db.table("claims")
+        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
+        .eq("id", claim_id)
+        .is_("deleted_at", "null")
+        .single()
+        .execute()
+    )
+    if not claim_resp.data:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    claim = claim_resp.data
+
+    receipts_resp = db.table("receipts").select("*").eq("claim_id", claim_id).execute()
+    receipts = receipts_resp.data or []
+    if receipts:
+        receipt_ids = [r["id"] for r in receipts]
+        image_resp = (
+            db.table("receipt_images")
+            .select("*")
+            .in_("receipt_id", receipt_ids)
+            .order("created_at")
+            .execute()
+        )
+        images_by_receipt: dict = {}
+        for img in image_resp.data or []:
+            images_by_receipt.setdefault(img["receipt_id"], []).append(img)
+        for receipt in receipts:
+            receipt["images"] = images_by_receipt.get(receipt["id"], [])
+
+    bt_resp = db.table("bank_transactions").select("*").eq("claim_id", claim_id).execute()
+    bank_transactions = bt_resp.data or []
+    if bank_transactions:
+        bt_ids = [bt["id"] for bt in bank_transactions]
+        image_resp = (
+            db.table("bank_transaction_images")
+            .select("*")
+            .in_("bank_transaction_id", bt_ids)
+            .order("created_at")
+            .execute()
+        )
+        images_by_bt: dict = {}
+        for img in image_resp.data or []:
+            images_by_bt.setdefault(img["bank_transaction_id"], []).append(img)
+
+        refund_resp = (
+            db.table("bank_transaction_refunds")
+            .select("*")
+            .in_("bank_transaction_id", bt_ids)
+            .order("created_at")
+            .execute()
+        )
+        refunds_by_bt: dict = {}
+        for refund in refund_resp.data or []:
+            refunds_by_bt.setdefault(refund["bank_transaction_id"], []).append(refund)
+
+        for bt in bank_transactions:
+            bt["images"] = images_by_bt.get(bt["id"], [])
+            bt["refunds"] = refunds_by_bt.get(bt["id"], [])
+
+    return claim, receipts, bank_transactions
+
+
+def _normalize_claim_claimer(claim: dict) -> str:
+    raw_claimer = claim.get("claimer") or {}
+    claimer_email = claim.get("one_off_email") or raw_claimer.get("email") or ""
+    if not claimer_email:
+        raise HTTPException(status_code=400, detail="Claimer does not have an email address")
+    claim["claimer"] = {
+        "name": claim.get("one_off_name") or raw_claimer.get("name") or "",
+        "matric_no": claim.get("one_off_matric_no") or raw_claimer.get("matric_number") or "",
+        "phone": claim.get("one_off_phone") or raw_claimer.get("phone_number") or "",
+        "email": claimer_email,
+        "cca": claim.get("cca") or {},
+    }
+    return claimer_email
+
+
 # ---------------------------------------------------------------------------
 # POST /email/send/{claim_id}
 # ---------------------------------------------------------------------------
@@ -31,53 +109,8 @@ async def send_claim_email(
     """
     guard(f"email:{claim_id}", max_calls=2, window_seconds=30)
 
-    # 1. Fetch full claim
-    claim_resp = (
-        db.table("claims")
-        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
-        .eq("id", claim_id)
-        .single()
-        .execute()
-    )
-    if not claim_resp.data:
-        raise HTTPException(status_code=404, detail="Claim not found")
-    claim = claim_resp.data
-
-    # 2. Fetch all receipts
-    receipts_resp = (
-        db.table("receipts")
-        .select("*")
-        .eq("claim_id", claim_id)
-        .execute()
-    )
-
-    # 3. Fetch bank transactions with refunds
-    bt_resp = (
-        db.table("bank_transactions")
-        .select("*, refunds:bank_transaction_refunds(*)")
-        .eq("claim_id", claim_id)
-        .execute()
-    )
-
-    # 4. Validate claimer email and normalize claimer shape
-    raw_claimer = claim.get("claimer") or {}
-    claimer_email = (
-        claim.get("one_off_email")
-        or raw_claimer.get("email")
-        or ""
-    )
-    if not claimer_email:
-        raise HTTPException(
-            status_code=400,
-            detail="Claimer does not have an email address",
-        )
-    claim["claimer"] = {
-        "name": claim.get("one_off_name") or raw_claimer.get("name") or "",
-        "matric_no": claim.get("one_off_matric_no") or raw_claimer.get("matric_number") or "",
-        "phone": claim.get("one_off_phone") or raw_claimer.get("phone_number") or "",
-        "email": claimer_email,
-        "cca": claim.get("cca") or {},
-    }
+    claim, receipts, bank_transactions = _fetch_claim_email_data(db, claim_id)
+    claimer_email = _normalize_claim_claimer(claim)
 
     # 5. Validate claim status
     allowed_statuses = {"draft", "pending_review", "email_sent"}
@@ -93,7 +126,7 @@ async def send_claim_email(
 
     try:
         # 6. Build email
-        msg = gmail_service.build_claim_email(claim, receipts_resp.data, bt_resp.data)
+        msg = gmail_service.build_claim_email(claim, receipts, bank_transactions)
 
         # Set headers
         reference_code = claim.get("reference_code") or ""
@@ -161,57 +194,12 @@ async def resend_claim_email(
     """
     guard(f"email:{claim_id}", max_calls=2, window_seconds=30)
 
-    # 1. Fetch full claim
-    claim_resp = (
-        db.table("claims")
-        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
-        .eq("id", claim_id)
-        .single()
-        .execute()
-    )
-    if not claim_resp.data:
-        raise HTTPException(status_code=404, detail="Claim not found")
-    claim = claim_resp.data
-
-    # 2. Fetch all receipts
-    receipts_resp = (
-        db.table("receipts")
-        .select("*")
-        .eq("claim_id", claim_id)
-        .execute()
-    )
-
-    # 3. Fetch bank transactions with refunds
-    bt_resp = (
-        db.table("bank_transactions")
-        .select("*, refunds:bank_transaction_refunds(*)")
-        .eq("claim_id", claim_id)
-        .execute()
-    )
-
-    # 4. Validate claimer email and normalize claimer shape
-    raw_claimer = claim.get("claimer") or {}
-    claimer_email = (
-        claim.get("one_off_email")
-        or raw_claimer.get("email")
-        or ""
-    )
-    if not claimer_email:
-        raise HTTPException(
-            status_code=400,
-            detail="Claimer does not have an email address",
-        )
-    claim["claimer"] = {
-        "name": claim.get("one_off_name") or raw_claimer.get("name") or "",
-        "matric_no": claim.get("one_off_matric_no") or raw_claimer.get("matric_number") or "",
-        "phone": claim.get("one_off_phone") or raw_claimer.get("phone_number") or "",
-        "email": claimer_email,
-        "cca": claim.get("cca") or {},
-    }
+    claim, receipts, bank_transactions = _fetch_claim_email_data(db, claim_id)
+    claimer_email = _normalize_claim_claimer(claim)
 
     try:
         # 5. Build email
-        msg = gmail_service.build_claim_email(claim, receipts_resp.data, bt_resp.data)
+        msg = gmail_service.build_claim_email(claim, receipts, bank_transactions)
 
         # Set headers
         reference_code = claim.get("reference_code") or ""

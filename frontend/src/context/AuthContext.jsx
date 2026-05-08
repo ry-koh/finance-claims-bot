@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
     getMe()
       .then(setUser)
       .catch((err) => {
-        if (err?.response?.status === 401) {
+        if (err?.response?.status === 401 && err?.response?.data?.detail === 'unregistered') {
           setUser({ status: 'unregistered' })
         } else {
           setUser({ status: 'error' })

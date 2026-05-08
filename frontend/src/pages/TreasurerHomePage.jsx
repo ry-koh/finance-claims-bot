@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useClaims } from '../api/claims'
 import { IconAlertTriangle, IconPaperclip } from '../components/Icons'
+import { getTreasurerNextStep } from '../utils/claimReadiness'
 
 const STATUS_LABELS = {
   draft: 'Draft',
@@ -125,6 +126,15 @@ export default function TreasurerHomePage() {
                 </span>
               </div>
               <p className="text-xs text-gray-500 truncate mb-2">{claim.claim_description}</p>
+              {getTreasurerNextStep(claim) && (
+                <p className={`mb-2 rounded-lg px-2 py-1 text-xs font-medium ${
+                  claim.status === 'draft' && getTreasurerNextStep(claim) !== 'Ready to submit for review'
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-gray-50 text-gray-600'
+                }`}>
+                  {getTreasurerNextStep(claim)}
+                </p>
+              )}
               <div className="flex justify-between items-start text-xs">
                 <span className="text-gray-400">{formatDate(claim.date)}</span>
                 <div className="text-right">
