@@ -7,22 +7,28 @@ export default function SettingsPage() {
 
   const [academicYear, setAcademicYear] = useState('')
   const [accountName, setAccountName] = useState('')
+  const [accountEmail, setAccountEmail] = useState('')
   const [fdName, setFdName] = useState('')
   const [fdPhone, setFdPhone] = useState('')
   const [fdMatricNo, setFdMatricNo] = useState('')
-  const [fdEmail, setFdEmail] = useState('')
+  const [fdPersonalEmail, setFdPersonalEmail] = useState('')
   const [fdSalutation, setFdSalutation] = useState('')
+  const [claimToEmail, setClaimToEmail] = useState('')
+  const [claimCcEmail, setClaimCcEmail] = useState('')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (data) {
       setAcademicYear(data.academic_year || '')
       setAccountName(data.account_name || '')
+      setAccountEmail(data.account_email || '')
       setFdName(data.fd_name || '')
       setFdPhone(data.fd_phone || '')
       setFdMatricNo(data.fd_matric_no || '')
-      setFdEmail(data.fd_email || '')
+      setFdPersonalEmail(data.fd_personal_email || data.fd_email || '')
       setFdSalutation(data.fd_salutation || '')
+      setClaimToEmail(data.claim_to_email || '')
+      setClaimCcEmail(data.claim_cc_email || '')
     }
   }, [data])
 
@@ -32,11 +38,14 @@ export default function SettingsPage() {
       {
         academic_year: academicYear,
         account_name: accountName,
+        account_email: accountEmail,
         fd_name: fdName,
         fd_phone: fdPhone,
         fd_matric_no: fdMatricNo,
-        fd_email: fdEmail,
+        fd_personal_email: fdPersonalEmail,
         fd_salutation: fdSalutation,
+        claim_to_email: claimToEmail,
+        claim_cc_email: claimCcEmail,
       },
       {
         onSuccess: () => {
@@ -86,12 +95,51 @@ export default function SettingsPage() {
             placeholder="e.g. Ryan Koh Jun Hao"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
+          <label className="block text-xs text-gray-500 mb-1 mt-3">Your Personal / Account Email</label>
+          <input
+            type="email"
+            value={accountEmail}
+            onChange={(e) => setAccountEmail(e.target.value)}
+            placeholder="e.g. e0596601@u.nus.edu"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Claim Email Routing</h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Used in the email block that treasurers copy and send after finance approves a claim.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Claim Submission To Email</label>
+              <input
+                type="email"
+                value={claimToEmail}
+                onChange={(e) => setClaimToEmail(e.target.value)}
+                placeholder="e.g. rh.finance@u.nus.edu"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              <p className="text-xs text-gray-400 mt-1">Appears as the To line in claim submission emails.</p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Shared Finance Gmail / CC Email</label>
+              <input
+                type="email"
+                value={claimCcEmail}
+                onChange={(e) => setClaimCcEmail(e.target.value)}
+                placeholder="e.g. 68findirector.rh@gmail.com"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              <p className="text-xs text-gray-400 mt-1">Appears as the default CC line in claim submission emails.</p>
+            </div>
+          </div>
         </div>
 
         <div>
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Document & Email Finance Director</h2>
           <p className="text-xs text-gray-400 mb-3">
-            Used in generated documents and confirmation emails. This can stay as the previous Finance Director until your handover is complete.
+            Used for generated document identity and email salutation. This can stay as the previous Finance Director until your handover is complete.
           </p>
           <div className="space-y-3">
             {[
@@ -99,7 +147,7 @@ export default function SettingsPage() {
               { label: 'Email Salutation', value: fdSalutation, set: setFdSalutation, type: 'text', placeholder: 'e.g. Jun Kiat' },
               { label: 'Phone Number', value: fdPhone, set: setFdPhone, type: 'text', placeholder: 'e.g. 91234567' },
               { label: 'Matric Number', value: fdMatricNo, set: setFdMatricNo, type: 'text', placeholder: 'e.g. A0123456B' },
-              { label: 'Personal Email / CC Email', value: fdEmail, set: setFdEmail, type: 'email', placeholder: 'e.g. 68findirector.rh@gmail.com' },
+              { label: 'FD Personal Email for Documents / Transport Form', value: fdPersonalEmail, set: setFdPersonalEmail, type: 'email', placeholder: 'e.g. E1337187@U.NUS.EDU' },
             ].map(({ label, value, set, type, placeholder }) => (
               <div key={label}>
                 <label className="block text-xs text-gray-500 mb-1">{label}</label>

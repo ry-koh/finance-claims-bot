@@ -9,6 +9,14 @@ DOCUMENT_FD_SETTING_KEYS = {
     "salutation": "document_fd_salutation",
 }
 
+CLAIM_EMAIL_SETTING_KEYS = {
+    "to_email": "claim_submission_to_email",
+    "cc_email": "claim_submission_cc_email",
+}
+
+DEFAULT_CLAIM_TO_EMAIL = "rh.finance@u.nus.edu"
+DEFAULT_CLAIM_CC_EMAIL = "68findirector.rh@gmail.com"
+
 
 def get_setting(db, key: str, default: str = "") -> str:
     try:
@@ -65,4 +73,20 @@ def get_document_finance_director(db) -> dict:
 
     if not profile.get("salutation"):
         profile["salutation"] = profile.get("name") or fallback.get("name") or "Finance Director"
+    profile["personal_email"] = profile.get("email") or ""
     return profile
+
+
+def get_claim_email_settings(db) -> dict:
+    return {
+        "to_email": get_setting(
+            db,
+            CLAIM_EMAIL_SETTING_KEYS["to_email"],
+            DEFAULT_CLAIM_TO_EMAIL,
+        ),
+        "cc_email": get_setting(
+            db,
+            CLAIM_EMAIL_SETTING_KEYS["cc_email"],
+            DEFAULT_CLAIM_CC_EMAIL,
+        ),
+    }

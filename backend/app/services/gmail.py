@@ -38,6 +38,7 @@ def build_claim_email(
     receipts: list,
     bank_transactions: list = None,
     finance_director: dict | None = None,
+    email_settings: dict | None = None,
 ) -> MIMEMultipart:
     """
     Build a MIMEMultipart email for a claim submission.
@@ -62,12 +63,14 @@ def build_claim_email(
 
     bank_transactions = bank_transactions or []
     finance_director = finance_director or {}
+    email_settings = email_settings or {}
 
     claimer = claim.get("claimer") or {}
     cca = claimer.get("cca") or {}
     fd_name = finance_director.get("name") or "Finance Director"
     fd_salutation = finance_director.get("salutation") or fd_name
-    fd_email = finance_director.get("email") or "68findirector.rh@gmail.com"
+    claim_to_email = email_settings.get("to_email") or "rh.finance@u.nus.edu"
+    claim_cc_email = email_settings.get("cc_email") or "68findirector.rh@gmail.com"
 
     # --- Name / identity fields ---
     first_name = (claimer.get("name") or "").split()[0] if claimer.get("name") else ""
@@ -160,8 +163,8 @@ def build_claim_email(
     else:
         remarks_section = ""
 
-    # --- CC line for copy-paste block (always includes FD; plus any other_emails) ---
-    cc_all = [fd_email] + list(cc_reminder_emails)
+    # --- CC line for copy-paste block (shared finance mailbox plus any other_emails) ---
+    cc_all = [claim_cc_email] + list(cc_reminder_emails)
     cc_line_html = f"<br><strong>CC:</strong> {', '.join(cc_all)}"
 
     # --- HTML body ---
@@ -170,7 +173,7 @@ def build_claim_email(
   <p>We have received your claim and after sending the following email, this is a confirmation that your claim is being processed. We have also attached the attachments that you have sent for your convenience.</p>
   <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.</p>
   <p>
-    <strong>To:</strong> rh.finance@u.nus.edu{cc_line_html}<br>
+    <strong>To:</strong> {claim_to_email}{cc_line_html}<br>
     <strong>Subject:</strong> {reference_code}
   </p>
   <hr style="border: none; border-top: 2px solid #000; margin: 20px 0;">

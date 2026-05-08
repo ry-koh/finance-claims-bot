@@ -6,7 +6,7 @@ from app.routers.bot import send_bot_notification
 from app.services.events import log_claim_event
 from app.services import gmail as gmail_service
 from app.services import pdf as pdf_service
-from app.services.app_settings import get_document_finance_director
+from app.services.app_settings import get_claim_email_settings, get_document_finance_director
 from app.utils.rate_limit import guard
 
 router = APIRouter(prefix="/email", tags=["email"])
@@ -133,6 +133,7 @@ async def send_claim_email(
             receipts,
             bank_transactions,
             finance_director=get_document_finance_director(db),
+            email_settings=get_claim_email_settings(db),
         )
 
         # Set headers
@@ -227,6 +228,7 @@ async def resend_claim_email(
             receipts,
             bank_transactions,
             finance_director=get_document_finance_director(db),
+            email_settings=get_claim_email_settings(db),
         )
 
         # Set headers

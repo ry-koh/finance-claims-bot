@@ -566,7 +566,7 @@ def generate_transport(
         replacements: dict[str, str] = {
             "<<FD_NAME>>": finance_director.get("name", ""),
             "<<FD_PHONE_NUMBER>>": finance_director.get("phone", ""),
-            "<<FD_PERSONAL_EMAIL_ADDRESS>>": finance_director.get("email", ""),
+            "<<FD_PERSONAL_EMAIL_ADDRESS>>": finance_director.get("personal_email") or finance_director.get("email", ""),
             "<<TOTAL>>": f"{total_amount:.2f}",
             "<<WBS_ACCOUNT>>": wbs_label,
             "<<WBS_NUMBER>>": claim.get("wbs_no", ""),
