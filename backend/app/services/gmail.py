@@ -71,7 +71,10 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     claim_description_upper = claim_description.upper()
     reference_code = claim.get("reference_code") or ""
 
-    total_amount = float(claim.get("total_amount") or 0)
+    total_amount = float(
+        claim.get("partial_amount") if claim.get("is_partial") and claim.get("partial_amount") is not None
+        else claim.get("total_amount") or 0
+    )
 
     # --- Other emails (for reminder only — not used as actual CC headers) ---
     other_emails = claim.get("other_emails") or []

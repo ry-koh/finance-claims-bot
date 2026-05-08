@@ -359,10 +359,16 @@ def generate_summary(
             formatted_date = str(raw_date)
 
         # Compute total from line item receipts (more reliable than stored total_amount)
-        total_amount = sum(
+        receipt_total = sum(
             sum(float(r.get('amount', 0) or 0) for r in (item.get('receipts') or []))
             for item in (line_items or [])
         ) or float(claim.get('total_amount', 0) or 0)
+        # For partial claims, the claimed amount is partial_amount, not the receipt total
+        total_amount = (
+            float(claim['partial_amount'])
+            if claim.get('is_partial') and claim.get('partial_amount') is not None
+            else receipt_total
+        )
 
         # --- Fixed cell values ---
         value_ranges = [
@@ -481,7 +487,7 @@ def generate_rfp(
         replacements = {
             "{{MATRIC}}": (finance_director.get("matric_no") or "").upper(),
             "{{NAME}}": (finance_director.get("name") or "").upper(),
-            "{{TOTAL_AMOUNT}}": f"{claim['total_amount']:.2f}",
+            "{{TOTAL_AMOUNT}}": f"{float(claim['partial_amount']) if claim.get('is_partial') and claim.get('partial_amount') is not None else float(claim['total_amount']):.2f}",
             "{{REFERENCE_CODE}}": ref,
         }
 
