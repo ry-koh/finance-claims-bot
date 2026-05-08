@@ -129,7 +129,7 @@ Wizard progress is saved to `sessionStorage` so accidental back-navigation doesn
    - **To**: claimer's email (+ any extra recipients)
    - **Subject**: claim reference code
    - **Body**: claims summary (CCA, event, amount, PayNow number), itemised receipt list, auto-generated remarks
-   - **Auto-remarks**: Master's Fund flag, partial claim amount, refund breakdowns, foreign currency notes
+   - **Auto-remarks**: Master's Fund flag, partial claim indicator, refund breakdowns, foreign currency notes
    - **Attachments**: receipt images and bank transaction screenshots
 3. Email sent via Gmail API from FD's account
 4. Finance team uploads a screenshot of the sent email
@@ -193,9 +193,9 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 |---|---|
 | **Portfolio** | Group of CCAs (e.g. Sports, Arts) |
 | **CCA** | Individual club/activity |
-| **Claim** | Core object: description, WBS account, total amount, date, remarks, transport flag, partial claim flag; links to either a registered treasurer (`claimer_id`) or stores one-off details inline |
+| **Claim** | Core object: description, WBS account, total amount (auto-computed by DB trigger), date, remarks, transport flag, partial claim flag; links to either a registered treasurer (`claimer_id`) or stores one-off details inline |
 | **ClaimLineItem** | Category grouping of receipts — category, GST code, DR/CR, combined description |
-| **Receipt** | Individual expense — amount, description, company, date, receipt images, bank transaction link |
+| **Receipt** | Individual expense — `amount` (what was paid), optional `claimed_amount` (what is being claimed; blank = full amount), description, company, date, receipt images, bank transaction link. DB trigger sums `COALESCE(claimed_amount, amount)` into the claim total. |
 | **BankTransaction** | A bank debit linked to receipts; can have multiple images and refunds |
 | **BankTransactionRefund** | A refund against a BT — amount and screenshot |
 | **ClaimDocument** | A generated file — versioned; only `is_current=true` is used per type; email screenshot is never marked stale |
