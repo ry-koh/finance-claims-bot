@@ -7,7 +7,7 @@ import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
 import { submitTransportData, uploadMfApproval } from '../api/documents'
-import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS, TREASURER_WBS_ACCOUNTS } from '../constants/claimConstants'
+import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
 
@@ -337,7 +337,7 @@ function TransportTripsInput({ trips, onChange }) {
 
 // ─── Step 2: What ─────────────────────────────────────────────────────────────
 
-function Step2({ data, onChange, isTreasurer, wbsOptions }) {
+function Step2({ data, onChange, isTreasurer }) {
   const [emailInput, setEmailInput] = useState('')
   const [emailError, setEmailError] = useState('')
 
@@ -383,15 +383,29 @@ function Step2({ data, onChange, isTreasurer, wbsOptions }) {
         />
       </div>
 
-      {/* WBS Account */}
+      {/* Master Fund question */}
       <div>
-        <Label required>WBS Account</Label>
-        <Select
-          value={data.wbsAccount}
-          onChange={(v) => onChange({ wbsAccount: v })}
-          placeholder="Select WBS account…"
-          options={wbsOptions ?? WBS_ACCOUNTS}
-        />
+        <Label required>Are you using Master Fund?</Label>
+        <div className="flex gap-2 mt-1">
+          {[
+            { label: 'No', value: 'SA' },
+            { label: 'Yes', value: 'MF' },
+            { label: 'Others', value: 'OTHERS' },
+          ].map(({ label, value }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onChange({ wbsAccount: value })}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                data.wbsAccount === value
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* MF Approval upload — shown only when WBS Account is Master's Fund */}
@@ -1318,7 +1332,7 @@ export default function NewClaimPage() {
 
   const { user } = useAuth()
   const isTreasurer = user?.role === 'treasurer'
-  const availableWbsAccounts = isTreasurer ? TREASURER_WBS_ACCOUNTS : WBS_ACCOUNTS
+
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
@@ -1599,7 +1613,7 @@ export default function NewClaimPage() {
             onChange={(ccaId) => updateStep1({ ccaId })}
           />
         )}
-        {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} wbsOptions={availableWbsAccounts} />}
+        {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />}
         {step === 3 && (
           <Step3
             bankTransactions={bankTransactions}

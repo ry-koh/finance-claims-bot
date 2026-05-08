@@ -284,6 +284,13 @@ CREATE TRIGGER trg_claim_status_dates
   FOR EACH ROW EXECUTE FUNCTION set_claim_status_dates();
 ```
 
+### Add OTHERS as a valid WBS account value
+
+```sql
+ALTER TABLE claims DROP CONSTRAINT IF EXISTS claims_wbs_account_check;
+ALTER TABLE claims ADD CONSTRAINT claims_wbs_account_check CHECK (wbs_account IN ('SA', 'MBH', 'MF', 'OTHERS'));
+```
+
 ### Add B&C CCA under Welfare portfolio
 
 ```sql

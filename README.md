@@ -205,11 +205,14 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 
 ## WBS Accounts
 
-| Code | Notes |
-|---|---|
-| **SA** | Student Account (default) |
-| **MBH** | MBH account |
-| **MF** | Master's Fund — requires a Master's Approval screenshot upload; scan inserted as first LOA page |
+Treasurers select their fund via the "Are you using Master Fund?" question when creating a claim. Finance Director can change the value during review.
+
+| Code | UI Label | Notes |
+|---|---|---|
+| **SA** | No (default) | Student Account |
+| **MF** | Yes | Master's Fund — requires a Master's Approval screenshot upload; scan inserted as first LOA page |
+| **MBH** | — | MBH account — set by Finance Director only |
+| **OTHERS** | Others | Claimer is unsure; Finance Director updates at review |
 
 ---
 

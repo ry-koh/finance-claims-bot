@@ -15,6 +15,7 @@ class WBSAccount(str, Enum):
     SA = "SA"
     MBH = "MBH"
     MF = "MF"
+    OTHERS = "OTHERS"
 
 
 class ClaimStatus(str, Enum):

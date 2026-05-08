@@ -67,7 +67,7 @@ CREATE TABLE claims (
   is_partial        boolean NOT NULL DEFAULT false,
   partial_amount    numeric(10,2),
   date              date NOT NULL DEFAULT CURRENT_DATE,
-  wbs_account       text NOT NULL CHECK (wbs_account IN ('SA', 'MBH', 'MF')),
+  wbs_account       text NOT NULL CHECK (wbs_account IN ('SA', 'MBH', 'MF', 'OTHERS')),
   wbs_no            text GENERATED ALWAYS AS (
     CASE wbs_account
       WHEN 'SA'  THEN 'H-404-00-000003'
