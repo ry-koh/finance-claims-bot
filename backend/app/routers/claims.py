@@ -761,15 +761,18 @@ async def request_attachment(
 
     db.table("claims").update({"status": "attachment_requested"}).eq("id", claim_id).execute()
 
-    filled_by_id = claim.get("filled_by")
-    if filled_by_id:
-        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
-        if ft.data and ft.data[0].get("telegram_id"):
-            ref = claim.get("reference_code", claim_id)
-            asyncio.create_task(send_bot_notification(
-                ft.data[0]["telegram_id"],
-                f"📎 Additional attachment requested for claim {ref}\n\n{payload.message}\n\nPlease upload the required files in the app."
-            ))
+    # One-off claimers have no app access — skip Telegram notification
+    is_one_off = claim.get("claimer_id") is None
+    if not is_one_off:
+        filled_by_id = claim.get("filled_by")
+        if filled_by_id:
+            ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+            if ft.data and ft.data[0].get("telegram_id"):
+                ref = claim.get("reference_code", claim_id)
+                asyncio.create_task(send_bot_notification(
+                    ft.data[0]["telegram_id"],
+                    f"📎 Additional attachment requested for claim {ref}\n\n{payload.message}\n\nPlease upload the required files in the app."
+                ))
 
     return req_resp.data[0]
 
@@ -911,15 +914,18 @@ async def reject_attachments(
 
     db.table("claims").update({"status": "attachment_requested"}).eq("id", claim_id).execute()
 
-    filled_by_id = claim.get("filled_by")
-    if filled_by_id:
-        ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
-        if ft.data and ft.data[0].get("telegram_id"):
-            ref = claim.get("reference_code", claim_id)
-            asyncio.create_task(send_bot_notification(
-                ft.data[0]["telegram_id"],
-                f"📎 Attachments for claim {ref} need revision.\n\n{payload.message}\n\nPlease upload the corrected files in the app."
-            ))
+    # One-off claimers have no app access — skip Telegram notification
+    is_one_off = claim.get("claimer_id") is None
+    if not is_one_off:
+        filled_by_id = claim.get("filled_by")
+        if filled_by_id:
+            ft = db.table("finance_team").select("telegram_id").eq("id", filled_by_id).execute()
+            if ft.data and ft.data[0].get("telegram_id"):
+                ref = claim.get("reference_code", claim_id)
+                asyncio.create_task(send_bot_notification(
+                    ft.data[0]["telegram_id"],
+                    f"📎 Attachments for claim {ref} need revision.\n\n{payload.message}\n\nPlease upload the corrected files in the app."
+                ))
 
     return new_req_resp.data[0]
 

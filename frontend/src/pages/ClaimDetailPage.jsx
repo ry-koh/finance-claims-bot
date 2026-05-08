@@ -1354,7 +1354,73 @@ function AttachmentRequestPanel({ claim }) {
     )
   }
 
-  // Finance team: waiting banner
+  // Finance team: one-off claimer — they handle the upload themselves
+  if (status === 'attachment_requested' && isFinanceTeam && !claim.claimer_id) {
+    const uploadedFiles = currentRequest?.files ?? []
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-amber-800 mb-1">
+            Attachment Required (One-off Claimer)
+          </h2>
+          {currentRequest && (
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">
+              {currentRequest.request_message}
+            </p>
+          )}
+          <p className="text-xs text-amber-700 mt-2">
+            This is a one-off claimer — collect and upload the attachment on their behalf.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Upload files
+          </label>
+          <input
+            type="file"
+            multiple
+            className="text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 active:file:bg-blue-100"
+            onChange={(e) => {
+              Array.from(e.target.files || []).forEach((f) => uploadFile.mutate(f))
+              e.target.value = ''
+            }}
+            disabled={uploadFile.isPending}
+          />
+          {uploadFile.isPending && (
+            <p className="text-xs text-gray-500 mt-1">Uploading…</p>
+          )}
+        </div>
+        {uploadedFiles.length > 0 && (
+          <ul className="space-y-1">
+            {uploadedFiles.map((f) => (
+              <li
+                key={f.id}
+                className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100 text-sm"
+              >
+                <span className="truncate text-gray-800">{f.original_filename}</span>
+                <button
+                  onClick={() => deleteFile.mutate(f.id)}
+                  disabled={deleteFile.isPending}
+                  className="text-red-400 ml-2 text-xs font-medium active:text-red-600 disabled:opacity-40 shrink-0"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <ActionButton
+          disabled={uploadedFiles.length === 0}
+          loading={submitAttachments.isPending}
+          onClick={() => submitAttachments.mutate()}
+        >
+          Submit Attachments
+        </ActionButton>
+      </div>
+    )
+  }
+
+  // Finance team: waiting banner (regular claimer)
   if (status === 'attachment_requested' && isFinanceTeam) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
