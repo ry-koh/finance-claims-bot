@@ -1,8 +1,6 @@
 import { NavLink } from 'react-router-dom'
-import { usePendingCount } from '../api/admin'
 
-function PendingBadge() {
-  const { data: count = 0 } = usePendingCount()
+function PendingBadge({ count }) {
   if (!count) return null
   return (
     <span className="ml-auto w-5 h-5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
@@ -11,7 +9,7 @@ function PendingBadge() {
   )
 }
 
-export default function AppDrawer({ open, onClose, navGroups }) {
+export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }) {
   return (
     <>
       {open && (
@@ -52,7 +50,7 @@ export default function AppDrawer({ open, onClose, navGroups }) {
                 >
                   <span className="w-5 h-5 shrink-0 text-gray-500">{item.icon}</span>
                   <span className="flex-1">{item.label}</span>
-                  {item.badge && <PendingBadge />}
+                  {item.badge && <PendingBadge count={pendingCount} />}
                 </NavLink>
               ))}
             </div>

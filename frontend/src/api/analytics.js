@@ -10,11 +10,12 @@ export const fetchAnalyticsSummary = ({ groupBy, statuses, dateFrom, dateTo }) =
   return api.get(`/analytics/summary?${params}`).then((r) => r.data)
 }
 
-export function useAnalyticsSummary({ groupBy, statuses, dateFrom, dateTo }) {
+export function useAnalyticsSummary({ groupBy, statuses, dateFrom, dateTo, enabled = true }) {
   return useQuery({
     queryKey: ['analytics', 'summary', groupBy, statuses, dateFrom, dateTo],
     queryFn: () => fetchAnalyticsSummary({ groupBy, statuses, dateFrom, dateTo }),
     staleTime: 60_000,
+    enabled: enabled && !!groupBy,
   })
 }
 

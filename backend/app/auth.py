@@ -12,7 +12,7 @@ from app.database import get_supabase
 from app.models import UserRole
 
 
-def verify_telegram_init_data(init_data: str) -> dict:
+def verify_telegram_init_data(init_data: str | None) -> dict:
     """
     Validate Telegram Mini App initData and return the decoded Telegram user.
 
@@ -62,7 +62,7 @@ def verify_telegram_init_data(init_data: str) -> dict:
 
 
 async def require_telegram_user(
-    init_data: str = Header(..., alias="X-Telegram-Init-Data"),
+    init_data: str | None = Header(default=None, alias="X-Telegram-Init-Data"),
 ) -> dict:
     """Return the verified Telegram user from signed Mini App initData."""
     return verify_telegram_init_data(init_data)

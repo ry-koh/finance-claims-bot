@@ -239,10 +239,11 @@ export default function AnalyticsPage() {
   const fundGroupBy = groupBy === 'portfolio_fund' ? 'portfolio' : 'cca'
 
   const summaryQuery = useAnalyticsSummary({
-    groupBy,
+    groupBy: isFundBreakdown ? null : groupBy,
     statuses,
     dateFrom,
     dateTo,
+    enabled: !isFundBreakdown,
   })
 
   const fundQuery = useAnalyticsFundBreakdown({

@@ -100,7 +100,7 @@ export default function Layout() {
   const isTreasurer = useIsTreasurer()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
-  const { data: pendingCount = 0 } = usePendingCount()
+  const { data: pendingCount = 0 } = usePendingCount(isDirector)
 
   const pageTitle =
     PAGE_TITLES[location.pathname] ||
@@ -130,7 +130,12 @@ export default function Layout() {
       <main className="flex-1 overflow-y-auto pt-14">
         <Outlet />
       </main>
-      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} navGroups={navGroups} />
+      <AppDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        navGroups={navGroups}
+        pendingCount={pendingCount}
+      />
     </div>
   )
 }

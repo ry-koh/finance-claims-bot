@@ -26,11 +26,12 @@ export function usePendingRegistrations() {
   })
 }
 
-export function usePendingCount() {
+export function usePendingCount(enabled = true) {
   return useQuery({
     queryKey: PENDING_KEYS.count,
     queryFn: fetchPendingCount,
     refetchInterval: 60_000,
+    enabled,
   })
 }
 
