@@ -48,8 +48,8 @@ STALE_TRIGGER_FIELDS = {
 
 
 def _slug(text: str) -> str:
-    """Upper-case and replace spaces with hyphens."""
-    return text.upper().replace(" ", "-")
+    """Upper-case and remove spaces."""
+    return text.upper().replace(" ", "")
 
 
 def _get_claim_or_404(db: Client, claim_id: str) -> dict:
