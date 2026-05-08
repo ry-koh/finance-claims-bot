@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from supabase import Client
 from typing import Optional
 
-from app.auth import require_director
+from app.auth import require_auth, require_director
 from app.database import get_supabase
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -127,7 +127,7 @@ async def list_team_members(
 @router.get("/treasurer-options")
 async def list_treasurer_options(
     cca_id: str = Query(...),
-    _member: dict = Depends(require_director),
+    _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
     """Return active finance_team treasurers linked to a given CCA, for the new claim form."""
