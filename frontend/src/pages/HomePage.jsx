@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
@@ -153,6 +153,20 @@ export default function HomePage() {
   const [isExporting, setIsExporting] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
   const [actionResult, setActionResult] = useState(null)
+
+  const tabsRef = useRef(null)
+
+  useEffect(() => {
+    const el = tabsRef.current
+    if (!el) return
+    const onWheel = (e) => {
+      if (e.deltaY === 0 && e.deltaX === 0) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY + e.deltaX
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   const debouncedSearch = useDebounce(search, 300)
 
@@ -334,7 +348,10 @@ export default function HomePage() {
 
         {/* Status filter pills */}
         {!selectMode && (
-          <div className="mt-2 -mx-4 px-4 overflow-x-auto flex gap-1.5 pb-1 scrollbar-none">
+          <div
+            ref={tabsRef}
+            className="mt-2 -mx-4 px-4 overflow-x-auto flex gap-1.5 pb-1 scrollbar-none"
+          >
             {STATUSES.map(({ label, value }) => {
               const isActive = activeStatus === value
               const count = value === null ? allCount : (countsData?.[value] ?? 0)
