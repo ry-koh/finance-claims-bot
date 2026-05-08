@@ -276,6 +276,13 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
           <InfoRow label="Receipt No." value={receipt.receipt_no} />
           <InfoRow label="Date" value={formatDate(receipt.date)} />
           <InfoRow label="Amount" value={formatAmount(receipt.amount)} bold />
+          {receipt.claimed_amount != null && (
+            <InfoRow
+              label="Claimed Amount"
+              value={`${formatAmount(receipt.claimed_amount)} (partial)`}
+              bold
+            />
+          )}
         </div>
 
         {/* Bank transactions — all BTs, linked one highlighted */}
@@ -413,12 +420,16 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
     if (sel.dr_cr) groups[cat].dr_crs.add(sel.dr_cr)
   }
 
-  const totalReceipts = receipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
+  // BT reconciliation uses full receipt amounts (what was actually debited from bank)
+  const totalReceiptSpend = receipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
+  // Claimed total may differ for partial claims
+  const totalClaimed = receipts.reduce((s, r) => s + Number(r.claimed_amount ?? r.amount ?? 0), 0)
+  const isPartial = receipts.some((r) => r.claimed_amount != null)
   const totalBtNet = bankTransactions.reduce((s, bt) => {
     const refundTotal = (bt.refunds ?? []).reduce((rs, ref) => rs + Number(ref.amount ?? 0), 0)
     return s + Number(bt.amount ?? 0) - refundTotal
   }, 0)
-  const reconciled = Math.abs(totalReceipts - totalBtNet) <= 0.01
+  const reconciled = Math.abs(totalReceiptSpend - totalBtNet) <= 0.01
 
   const flagged = receipts
     .map((r, i) => ({ i, remark: selections[r.id]?.remark?.trim() }))
@@ -482,13 +493,18 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
               {group.receipts.map((r) => (
                 <div key={r.id} className="flex justify-between items-center px-4 py-1.5 text-sm border-t border-gray-50">
                   <span className="text-gray-700 truncate">{r.description || '—'}</span>
-                  <span className="text-gray-900 font-medium shrink-0 ml-2">{formatAmount(r.amount)}</span>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className="text-gray-900 font-medium">{formatAmount(r.claimed_amount ?? r.amount)}</span>
+                    {r.claimed_amount != null && (
+                      <p className="text-[10px] text-gray-400">full {formatAmount(r.amount)}</p>
+                    )}
+                  </div>
                 </div>
               ))}
               <div className="flex justify-between px-4 py-1.5 text-sm border-t border-gray-200 bg-gray-50">
                 <span className="text-gray-500">Subtotal</span>
                 <span className="font-semibold">
-                  {formatAmount(group.receipts.reduce((s, r) => s + Number(r.amount ?? 0), 0))}
+                  {formatAmount(group.receipts.reduce((s, r) => s + Number(r.claimed_amount ?? r.amount ?? 0), 0))}
                 </span>
               </div>
             </div>
@@ -564,9 +580,17 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
 
         {/* Reconciliation */}
         <div className={`rounded-xl border p-4 ${reconciled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+          {isPartial && (
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-blue-700">Total claimed</span>
+              <span className="font-semibold text-blue-700">{formatAmount(totalClaimed)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-sm mb-1">
-            <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>Total receipts</span>
-            <span className="font-semibold">{formatAmount(totalReceipts)}</span>
+            <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>
+              Total receipt spend{isPartial ? ' (full)' : ''}
+            </span>
+            <span className="font-semibold">{formatAmount(totalReceiptSpend)}</span>
           </div>
           <div className="flex justify-between text-sm mb-2">
             <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>Total net BTs</span>

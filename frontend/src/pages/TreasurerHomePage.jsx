@@ -125,9 +125,17 @@ export default function TreasurerHomePage() {
                 </span>
               </div>
               <p className="text-xs text-gray-500 truncate mb-2">{claim.claim_description}</p>
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>{formatDate(claim.date)}</span>
-                <span className="font-medium text-gray-700">{formatAmount(claim.total_amount)}</span>
+              <div className="flex justify-between items-start text-xs">
+                <span className="text-gray-400">{formatDate(claim.date)}</span>
+                <div className="text-right">
+                  <p className="font-medium text-gray-700">{formatAmount(claim.total_amount)}</p>
+                  {claim.submitted_at && (
+                    <p className="text-green-600">Submitted {formatDate(claim.submitted_at)}</p>
+                  )}
+                  {claim.reimbursed_at && (
+                    <p className="text-teal-600">Reimbursed {formatDate(claim.reimbursed_at)}</p>
+                  )}
+                </div>
               </div>
             </button>
           ))}

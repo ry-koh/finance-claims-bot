@@ -928,7 +928,8 @@ function BtCard({
   }
 
   const netAmount = bt.net_amount != null ? bt.net_amount : bt.amount
-  const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.claimed_amount ?? r.amount ?? 0), 0)
+  // BT reconciliation uses full receipt.amount (what was actually debited), not claimed_amount
+  const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
   const tally = Math.abs((netAmount ?? 0) - receiptSum) < 0.005
 
   return (

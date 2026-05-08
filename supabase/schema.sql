@@ -90,6 +90,8 @@ CREATE TABLE claims (
     )),
   error_message     text,
   deleted_at        timestamptz,
+  submitted_at      timestamptz,
+  reimbursed_at     timestamptz,
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now(),
   CONSTRAINT claims_claimer_check
@@ -261,6 +263,24 @@ CREATE TRIGGER trg_line_items_updated_at
 CREATE TRIGGER trg_receipts_updated_at
   BEFORE UPDATE ON receipts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Set submitted_at / reimbursed_at when status transitions
+CREATE OR REPLACE FUNCTION set_claim_status_dates()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status = 'submitted' AND OLD.status IS DISTINCT FROM 'submitted' AND NEW.submitted_at IS NULL THEN
+    NEW.submitted_at = now();
+  END IF;
+  IF NEW.status = 'reimbursed' AND OLD.status IS DISTINCT FROM 'reimbursed' AND NEW.reimbursed_at IS NULL THEN
+    NEW.reimbursed_at = now();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_claim_status_dates
+  BEFORE UPDATE ON claims
+  FOR EACH ROW EXECUTE FUNCTION set_claim_status_dates();
 
 -- Recalculate claim.total_amount when receipts change
 CREATE OR REPLACE FUNCTION recalculate_claim_total()
@@ -461,7 +481,7 @@ INSERT INTO ccas (portfolio_id, name) SELECT p.id, n FROM p, (VALUES
 WITH p AS (SELECT id FROM portfolios WHERE name = 'Welfare')
 INSERT INTO ccas (portfolio_id, name) SELECT p.id, n FROM p, (VALUES
   ('Welfare'), ('Welfare Comm'), ('RVC SP'), ('RVC Children'),
-  ('RVC Pioneers'), ('RVC Special Needs'), ('HeaRHtfelt'), ('Green Comm')
+  ('RVC Pioneers'), ('RVC Special Needs'), ('HeaRHtfelt'), ('Green Comm'), ('B&C')
 ) v(n) ON CONFLICT DO NOTHING;
 
 WITH p AS (SELECT id FROM portfolios WHERE name = 'Sports')

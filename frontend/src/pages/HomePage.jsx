@@ -117,13 +117,21 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
         <p className="text-xs text-gray-400 truncate">{claim.claim_description}</p>
       )}
 
-      <div className="flex justify-between items-center mt-2">
+      <div className="flex justify-between items-start mt-2">
         <span className="text-sm font-bold text-gray-800">
           {formatAmount(claim.total_amount)}
         </span>
-        <span className="text-xs text-gray-400">
-          {formatDate(claim.created_at)}
-        </span>
+        <div className="text-right text-xs">
+          {claim.submitted_at && (
+            <p className="text-green-600">Submitted {formatDate(claim.submitted_at)}</p>
+          )}
+          {claim.reimbursed_at && (
+            <p className="text-teal-600">Reimbursed {formatDate(claim.reimbursed_at)}</p>
+          )}
+          {!claim.submitted_at && !claim.reimbursed_at && (
+            <p className="text-gray-400">{formatDate(claim.created_at)}</p>
+          )}
+        </div>
       </div>
     </button>
   )
