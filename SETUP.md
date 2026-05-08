@@ -254,6 +254,47 @@ It uses the `APP_URL` secret you added in Step 8 — no further action needed. Y
 
 ---
 
+## Database Migrations
+
+For an **existing deployment**, run these SQL statements in the Supabase SQL Editor when upgrading to a version that added new schema features.
+
+### Add submitted_at / reimbursed_at to claims (2526 cycle)
+
+```sql
+ALTER TABLE claims
+  ADD COLUMN IF NOT EXISTS submitted_at timestamptz,
+  ADD COLUMN IF NOT EXISTS reimbursed_at timestamptz;
+
+CREATE OR REPLACE FUNCTION set_claim_status_dates()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status = 'submitted' AND OLD.status IS DISTINCT FROM 'submitted' AND NEW.submitted_at IS NULL THEN
+    NEW.submitted_at = now();
+  END IF;
+  IF NEW.status = 'reimbursed' AND OLD.status IS DISTINCT FROM 'reimbursed' AND NEW.reimbursed_at IS NULL THEN
+    NEW.reimbursed_at = now();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_claim_status_dates ON claims;
+CREATE TRIGGER trg_claim_status_dates
+  BEFORE UPDATE ON claims
+  FOR EACH ROW EXECUTE FUNCTION set_claim_status_dates();
+```
+
+### Add B&C CCA under Welfare portfolio
+
+```sql
+WITH p AS (SELECT id FROM portfolios WHERE name = 'Welfare')
+INSERT INTO ccas (portfolio_id, name)
+SELECT p.id, 'B&C' FROM p
+ON CONFLICT DO NOTHING;
+```
+
+---
+
 ## If the Bot Stops Responding
 
 The backend is always-on on Cloud Run — it should not go cold. If something breaks:

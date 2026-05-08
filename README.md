@@ -193,9 +193,9 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 |---|---|
 | **Portfolio** | Group of CCAs (e.g. Sports, Arts) |
 | **CCA** | Individual club/activity |
-| **Claim** | Core object: description, WBS account, total amount (auto-computed by DB trigger), date, remarks, transport flag, partial claim flag; links to either a registered treasurer (`claimer_id`) or stores one-off details inline |
+| **Claim** | Core object: description, WBS account, total amount (auto-computed by DB trigger), date, remarks, transport flag, partial claim flag; links to either a registered treasurer (`claimer_id`) or stores one-off details inline. `submitted_at` and `reimbursed_at` are auto-stamped by a DB trigger on the first transition to those statuses. |
 | **ClaimLineItem** | Category grouping of receipts — category, GST code, DR/CR, combined description |
-| **Receipt** | Individual expense — `amount` (what was paid), optional `claimed_amount` (what is being claimed; blank = full amount), description, company, date, receipt images, bank transaction link. DB trigger sums `COALESCE(claimed_amount, amount)` into the claim total. |
+| **Receipt** | Individual expense — `amount` (what was paid; used for bank transaction reconciliation), optional `claimed_amount` (what is being claimed; blank = full amount), description, company, date, receipt images, bank transaction link. DB trigger sums `COALESCE(claimed_amount, amount)` into the claim total. BT reconciliation always compares `receipt.amount` vs BT net (not `claimed_amount`) since bank debits reflect actual spend. |
 | **BankTransaction** | A bank debit linked to receipts; can have multiple images and refunds |
 | **BankTransactionRefund** | A refund against a BT — amount and screenshot |
 | **ClaimDocument** | A generated file — versioned; only `is_current=true` is used per type; email screenshot is never marked stale |
@@ -217,8 +217,8 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 
 | Page | Path | Roles | Purpose |
 |---|---|---|---|
-| Home | `/` | Director, Member | Claims list with status tabs, search, date filters, bulk actions, and CSV export |
-| Treasurer Home | `/` | Treasurer | Own draft/submitted claims |
+| Home | `/` | Director, Member | Claims list with scrollable status pills, search, date filters, bulk actions, and CSV export. Cards show submitted/reimbursed dates when available. |
+| Treasurer Home | `/` | Treasurer | Own draft/submitted claims. Cards show submitted/reimbursed dates when available. |
 | New Claim | `/claims/new` | All | Multi-step form: claimer → receipts → bank transactions → transport |
 | Claim Detail | `/claims/:id` | All | Full claim view — edit fields, manage receipts/BTs, run pipeline, handle attachment requests |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
