@@ -305,10 +305,12 @@ def _do_generate(claim_id: str, db) -> dict:
         # Always update remarks block (even if empty, to clear stale sentinels)
         auto_block = "\n".join(auto_remarks)
         existing = claim.get("remarks") or ""
-        sentinel_re = re.compile(r"<!-- AUTO -->.*?<!-- /AUTO -->", re.DOTALL)
+        # Strip AUTO block including surrounding newlines so appended remarks don't create blank lines
+        sentinel_re = re.compile(r"\n?<!-- AUTO -->.*?<!-- /AUTO -->\n?", re.DOTALL)
         new_block = f"<!-- AUTO -->\n{auto_block}\n<!-- /AUTO -->"
-        # Strip old sentinel and any legacy MF line to get clean user-written portion
-        user_portion = sentinel_re.sub("", existing).strip()
+        # Strip old sentinel (with surrounding newlines) and legacy MF line to get clean user-written portion
+        user_portion = sentinel_re.sub("\n", existing).strip()
+        user_portion = re.sub(r'\n{2,}', '\n', user_portion)
         mf_line = "- Claimed from Master Fund"
         if user_portion.startswith(mf_line):
             user_portion = user_portion[len(mf_line):].strip()

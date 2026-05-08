@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
-import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
+import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval, submitTransportData } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
 import {
@@ -26,6 +26,82 @@ import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+
+// ─── Transport trips input ───────────────────────────────────────────────────
+
+const EMPTY_TRIP = { from: '', to: '', purpose: '', date: '', time: '', amount: '', distance_km: '' }
+
+function TransportTripsInput({ trips, onChange }) {
+  function addTrip() {
+    if (trips.length >= 3) return
+    onChange([...trips, { ...EMPTY_TRIP }])
+  }
+  function removeTrip(i) {
+    onChange(trips.filter((_, idx) => idx !== i))
+  }
+  function updateTrip(i, field, value) {
+    onChange(trips.map((t, idx) => idx === i ? { ...t, [field]: value } : t))
+  }
+  const inputCls = 'w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300'
+
+  return (
+    <div className="space-y-3 bg-blue-50 rounded-xl p-3">
+      <p className="text-xs font-medium text-blue-700">Transport Trips (max 3)</p>
+      {trips.length === 0 && <p className="text-xs text-gray-400">No trips added yet.</p>}
+      {trips.map((trip, i) => (
+        <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-600">Trip {i + 1}</span>
+            <button type="button" onClick={() => removeTrip(i)} className="text-gray-400 hover:text-red-500 text-sm">✕</button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Date</label>
+              <input type="date" value={trip.date} onChange={(e) => updateTrip(i, 'date', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Time Started</label>
+              <input type="time" value={trip.time} onChange={(e) => updateTrip(i, 'time', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">From</label>
+              <input value={trip.from} onChange={(e) => updateTrip(i, 'from', e.target.value)} placeholder="Origin" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">To</label>
+              <input value={trip.to} onChange={(e) => updateTrip(i, 'to', e.target.value)} placeholder="Destination" className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Purpose</label>
+            <input value={trip.purpose} onChange={(e) => updateTrip(i, 'purpose', e.target.value)} placeholder="Purpose of trip" className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Amount ($)</label>
+              <input type="number" step="0.01" min="0" value={trip.amount} onChange={(e) => updateTrip(i, 'amount', e.target.value)} placeholder="0.00" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Distance (km)</label>
+              <input type="number" step="0.1" min="0" value={trip.distance_km} onChange={(e) => updateTrip(i, 'distance_km', e.target.value)} placeholder="0.0" className={inputCls} />
+            </div>
+          </div>
+        </div>
+      ))}
+      {trips.length < 3 && (
+        <button
+          type="button"
+          onClick={addTrip}
+          className="w-full py-2 rounded-lg border border-dashed border-blue-400 text-blue-600 text-sm font-medium"
+        >
+          + Add Trip
+        </button>
+      )}
+    </div>
+  )
+}
 
 // ─── Error helper ────────────────────────────────────────────────────────────
 
@@ -1447,12 +1523,22 @@ export default function ClaimDetailPage() {
   // Edit mode
   function startEdit() {
     if (!claim) return
+    const existingTrips = (claim.transport_data?.trips ?? []).map((t) => ({
+      from: t.from_location ?? '',
+      to: t.to_location ?? '',
+      purpose: t.purpose ?? '',
+      date: t.date ?? '',
+      time: t.time ?? '',
+      amount: t.amount != null ? String(t.amount) : '',
+      distance_km: t.distance_km != null ? String(t.distance_km) : '',
+    }))
     setEditFields({
       claim_description: claim.claim_description ?? '',
       remarks: claim.remarks ?? '',
       date: claim.date ?? '',
       wbs_account: claim.wbs_account ?? '',
       transport_form_needed: claim.transport_form_needed ?? false,
+      transport_trips: existingTrips,
       is_partial: claim.is_partial ?? false,
       partial_amount: claim.partial_amount != null ? String(claim.partial_amount) : '',
       other_emails: claim.other_emails ?? [],
@@ -1466,8 +1552,8 @@ export default function ClaimDetailPage() {
   }
 
   function handleSave() {
-    // Strip empty strings for enum/date fields to avoid Pydantic 422 errors
-    const { date, wbs_account, is_partial, partial_amount, ...rest } = editFields
+    // Strip enum/date fields and transport_trips (handled separately) to avoid Pydantic 422 errors
+    const { date, wbs_account, is_partial, partial_amount, transport_trips, ...rest } = editFields
     const payload = { id, ...rest }
     if (date) payload.date = date
     if (wbs_account) payload.wbs_account = wbs_account
@@ -1480,6 +1566,21 @@ export default function ClaimDetailPage() {
       payload,
       {
         onSuccess: (data) => {
+          // Save transport trip data if transport form is enabled (fire and forget)
+          if (editFields.transport_form_needed && transport_trips?.length > 0) {
+            submitTransportData({
+              claimId: id,
+              trips: transport_trips.map((t) => ({
+                from_location: t.from,
+                to_location: t.to,
+                purpose: t.purpose,
+                date: t.date || undefined,
+                time: t.time || undefined,
+                amount: t.amount ? Number(t.amount) : 0,
+                distance_km: t.distance_km ? Number(t.distance_km) : undefined,
+              })),
+            }).catch(() => {})
+          }
           setEditMode(false)
           setEditFields({})
           const stale = data?.stale_documents ?? []
@@ -1836,7 +1937,11 @@ export default function ClaimDetailPage() {
                   type="checkbox"
                   checked={editFields.transport_form_needed}
                   onChange={(e) =>
-                    setEditFields((f) => ({ ...f, transport_form_needed: e.target.checked }))
+                    setEditFields((f) => ({
+                      ...f,
+                      transport_form_needed: e.target.checked,
+                      transport_trips: e.target.checked ? (f.transport_trips ?? []) : [],
+                    }))
                   }
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                 />
@@ -1844,6 +1949,12 @@ export default function ClaimDetailPage() {
                   Transport form needed <span className="text-gray-400">(mark this if you are claiming a Grab/Gojek/Tada transport claim)</span>
                 </label>
               </div>
+              {editFields.transport_form_needed && (
+                <TransportTripsInput
+                  trips={editFields.transport_trips ?? []}
+                  onChange={(trips) => setEditFields((f) => ({ ...f, transport_trips: trips }))}
+                />
+              )}
 
               {/* Partial claim */}
               <div className="flex items-center gap-2">

@@ -100,7 +100,10 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
 
     # --- Remarks: user-written portion (strip any stored AUTO block) ---
     raw_remarks = claim.get("remarks") or ""
-    user_remarks = re.sub(r'<!-- AUTO -->.*?<!-- /AUTO -->', '', raw_remarks, flags=re.DOTALL).strip()
+    # Strip AUTO block including surrounding newlines to avoid blank lines in email
+    user_remarks = re.sub(r'\n?<!-- AUTO -->.*?<!-- /AUTO -->\n?', '\n', raw_remarks, flags=re.DOTALL).strip()
+    # Collapse any double-newlines left by AUTO block removal or user input
+    user_remarks = re.sub(r'\n{2,}', '\n', user_remarks)
     # Also strip MF line if it was previously saved in the user portion (now lives in auto block)
     mf_line = "- Claimed from Master Fund"
     if user_remarks.startswith(mf_line):
