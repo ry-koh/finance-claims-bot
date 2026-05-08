@@ -9,6 +9,7 @@ import {
   useUpdateCca,
   useDeleteCca,
 } from '../api/portfolios'
+import { useTeamMembers } from '../api/admin'
 import { IconPencil, IconTrash, IconCheck, IconX, IconPlus } from '../components/Icons'
 
 function extractError(err) {
@@ -73,13 +74,59 @@ function AddForm({ placeholder, onSave, onCancel }) {
 }
 
 // ---------------------------------------------------------------------------
+// Inline delete confirmation panel
+// ---------------------------------------------------------------------------
+function DeleteConfirm({ label, affectedTreasurers, onConfirm, onCancel, isPending }) {
+  return (
+    <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs">
+      <p className="font-medium text-red-700 mb-1">Delete {label}?</p>
+      {affectedTreasurers.length > 0 ? (
+        <>
+          <p className="text-red-600 mb-1">
+            The following treasurer{affectedTreasurers.length !== 1 ? 's' : ''} will be unassigned:
+          </p>
+          <ul className="list-disc list-inside text-red-600 mb-2 space-y-0.5">
+            {affectedTreasurers.map((t) => (
+              <li key={t.id}>{t.name}</li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="text-red-600 mb-2">No treasurers are assigned to this. This cannot be undone.</p>
+      )}
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={onConfirm}
+          disabled={isPending}
+          className="flex-1 py-1 bg-red-600 text-white rounded font-semibold disabled:opacity-50"
+        >
+          {isPending ? 'Deleting…' : 'Delete'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={isPending}
+          className="flex-1 py-1 bg-white border border-gray-200 text-gray-600 rounded"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // CCA row
 // ---------------------------------------------------------------------------
-function CcaRow({ cca, portfolioId }) {
+function CcaRow({ cca, allMembers }) {
   const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState(null)
   const updateCca = useUpdateCca()
   const deleteCca = useDeleteCca()
+
+  const affectedTreasurers = allMembers.filter(
+    (m) => m.role === 'treasurer' && m.ccas?.some((c) => c.id === cca.id)
+  )
 
   const handleSave = async (name) => {
     setError(null)
@@ -92,43 +139,56 @@ function CcaRow({ cca, portfolioId }) {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Delete CCA "${cca.name}"? This cannot be undone.`)) return
     setError(null)
     try {
       await deleteCca.mutateAsync(cca.id)
     } catch (err) {
+      setConfirmingDelete(false)
       setError(extractError(err))
     }
   }
 
   return (
-    <li className="flex items-center gap-2 py-1.5 group">
-      <span className="w-3 shrink-0 text-gray-300">└</span>
-      {editing ? (
-        <InlineEdit value={cca.name} onSave={handleSave} onCancel={() => { setEditing(false); setError(null) }} />
-      ) : (
-        <>
-          <span className="text-sm text-gray-700 flex-1">{cca.name}</span>
-          <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => setEditing(true)}
-              className="text-gray-400 hover:text-blue-600"
-              title="Rename"
-            >
-              <IconPencil />
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleteCca.isPending}
-              className="text-gray-400 hover:text-red-500 disabled:opacity-30"
-              title="Delete"
-            >
-              <IconTrash />
-            </button>
-          </div>
-        </>
+    <li className="py-1.5">
+      <div className="flex items-center gap-2 group">
+        <span className="w-3 shrink-0 text-gray-300">└</span>
+        {editing ? (
+          <InlineEdit value={cca.name} onSave={handleSave} onCancel={() => { setEditing(false); setError(null) }} />
+        ) : (
+          <>
+            <span className="text-sm text-gray-700 flex-1">{cca.name}</span>
+            <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => setEditing(true)}
+                className="text-gray-400 hover:text-blue-600"
+                title="Rename"
+              >
+                <IconPencil />
+              </button>
+              <button
+                onClick={() => { setConfirmingDelete(true); setError(null) }}
+                disabled={deleteCca.isPending}
+                className="text-gray-400 hover:text-red-500 disabled:opacity-30"
+                title="Delete"
+              >
+                <IconTrash />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      {error && <p className="text-xs text-red-500 ml-4 mt-0.5">{error}</p>}
+      {confirmingDelete && (
+        <div className="ml-4">
+          <DeleteConfirm
+            label={`"${cca.name}"`}
+            affectedTreasurers={affectedTreasurers}
+            onConfirm={handleDelete}
+            onCancel={() => setConfirmingDelete(false)}
+            isPending={deleteCca.isPending}
+          />
+        </div>
       )}
-      {error && <p className="text-xs text-red-500 ml-1">{error}</p>}
     </li>
   )
 }
@@ -136,8 +196,9 @@ function CcaRow({ cca, portfolioId }) {
 // ---------------------------------------------------------------------------
 // Portfolio card
 // ---------------------------------------------------------------------------
-function PortfolioCard({ portfolio }) {
+function PortfolioCard({ portfolio, allMembers }) {
   const [editingPortfolio, setEditingPortfolio] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [addingCca, setAddingCca] = useState(false)
   const [portfolioError, setPortfolioError] = useState(null)
   const [ccaError, setCcaError] = useState(null)
@@ -146,6 +207,11 @@ function PortfolioCard({ portfolio }) {
   const updatePortfolio = useUpdatePortfolio()
   const deletePortfolio = useDeletePortfolio()
   const createCca = useCreateCca()
+
+  const ccaIds = new Set(ccas.map((c) => c.id))
+  const affectedTreasurers = allMembers.filter(
+    (m) => m.role === 'treasurer' && m.ccas?.some((c) => ccaIds.has(c.id))
+  )
 
   const handleRenamePortfolio = async (name) => {
     setPortfolioError(null)
@@ -158,11 +224,11 @@ function PortfolioCard({ portfolio }) {
   }
 
   const handleDeletePortfolio = async () => {
-    if (!confirm(`Delete portfolio "${portfolio.name}" and all its CCAs? This cannot be undone.`)) return
     setPortfolioError(null)
     try {
       await deletePortfolio.mutateAsync(portfolio.id)
     } catch (err) {
+      setConfirmingDelete(false)
       setPortfolioError(extractError(err))
     }
   }
@@ -199,7 +265,7 @@ function PortfolioCard({ portfolio }) {
                 <IconPencil />
               </button>
               <button
-                onClick={handleDeletePortfolio}
+                onClick={() => { setConfirmingDelete(true); setPortfolioError(null) }}
                 disabled={deletePortfolio.isPending}
                 className="text-gray-400 hover:text-red-500 disabled:opacity-30"
                 title="Delete portfolio"
@@ -212,13 +278,23 @@ function PortfolioCard({ portfolio }) {
       </div>
       {portfolioError && <p className="text-xs text-red-500 mt-1">{portfolioError}</p>}
 
+      {confirmingDelete && (
+        <DeleteConfirm
+          label={`portfolio "${portfolio.name}" and all its CCAs`}
+          affectedTreasurers={affectedTreasurers}
+          onConfirm={handleDeletePortfolio}
+          onCancel={() => setConfirmingDelete(false)}
+          isPending={deletePortfolio.isPending}
+        />
+      )}
+
       {/* CCA list */}
       {isLoading ? (
         <p className="text-xs text-gray-400 mt-2 pl-4">Loading…</p>
       ) : (
         <ul className="mt-2 pl-2">
           {ccas.map((cca) => (
-            <CcaRow key={cca.id} cca={cca} portfolioId={portfolio.id} />
+            <CcaRow key={cca.id} cca={cca} allMembers={allMembers} />
           ))}
           {ccas.length === 0 && !addingCca && (
             <li className="text-xs text-gray-400 pl-5 py-1">No CCAs</li>
@@ -254,6 +330,7 @@ function PortfolioCard({ portfolio }) {
 // ---------------------------------------------------------------------------
 export default function CcasPage() {
   const { data: portfolios = [], isLoading, isError } = usePortfolios()
+  const { data: allMembers = [] } = useTeamMembers()
   const [addingPortfolio, setAddingPortfolio] = useState(false)
   const [portfolioError, setPortfolioError] = useState(null)
   const createPortfolio = useCreatePortfolio()
@@ -318,7 +395,9 @@ export default function CcasPage() {
             No portfolios yet. Add one above.
           </div>
         ) : (
-          portfolios.map((p) => <PortfolioCard key={p.id} portfolio={p} />)
+          portfolios.map((p) => (
+            <PortfolioCard key={p.id} portfolio={p} allMembers={allMembers} />
+          ))
         )}
       </div>
     </div>
