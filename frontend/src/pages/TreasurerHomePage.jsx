@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useClaims } from '../api/claims'
+import { IconAlertTriangle, IconPaperclip } from '../components/Icons'
 
 const STATUS_LABELS = {
   draft: 'Draft',
@@ -29,6 +30,21 @@ const STATUS_BADGE = {
   attachment_uploaded: 'bg-amber-100 text-amber-800',
   reimbursed: 'bg-teal-100 text-teal-800',
   error: 'bg-red-100 text-red-800',
+}
+
+const STATUS_BORDER = {
+  draft: 'border-l-gray-300',
+  pending_review: 'border-l-amber-400',
+  email_sent: 'border-l-blue-400',
+  screenshot_pending: 'border-l-amber-400',
+  screenshot_uploaded: 'border-l-orange-400',
+  docs_generated: 'border-l-purple-400',
+  compiled: 'border-l-indigo-400',
+  submitted: 'border-l-green-500',
+  attachment_requested: 'border-l-orange-500',
+  attachment_uploaded: 'border-l-blue-500',
+  reimbursed: 'border-l-teal-500',
+  error: 'border-l-red-500',
 }
 
 function formatDate(dateStr) {
@@ -86,16 +102,18 @@ export default function TreasurerHomePage() {
             <button
               key={claim.id}
               onClick={() => navigate(`/claims/${claim.id}`)}
-              className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm p-4 active:bg-gray-50 transition-colors"
+              className={`w-full text-left bg-white rounded-xl border border-gray-100 border-l-4 ${STATUS_BORDER[claim.status] ?? 'border-l-gray-200'} shadow-sm p-4 active:bg-gray-50 transition-colors`}
             >
               {claim.status === 'draft' && claim.rejection_comment && (
                 <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 rounded-lg px-2 py-1 mb-2 font-medium">
-                  ⚠ Action required — tap to view feedback
+                  <IconAlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  Action required — tap to view feedback
                 </div>
               )}
               {claim.status === 'attachment_requested' && (
                 <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 rounded-lg px-2 py-1 mb-2 font-medium">
-                  📎 Action required — additional attachment needed
+                  <IconPaperclip className="w-3.5 h-3.5 shrink-0" />
+                  Action required — additional attachment needed
                 </div>
               )}
               <div className="flex justify-between items-start gap-2 mb-1">

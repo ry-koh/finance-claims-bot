@@ -26,6 +26,7 @@ import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+import { IconChevronLeft } from '../components/Icons'
 
 // ─── Transport trips input ───────────────────────────────────────────────────
 
@@ -1853,7 +1854,7 @@ export default function ClaimDetailPage() {
             className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 active:bg-gray-200 shrink-0"
             aria-label="Back"
           >
-            ←
+            <IconChevronLeft className="w-4 h-4" />
           </button>
 
           <h1 className="flex-1 text-sm font-semibold text-gray-900 truncate">

@@ -1,29 +1,30 @@
 import { NavLink } from 'react-router-dom'
 import { usePendingCount } from '../api/admin'
+import { IconHome, IconPlus, IconBarChart, IconUserCheck, IconMail, IconShield, IconUsers, IconSettings, IconChat } from './Icons'
 
 const NAV_GROUPS = [
   {
     label: 'Claims',
     items: [
-      { to: '/', label: 'Home', icon: '🏠', end: true },
-      { to: '/claims/new', label: 'New Claim', icon: '➕' },
+      { to: '/', label: 'Home', icon: <IconHome />, end: true },
+      { to: '/claims/new', label: 'New Claim', icon: <IconPlus /> },
     ],
   },
   {
     label: 'Admin',
     items: [
-      { to: '/analytics', label: 'Analytics', icon: '📊' },
-      { to: '/pending-registrations', label: 'Approvals', icon: '👤', badge: true },
-      { to: '/help-inbox', label: 'Help Inbox', icon: '📬' },
-      { to: '/team', label: 'Finance Team', icon: '🛡️' },
-      { to: '/cca-treasurers', label: 'CCA Treasurers', icon: '👥' },
-      { to: '/settings', label: 'Settings', icon: '⚙️' },
+      { to: '/analytics', label: 'Analytics', icon: <IconBarChart /> },
+      { to: '/pending-registrations', label: 'Approvals', icon: <IconUserCheck />, badge: true },
+      { to: '/help-inbox', label: 'Help Inbox', icon: <IconMail /> },
+      { to: '/team', label: 'Finance Team', icon: <IconShield /> },
+      { to: '/cca-treasurers', label: 'CCA Treasurers', icon: <IconUsers /> },
+      { to: '/settings', label: 'Settings', icon: <IconSettings /> },
     ],
   },
   {
     label: 'Other',
     items: [
-      { to: '/contact', label: 'Contact', icon: '💬' },
+      { to: '/contact', label: 'Contact', icon: <IconChat /> },
     ],
   },
 ]
@@ -76,7 +77,7 @@ export default function DirectorDrawer({ open, onClose }) {
                     }`
                   }
                 >
-                  <span className="text-lg leading-none">{item.icon}</span>
+                  <span className="w-5 h-5 shrink-0 text-gray-500">{item.icon}</span>
                   <span className="flex-1">{item.label}</span>
                   {item.badge && <PendingBadge />}
                 </NavLink>

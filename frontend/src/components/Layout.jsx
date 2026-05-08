@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useIsDirector, useIsTreasurer } from '../context/AuthContext'
 import { usePendingCount } from '../api/admin'
 import DirectorDrawer from './DirectorDrawer'
+import { IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconMenu } from './Icons'
 
 const PAGE_TITLES = {
   '/': 'Home',
@@ -38,10 +39,10 @@ export default function Layout() {
         <header className="fixed top-0 left-0 right-0 z-20 h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="relative text-2xl text-gray-700 p-1 -ml-1"
+            className="relative text-gray-700 p-1 -ml-1"
             aria-label="Open menu"
           >
-            ☰
+            <IconMenu className="w-5 h-5" />
             {pendingCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
                 {pendingCount > 9 ? '9+' : pendingCount}
@@ -68,29 +69,29 @@ export default function Layout() {
           to="/"
           end
           className={({ isActive }) =>
-            `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+            `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
           }
         >
-          <span className="text-xl">🏠</span>
+          <IconHome className="w-5 h-5" />
           <span>Home</span>
         </NavLink>
         <NavLink
           to="/claims/new"
           className={({ isActive }) =>
-            `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+            `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
           }
         >
-          <span className="text-xl">➕</span>
+          <IconPlus className="w-5 h-5" />
           <span>New Claim</span>
         </NavLink>
         {isTreasurer ? (
           <NavLink
             to="/help"
             className={({ isActive }) =>
-              `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
             }
           >
-            <span className="text-xl">💬</span>
+            <IconHelp className="w-5 h-5" />
             <span>Help</span>
           </NavLink>
         ) : (
@@ -98,28 +99,28 @@ export default function Layout() {
             <NavLink
               to="/identifiers"
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+                `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
               }
             >
-              <span className="text-xl">👥</span>
+              <IconUsers className="w-5 h-5" />
               <span>Identifiers</span>
             </NavLink>
             <NavLink
               to="/contact"
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+                `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
               }
             >
-              <span className="text-xl">💬</span>
+              <IconChat className="w-5 h-5" />
               <span>Contact</span>
             </NavLink>
             <NavLink
               to="/help-inbox"
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+                `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
               }
             >
-              <span className="text-xl">📬</span>
+              <IconMail className="w-5 h-5" />
               <span>Inbox</span>
             </NavLink>
           </>

@@ -23,6 +23,21 @@ const STATUS_BADGE = Object.fromEntries(
 )
 STATUS_BADGE['error'] = 'bg-red-100 text-red-800'
 
+const STATUS_BORDER = {
+  draft: 'border-l-gray-300',
+  pending_review: 'border-l-amber-400',
+  email_sent: 'border-l-blue-400',
+  screenshot_pending: 'border-l-amber-400',
+  screenshot_uploaded: 'border-l-orange-400',
+  docs_generated: 'border-l-purple-400',
+  compiled: 'border-l-indigo-400',
+  submitted: 'border-l-green-500',
+  attachment_requested: 'border-l-orange-500',
+  attachment_uploaded: 'border-l-blue-500',
+  reimbursed: 'border-l-teal-500',
+  error: 'border-l-red-500',
+}
+
 function badgeClasses(status) {
   return STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'
 }
@@ -68,10 +83,11 @@ function SkeletonCard() {
 // A single claim card
 function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
   const statusLabel = STATUSES.find(s => s.value === claim.status)?.label ?? claim.status
+  const borderColor = STATUS_BORDER[claim.status] ?? 'border-l-gray-200'
   return (
     <button
       onClick={selectMode ? onToggle : onClick}
-      className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm p-4 active:bg-gray-50 transition-colors"
+      className={`w-full text-left bg-white rounded-xl border border-gray-100 border-l-4 ${borderColor} shadow-sm p-4 active:bg-gray-50 transition-colors`}
     >
       <div className="flex justify-between items-start gap-2">
         <span className="text-sm font-semibold text-gray-900 break-all leading-tight">
@@ -94,9 +110,12 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
         )}
       </div>
 
-      <p className="text-xs text-gray-500 mt-1 truncate">
+      <p className="text-xs text-gray-500 mt-0.5 truncate">
         {claim.claimer?.name ?? 'Unknown claimer'}
       </p>
+      {claim.claim_description && (
+        <p className="text-xs text-gray-400 truncate">{claim.claim_description}</p>
+      )}
 
       <div className="flex justify-between items-center mt-2">
         <span className="text-sm font-bold text-gray-800">
@@ -305,23 +324,26 @@ export default function HomePage() {
           </>
         )}
 
-        {/* Status filter dropdown */}
+        {/* Status filter pills */}
         {!selectMode && (
-          <div className="mt-2">
-            <select
-              value={activeStatus ?? ''}
-              onChange={e => setActiveStatus(e.target.value === '' ? null : e.target.value)}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
-            >
-              {STATUSES.map(({ label, value }) => {
-                const count = value === null ? allCount : (countsData?.[value] ?? 0)
-                return (
-                  <option key={label} value={value ?? ''}>
-                    {label}{countsData ? ` (${count})` : ''}
-                  </option>
-                )
-              })}
-            </select>
+          <div className="mt-2 -mx-4 px-4 overflow-x-auto flex gap-1.5 pb-1 scrollbar-none">
+            {STATUSES.map(({ label, value }) => {
+              const isActive = activeStatus === value
+              const count = value === null ? allCount : (countsData?.[value] ?? 0)
+              return (
+                <button
+                  key={label}
+                  onClick={() => setActiveStatus(value)}
+                  className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${
+                    isActive
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  {label}{countsData ? ` ${count}` : ''}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
