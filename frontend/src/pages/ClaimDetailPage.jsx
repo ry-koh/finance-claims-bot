@@ -1844,6 +1844,8 @@ export default function ClaimDetailPage() {
   const showErrorBanner = claim.status === 'error' && !errorDismissed
   const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
   const canEdit = !isTreasurer || claim.status === 'draft'
+  // Once finance team takes over (email_sent and beyond), treasurer only sees status + attachment panel
+  const treasurerStatusOnly = isTreasurer && claim.status !== 'draft' && claim.status !== 'pending_review'
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50 pb-6">
@@ -1904,15 +1906,17 @@ export default function ClaimDetailPage() {
               <p className="text-xs text-red-600 mt-0.5">
                 {claim.error_message || 'An error occurred with this claim.'}
               </p>
-              <div className="mt-2">
-                <ActionButton
-                  variant="danger"
-                  onClick={() => handleAction('generate')}
-                  loading={handleAction.loading?.generate}
-                >
-                  Retry: Generate Documents
-                </ActionButton>
-              </div>
+              {!isTreasurer && (
+                <div className="mt-2">
+                  <ActionButton
+                    variant="danger"
+                    onClick={() => handleAction('generate')}
+                    loading={handleAction.loading?.generate}
+                  >
+                    Retry: Generate Documents
+                  </ActionButton>
+                </div>
+              )}
             </div>
             <button
               onClick={() => setErrorDismissed(true)}
@@ -1926,7 +1930,7 @@ export default function ClaimDetailPage() {
 
 
         {/* ── Stale documents warning ── */}
-        {staleDocsWarning && (
+        {staleDocsWarning && !isTreasurer && (
           <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
             <p className="flex-1 text-xs text-amber-700 font-medium">
               Documents are outdated and need to be regenerated.
@@ -2145,7 +2149,7 @@ export default function ClaimDetailPage() {
         </div>
 
         {/* ── MF Approval Screenshot ── */}
-        {claim.wbs_account === 'MF' && (
+        {claim.wbs_account === 'MF' && !isTreasurer && (
           <MfApprovalUpload
             claim={claim}
             onUploaded={() => {
@@ -2184,7 +2188,7 @@ export default function ClaimDetailPage() {
         </div>
 
         {/* ── Bank Transactions ── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        {!treasurerStatusOnly && <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">
               Bank Transactions ({claim.bank_transactions?.length ?? 0})
@@ -2233,10 +2237,10 @@ export default function ClaimDetailPage() {
               <p className="text-xs text-gray-400 text-center py-2">No bank transactions</p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* ── Unlinked Receipts ── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        {!treasurerStatusOnly && <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">
               Unlinked Receipts ({unlinked.length})
@@ -2279,10 +2283,10 @@ export default function ClaimDetailPage() {
               isPartial={claim.is_partial}
             />
           )}
-        </div>
+        </div>}
 
         {/* ── Documents ── */}
-        {claim.documents?.length > 0 && (
+        {!isTreasurer && claim.documents?.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">
               Documents ({claim.documents.length})
