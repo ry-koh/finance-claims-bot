@@ -28,6 +28,12 @@ import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
 import { IconChevronLeft } from '../components/Icons'
 import { getClaimReadiness } from '../utils/claimReadiness'
+import {
+  getTreasurerProgressMessage,
+  getTreasurerStatusKey,
+  getTreasurerStatusMeta,
+  TREASURER_STATUS_META,
+} from '../utils/treasurerStatus'
 import { DEFAULT_MAX_UPLOAD_BYTES } from '../utils/uploadLimits'
 import { friendlyError } from '../utils/errors'
 
@@ -242,11 +248,11 @@ function ReadinessPanel({ claim, isTreasurer }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-700">
-            {isTreasurer ? 'Before Submit' : 'Pre-Review Checks'}
+            {isTreasurer ? 'Claim Health' : 'Pre-Review Checks'}
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {isTreasurer
-              ? 'Fix missing items before sending this to finance.'
+              ? 'Use this to catch missing items before finance review.'
               : 'Use this to catch missing files before the receipt-by-receipt review.'}
           </p>
         </div>
@@ -276,6 +282,66 @@ function ReadinessPanel({ claim, isTreasurer }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function TreasurerProgressPanel({ claim, onAction }) {
+  const statusKey = getTreasurerStatusKey(claim)
+  const meta = getTreasurerStatusMeta(claim)
+  const message = getTreasurerProgressMessage(claim)
+  const readiness = getClaimReadiness(claim)
+  const flow = ['draft', 'in_review', 'awaiting_submission', 'submitted', 'reimbursed']
+  const flowKey = statusKey === 'needs_action' ? 'draft' : statusKey
+  const currentIndex = Math.max(0, flow.indexOf(flowKey))
+
+  return (
+    <div className={`rounded-xl border p-4 ${meta.panel}`}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide opacity-75">Current Status</p>
+          <h2 className="mt-0.5 text-base font-bold">{meta.label}</h2>
+          {message && <p className="mt-1 text-sm opacity-90">{message}</p>}
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${meta.badge}`}>
+          {meta.label}
+        </span>
+      </div>
+
+      <div className="mb-3 grid grid-cols-5 gap-1.5">
+        {flow.map((key, idx) => {
+          const stepMeta = TREASURER_STATUS_META[key]
+          const active = key === flowKey
+          const done = idx < currentIndex
+          return (
+            <div
+              key={key}
+              className={`rounded-lg px-1.5 py-2 text-center text-[10px] font-bold leading-tight ${
+                active
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : done
+                  ? 'bg-white/70 text-gray-500'
+                  : 'bg-white/40 text-gray-400'
+              }`}
+            >
+              {stepMeta.label}
+            </div>
+          )
+        })}
+      </div>
+
+      {claim.status === 'draft' && (
+        <div className="space-y-2">
+          {!readiness.isReady && (
+            <p className="rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-amber-800">
+              You can still submit, but finance may return it. Fix the missing items above if possible.
+            </p>
+          )}
+          <ActionButton onClick={() => onAction('submitForReview')} loading={onAction.loading?.submitForReview}>
+            Submit for Review
+          </ActionButton>
+        </div>
+      )}
     </div>
   )
 }
@@ -2423,7 +2489,11 @@ export default function ClaimDetailPage() {
         {/* ── Status Pipeline ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Progress</h2>
-          <StatusPipeline claim={claim} onAction={handleAction} isTreasurer={isTreasurer} />
+          {isTreasurer ? (
+            <TreasurerProgressPanel claim={claim} onAction={handleAction} />
+          ) : (
+            <StatusPipeline claim={claim} onAction={handleAction} isTreasurer={isTreasurer} />
+          )}
         </div>
 
         <ClaimTimeline events={claimEvents} />

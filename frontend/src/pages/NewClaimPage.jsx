@@ -10,6 +10,7 @@ import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+import { getClaimReadiness } from '../utils/claimReadiness'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1106,10 +1107,80 @@ function BtDraftCard({
 
 // ─── Step 3: Bank Transactions & Receipts ─────────────────────────────────────
 
+function hasDraftFiles(step2, receipts, bankTransactions) {
+  if (step2?.mfApprovalFiles?.length) return true
+  if (receipts.some((r) => r.files?.length || r.fx_screenshot_files?.length)) return true
+  return bankTransactions.some((bt) =>
+    bt.files?.length || (bt.refunds ?? []).some((refund) => refund.files?.length)
+  )
+}
+
+function hadStoredFileCounts(receipts, bankTransactions) {
+  return receipts.some((r) => r.file_count > 0 || r.fx_file_count > 0) ||
+    bankTransactions.some((bt) =>
+      bt.file_count > 0 || (bt.refunds ?? []).some((refund) => refund.file_count > 0)
+    )
+}
+
+function buildDraftClaimForReadiness(claimMeta, receipts, bankTransactions) {
+  return {
+    wbs_account: claimMeta.wbsAccount,
+    mf_approval_drive_ids: claimMeta.mfApprovalFiles?.length ? ['draft-mf-approval'] : [],
+    receipts: receipts.map((receipt) => ({
+      ...receipt,
+      bank_transaction_id: receipt.btLocalId || null,
+      images: receipt.files ?? [],
+      exchange_rate_screenshot_drive_ids: receipt.fx_screenshot_files ?? [],
+    })),
+    bank_transactions: bankTransactions.map((bt) => ({
+      ...bt,
+      id: bt.localId,
+      images: bt.files ?? [],
+      refunds: bt.refunds ?? [],
+    })),
+  }
+}
+
+function DraftClaimHealthPanel({ claimMeta, receipts, bankTransactions }) {
+  const draftClaim = buildDraftClaimForReadiness(claimMeta, receipts, bankTransactions)
+  const readiness = getClaimReadiness(draftClaim)
+
+  return (
+    <div className="ui-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-gray-800">Claim Health</h2>
+          <p className="mt-0.5 text-xs text-gray-500">Fix these before submitting for finance review.</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+          readiness.isReady ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+        }`}>
+          {readiness.isReady ? 'Ready' : `${readiness.missing.length} missing`}
+        </span>
+      </div>
+
+      <div className="space-y-1.5">
+        {readiness.checks.map((check) => (
+          <div key={check.id} className="flex items-start gap-2 text-xs">
+            <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+              check.ok ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              {check.ok ? 'OK' : '!'}
+            </span>
+            <p className={check.ok ? 'text-gray-600' : 'font-medium text-amber-800'}>
+              {check.ok ? check.label : check.issue}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Step3({
   bankTransactions, onAddBt, onRemoveBt, onEditBt,
   receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
-  expandedBtId, onSetExpandedBtId, isTreasurer, isPartial,
+  expandedBtId, onSetExpandedBtId, isTreasurer, isPartial, claimMeta,
 }) {
   const [showBtModal, setShowBtModal] = useState(false)
   const [editingBt, setEditingBt] = useState(null)
@@ -1131,6 +1202,12 @@ function Step3({
 
   return (
     <div className="space-y-4">
+      <DraftClaimHealthPanel
+        claimMeta={claimMeta}
+        receipts={receipts}
+        bankTransactions={bankTransactions}
+      />
+
       {/* BT list */}
       {bankTransactions.length > 0 && (
         <div className="space-y-2">
@@ -1337,6 +1414,8 @@ export default function NewClaimPage() {
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [draftRestored, setDraftRestored] = useState(false)
+  const [restoredFilesMissing, setRestoredFilesMissing] = useState(false)
 
   // Step 1 state
   const [step1, setStep1] = useState(DEFAULT_STEP1)
@@ -1355,12 +1434,22 @@ export default function NewClaimPage() {
       const saved = sessionStorage.getItem(DRAFT_KEY)
       if (saved) {
         const { step: s, step1: s1, step2: s2, receipts: r, bankTransactions: bt, expandedBtId: eid } = JSON.parse(saved)
+        const restoredReceipts = r ? r.map((rec) => ({ ...rec, files: [], fx_screenshot_files: [] })) : []
+        const restoredBts = bt
+          ? bt.map((b) => ({
+              ...b,
+              files: [],
+              refunds: (b.refunds ?? []).map((refund) => ({ ...refund, files: [] })),
+            }))
+          : []
         if (s1) setStep1(s1)
-        if (s2) setStep2(s2)
-        if (r) setReceipts(r.map((rec) => ({ ...rec, files: [], fx_screenshot_files: [] })))
-        if (bt) setBankTransactions(bt.map((b) => ({ files: [], ...b, refunds: (b.refunds ?? []).map((r) => ({ ...r, file: null })) })))
+        if (s2) setStep2({ ...s2, mfApprovalFiles: [] })
+        if (r) setReceipts(restoredReceipts)
+        if (bt) setBankTransactions(restoredBts)
         if (eid) setExpandedBtId(eid)
         if (s) setStep(s)
+        setDraftRestored(true)
+        setRestoredFilesMissing(Boolean(s2?.mf_approval_file_count) || hadStoredFileCounts(restoredReceipts, restoredBts))
       }
     } catch {}
   }, [])
@@ -1370,10 +1459,24 @@ export default function NewClaimPage() {
     try {
       const btsForDraft = bankTransactions.map(({ files: _f, ...bt }) => ({
         ...bt,
-        refunds: (bt.refunds ?? []).map(({ file: _rf, ...r }) => r),
+        file_count: _f?.length || bt.file_count || 0,
+        refunds: (bt.refunds ?? []).map(({ files: _rf, ...r }) => ({
+          ...r,
+          file_count: _rf?.length || r.file_count || 0,
+        })),
       }))
-      const receiptsForDraft = receipts.map(({ files: _f, fx_screenshot_files: _fx, ...r }) => r)
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId }))
+      const receiptsForDraft = receipts.map(({ files: _f, fx_screenshot_files: _fx, ...r }) => ({
+        ...r,
+        file_count: _f?.length || r.file_count || 0,
+        fx_file_count: _fx?.length || r.fx_file_count || 0,
+      }))
+      const { mfApprovalFiles: _mf, ...step2DraftBase } = step2
+      const step2ForDraft = {
+        ...step2DraftBase,
+        mfApprovalFiles: [],
+        mf_approval_file_count: _mf?.length || step2.mf_approval_file_count || 0,
+      }
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2: step2ForDraft, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId }))
     } catch {}
   }, [step, step1, step2, receipts, bankTransactions, expandedBtId])
 
@@ -1390,6 +1493,17 @@ export default function NewClaimPage() {
     ? !!step1.ccaId
     : step1.portfolioId && step1.ccaId && (step1.claimerId || (step1.isOneOff && step1.oneOffName.trim()))
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
+  const hasUnsavedAttachedFiles = hasDraftFiles(step2, receipts, bankTransactions)
+
+  useEffect(() => {
+    if (!hasUnsavedAttachedFiles || savedSuccessfully.current) return undefined
+    const onBeforeUnload = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [hasUnsavedAttachedFiles])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -1399,6 +1513,16 @@ export default function NewClaimPage() {
 
   function updateStep2(patch) {
     setStep2((prev) => ({ ...prev, ...patch }))
+  }
+
+  function confirmLeaveWithFiles() {
+    if (!hasUnsavedAttachedFiles || savedSuccessfully.current) return true
+    return window.confirm('Attached files are only kept in this browser session until the claim is saved. Leave this form?')
+  }
+
+  function handleExit() {
+    if (!confirmLeaveWithFiles()) return
+    navigate('/')
   }
 
   function addBt(bt) {
@@ -1593,7 +1717,7 @@ export default function NewClaimPage() {
       {/* Header */}
       <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center gap-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={handleExit}
           className="text-gray-500 text-lg leading-none p-1 -ml-1"
         >
           ←
@@ -1604,6 +1728,29 @@ export default function NewClaimPage() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <StepIndicator current={step} />
+
+        {(draftRestored || restoredFilesMissing || hasUnsavedAttachedFiles) && (
+          <div className="mb-4 space-y-2">
+            {draftRestored && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
+                <p className="text-xs font-semibold text-blue-700">Draft restored</p>
+                <p className="mt-0.5 text-xs text-blue-600">Your saved text fields were restored on this device.</p>
+              </div>
+            )}
+            {restoredFilesMissing && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-semibold text-amber-800">Reattach uploaded files</p>
+                <p className="mt-0.5 text-xs text-amber-700">Browsers cannot restore receipt, bank, refund, FX, or MF files after the form reloads.</p>
+              </div>
+            )}
+            {hasUnsavedAttachedFiles && (
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <p className="text-xs font-semibold text-slate-700">Files are held temporarily</p>
+                <p className="mt-0.5 text-xs text-slate-500">Save the claim before closing Telegram or refreshing the page.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {step === 1 && !isTreasurer && <Step1 data={step1} onChange={updateStep1} />}
         {step === 1 && isTreasurer && (
@@ -1628,6 +1775,7 @@ export default function NewClaimPage() {
             onSetExpandedBtId={setExpandedBtId}
             isTreasurer={isTreasurer}
             isPartial={step2.isPartial}
+            claimMeta={step2}
           />
         )}
 
