@@ -94,7 +94,7 @@ async def list_claims(
 ):
     query = (
         db.table("claims")
-        .select("*, claimer:finance_team(id, name)", count="exact")
+        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name)", count="exact")
         .is_("deleted_at", "null")
         .order("created_at", desc=True)
     )
@@ -192,7 +192,7 @@ async def get_claim(
     # Fetch claim (with claimer)
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:finance_team(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
+        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
         .eq("id", claim_id)
         .is_("deleted_at", "null")
         .execute()

@@ -48,7 +48,7 @@ class SendTelegramPayload(BaseModel):
 
 def _get_full_claim(claim_id: str, db) -> dict:
     result = db.table("claims").select(
-        "*, claimer:finance_team(id, name, email, matric_number, phone_number), "
+        "*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), "
         "cca:ccas(name, portfolio:portfolios(name)), "
         "line_items:claim_line_items(*, receipts(*))"
     ).eq("id", claim_id).is_("deleted_at", "null").single().execute()

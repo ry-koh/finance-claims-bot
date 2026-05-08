@@ -31,7 +31,7 @@ async def send_claim_email(
     # 1. Fetch full claim
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:finance_team(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
+        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
         .eq("id", claim_id)
         .single()
         .execute()
@@ -159,7 +159,7 @@ async def resend_claim_email(
     # 1. Fetch full claim
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:finance_team(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
+        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
         .eq("id", claim_id)
         .single()
         .execute()
