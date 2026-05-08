@@ -25,6 +25,7 @@ api.interceptors.response.use(
 
     if (config && method === 'get' && TRANSIENT_STATUSES.has(status) && !config.__retried) {
       config.__retried = true
+      window.dispatchEvent(new CustomEvent('api:retrying', { detail: { status } }))
       await sleep(800)
       return api(config)
     }

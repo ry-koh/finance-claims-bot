@@ -29,6 +29,7 @@ import CroppableThumb from '../components/CroppableThumb'
 import { IconChevronLeft } from '../components/Icons'
 import { getClaimReadiness } from '../utils/claimReadiness'
 import { DEFAULT_MAX_UPLOAD_BYTES } from '../utils/uploadLimits'
+import { friendlyError } from '../utils/errors'
 
 // ─── Transport trips input ───────────────────────────────────────────────────
 
@@ -134,6 +135,8 @@ function TransportTripsInput({ trips, onChange }) {
 // ─── Error helper ────────────────────────────────────────────────────────────
 
 function extractError(err, fallback = 'An error occurred.') {
+  const friendly = friendlyError(err, fallback)
+  if (friendly) return friendly
   const detail = err?.response?.data?.detail
   if (typeof detail === 'string') return detail
   if (Array.isArray(detail) && detail.length > 0) {

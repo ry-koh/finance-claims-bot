@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
 import { useAuth } from './context/AuthContext'
@@ -35,10 +35,10 @@ function LoadingScreen() {
   )
 }
 
-function ErrorScreen({ onRetry }) {
+function ErrorScreen({ onRetry, message }) {
   return (
     <div className="flex flex-col items-center justify-center h-screen gap-4 px-6 text-center">
-      <p className="text-gray-500 text-sm">The server is busy. Please try again in a moment.</p>
+      <p className="text-gray-500 text-sm">{message || 'The server is busy. Please try again in a moment.'}</p>
       <button
         onClick={onRetry}
         className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg active:bg-blue-700"
@@ -51,9 +51,26 @@ function ErrorScreen({ onRetry }) {
 
 export default function App() {
   const { user, retryAuth } = useAuth()
+  const [retryNotice, setRetryNotice] = useState(false)
 
-  if (user === undefined) return <LoadingScreen />
-  if (user.status === 'error') return <ErrorScreen onRetry={retryAuth} />
+  useEffect(() => {
+    const onRetrying = () => {
+      setRetryNotice(true)
+      window.clearTimeout(window.__apiRetryNoticeTimer)
+      window.__apiRetryNoticeTimer = window.setTimeout(() => setRetryNotice(false), 2500)
+    }
+    window.addEventListener('api:retrying', onRetrying)
+    return () => window.removeEventListener('api:retrying', onRetrying)
+  }, [])
+
+  const retryBanner = retryNotice && (
+    <div className="fixed left-4 right-4 top-4 z-50 rounded-xl bg-blue-900 px-4 py-3 text-center text-sm font-medium text-white shadow-lg">
+      Server is waking up. Retrying...
+    </div>
+  )
+
+  if (user === undefined) return <>{retryBanner}<LoadingScreen /></>
+  if (user.status === 'error') return <>{retryBanner}<ErrorScreen onRetry={retryAuth} message={user.message} /></>
   if (!user || user.status === 'unregistered') return <RegistrationPage />
   if (user.status === 'pending') return <PendingApprovalPage />
 
@@ -62,6 +79,7 @@ export default function App() {
 
   return (
     <>
+    {retryBanner}
     <Analytics />
     <Suspense fallback={<LoadingScreen />}>
       <Routes>

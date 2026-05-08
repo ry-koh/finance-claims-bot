@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { getMe } from '../api/auth'
+import { friendlyError } from '../utils/errors'
 
 const AuthContext = createContext(null)
 
@@ -14,7 +15,7 @@ export function AuthProvider({ children }) {
         if (err?.response?.status === 401 && err?.response?.data?.detail === 'unregistered') {
           setUser({ status: 'unregistered' })
         } else {
-          setUser({ status: 'error' })
+          setUser({ status: 'error', message: friendlyError(err, 'Could not load your account.') })
         }
       })
   }, [])

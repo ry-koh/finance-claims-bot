@@ -91,7 +91,7 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
     receipts_resp = (
         db.table("receipts")
         .select(
-            "id, claim_id, bank_transaction_id, receipt_image_drive_id, "
+            "id, claim_id, bank_transaction_id, amount, receipt_image_drive_id, "
             "bank_screenshot_drive_id, is_foreign_currency, "
             "exchange_rate_screenshot_drive_id, exchange_rate_screenshot_drive_ids"
         )
@@ -111,7 +111,7 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
             receipt_id = image["receipt_id"]
             receipt_image_counts[receipt_id] = receipt_image_counts.get(receipt_id, 0) + 1
 
-    bt_resp = db.table("bank_transactions").select("id, claim_id").in_("claim_id", claim_ids).execute()
+    bt_resp = db.table("bank_transactions").select("id, claim_id, amount").in_("claim_id", claim_ids).execute()
     bank_transactions = bt_resp.data or []
     bts_by_claim: dict[str, list[dict]] = {}
     for bt in bank_transactions:
@@ -119,11 +119,16 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
 
     bt_ids = [bt["id"] for bt in bank_transactions]
     bt_image_counts: dict[str, int] = {}
+    refunds_by_bt: dict[str, float] = {}
     if bt_ids:
         bt_image_resp = db.table("bank_transaction_images").select("bank_transaction_id").in_("bank_transaction_id", bt_ids).execute()
         for image in bt_image_resp.data or []:
             bt_id = image["bank_transaction_id"]
             bt_image_counts[bt_id] = bt_image_counts.get(bt_id, 0) + 1
+        refund_resp = db.table("bank_transaction_refunds").select("bank_transaction_id, amount").in_("bank_transaction_id", bt_ids).execute()
+        for refund in refund_resp.data or []:
+            bt_id = refund["bank_transaction_id"]
+            refunds_by_bt[bt_id] = refunds_by_bt.get(bt_id, 0.0) + float(refund.get("amount") or 0)
 
     for claim in claims:
         claim_receipts = receipts_by_claim.get(claim["id"], [])
@@ -131,17 +136,29 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
         missing_receipt_images = 0
         missing_bank_links = 0
         missing_fx = 0
+        receipt_amounts_by_bt: dict[str, float] = {}
 
         for receipt in claim_receipts:
             if not receipt.get("receipt_image_drive_id") and receipt_image_counts.get(receipt["id"], 0) == 0:
                 missing_receipt_images += 1
             if not receipt.get("bank_transaction_id") and not receipt.get("bank_screenshot_drive_id"):
                 missing_bank_links += 1
+            if receipt.get("bank_transaction_id"):
+                bt_id = receipt["bank_transaction_id"]
+                receipt_amounts_by_bt[bt_id] = receipt_amounts_by_bt.get(bt_id, 0.0) + float(receipt.get("amount") or 0)
             fx_ids = receipt.get("exchange_rate_screenshot_drive_ids") or []
             if receipt.get("is_foreign_currency") and not receipt.get("exchange_rate_screenshot_drive_id") and not fx_ids:
                 missing_fx += 1
 
         missing_bt_images = sum(1 for bt in claim_bts if bt_image_counts.get(bt["id"], 0) == 0)
+        amount_mismatches = 0
+        for bt in claim_bts:
+            linked_total = receipt_amounts_by_bt.get(bt["id"])
+            if linked_total is None:
+                continue
+            net_amount = float(bt.get("amount") or 0) - refunds_by_bt.get(bt["id"], 0.0)
+            if abs(linked_total - net_amount) > 0.01:
+                amount_mismatches += 1
         mf_ids = claim.get("mf_approval_drive_ids") or []
         mf_missing = claim.get("wbs_account") == "MF" and not claim.get("mf_approval_drive_id") and not mf_ids
 
@@ -151,6 +168,7 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
             "receipt_missing_bank_link_count": missing_bank_links,
             "bank_transaction_count": len(claim_bts),
             "bank_transaction_missing_images_count": missing_bt_images,
+            "amount_mismatch_count": amount_mismatches,
             "foreign_receipt_missing_fx_count": missing_fx,
             "mf_approval_missing": mf_missing,
         }

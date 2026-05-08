@@ -15,10 +15,15 @@ function computeSummary(claim) {
   let receiptMissingImages = 0
   let receiptMissingBankLink = 0
   let foreignReceiptMissingFx = 0
+  const receiptAmountsByBt = {}
 
   receipts.forEach((receipt) => {
     if (!receipt.receipt_image_drive_id && !hasAny(receipt.images)) receiptMissingImages += 1
     if (!receipt.bank_transaction_id && !receipt.bank_screenshot_drive_id) receiptMissingBankLink += 1
+    if (receipt.bank_transaction_id) {
+      receiptAmountsByBt[receipt.bank_transaction_id] =
+        (receiptAmountsByBt[receipt.bank_transaction_id] ?? 0) + Number(receipt.amount || 0)
+    }
     if (
       receipt.is_foreign_currency &&
       !receipt.exchange_rate_screenshot_drive_id &&
@@ -29,6 +34,13 @@ function computeSummary(claim) {
   })
 
   const bankTransactionMissingImages = bankTransactions.filter((bt) => !hasAny(bt.images)).length
+  const amountMismatchCount = bankTransactions.filter((bt) => {
+    if (receiptAmountsByBt[bt.id] == null) return false
+    const refunds = bt.refunds ?? []
+    const refundTotal = refunds.reduce((sum, ref) => sum + Number(ref.amount || 0), 0)
+    const net = Number(bt.amount || 0) - refundTotal
+    return Math.abs(receiptAmountsByBt[bt.id] - net) > 0.01
+  }).length
   const mfApprovalMissing =
     claim?.wbs_account === 'MF' &&
     !claim?.mf_approval_drive_id &&
@@ -40,6 +52,7 @@ function computeSummary(claim) {
     receipt_missing_bank_link_count: receiptMissingBankLink,
     bank_transaction_count: bankTransactions.length,
     bank_transaction_missing_images_count: bankTransactionMissingImages,
+    amount_mismatch_count: amountMismatchCount,
     foreign_receipt_missing_fx_count: foreignReceiptMissingFx,
     mf_approval_missing: mfApprovalMissing,
   }
@@ -73,6 +86,13 @@ export function getClaimReadiness(claim) {
       label: 'Bank transaction screenshots attached',
       ok: summary.bank_transaction_missing_images_count === 0,
       issue: `${plural(summary.bank_transaction_missing_images_count, 'bank transaction')} missing screenshot`,
+      hidden: summary.bank_transaction_count === 0,
+    },
+    {
+      id: 'amount-mismatch',
+      label: 'Receipt totals match bank transactions',
+      ok: (summary.amount_mismatch_count ?? 0) === 0,
+      issue: `${plural(summary.amount_mismatch_count ?? 0, 'bank transaction')} does not match linked receipt total`,
       hidden: summary.bank_transaction_count === 0,
     },
     {
