@@ -2,6 +2,7 @@ import asyncio
 import uuid as uuid_lib
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel as PydanticBaseModel
@@ -93,7 +94,7 @@ async def list_claims(
 ):
     query = (
         db.table("claims")
-        .select("*, claimer:claimers(id, name)", count="exact")
+        .select("*, claimer:finance_team(id, name)", count="exact")
         .is_("deleted_at", "null")
         .order("created_at", desc=True)
     )
@@ -116,21 +117,20 @@ async def list_claims(
 
     if search and search.strip():
         s = search.strip()
-        # Find claimer IDs whose CCA or portfolio name matches
-        claimer_resp = (
-            db.table("claimers")
-            .select("id, cca:ccas(name, portfolio:portfolios(name))")
+        or_parts = [
+            f"reference_code.ilike.%{s}%",
+            f"one_off_name.ilike.%{s}%",
+        ]
+        ft_resp = (
+            db.table("finance_team")
+            .select("id")
+            .ilike("name", f"%{s}%")
+            .eq("role", "treasurer")
             .execute()
         )
-        q = s.lower()
-        matching_ids = [
-            c["id"] for c in (claimer_resp.data or [])
-            if q in ((c.get("cca") or {}).get("name") or "").lower()
-            or q in (((c.get("cca") or {}).get("portfolio") or {}).get("name") or "").lower()
-        ]
-        or_parts = [f"reference_code.ilike.%{s}%"]
-        if matching_ids:
-            or_parts.append(f"claimer_id.in.({','.join(matching_ids)})")
+        ft_ids = [r["id"] for r in (ft_resp.data or [])]
+        if ft_ids:
+            or_parts.append(f"claimer_id.in.({','.join(ft_ids)})")
         query = query.or_(",".join(or_parts))
 
     if date_from:
@@ -192,7 +192,7 @@ async def get_claim(
     # Fetch claim (with claimer)
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:claimers(*, cca:ccas(*, portfolio:portfolios(*)))")
+        .select("*, claimer:finance_team(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
         .eq("id", claim_id)
         .is_("deleted_at", "null")
         .execute()
@@ -369,17 +369,7 @@ async def create_claim(
         raise HTTPException(status_code=500, detail="Failed to increment document counter")
     counter = counter_resp.data
 
-    # --- Fetch claimer → CCA → portfolio ---
-    claimer_resp = (
-        db.table("claimers")
-        .select("*, cca:ccas(name, portfolio:portfolios(name))")
-        .eq("id", str(payload.claimer_id))
-        .execute()
-    )
-    if not claimer_resp.data:
-        raise HTTPException(status_code=404, detail="Claimer not found")
-    claimer = claimer_resp.data[0]
-
+    # --- Validate claimer ---
     if _member.get("role") == "treasurer":
         if payload.wbs_account == WBSAccount.MBH:
             raise HTTPException(400, "Treasurers cannot select MBH as WBS account")
@@ -390,11 +380,35 @@ async def create_claim(
             .execute()
         )
         allowed_cca_ids = {row["cca_id"] for row in (cca_links.data or [])}
-        if not claimer_resp.data or claimer_resp.data[0].get("cca_id") not in allowed_cca_ids:
-            raise HTTPException(403, "You can only create claims for your own CCA")
+        if str(payload.cca_id) not in allowed_cca_ids:
+            raise HTTPException(403, "You can only create claims for your own CCAs")
+        payload.claimer_id = UUID(_member["id"])
+    else:
+        if payload.claimer_id is None and not payload.one_off_name:
+            raise HTTPException(422, "Provide either claimer_id or one_off_name")
+        if payload.claimer_id is not None:
+            ft_check = (
+                db.table("finance_team")
+                .select("id, role")
+                .eq("id", str(payload.claimer_id))
+                .single()
+                .execute()
+            )
+            if not ft_check.data:
+                raise HTTPException(404, "Claimer not found in finance team")
 
-    cca_name = claimer.get("cca", {}).get("name", "UNKNOWN")
-    portfolio_name = claimer.get("cca", {}).get("portfolio", {}).get("name", "UNKNOWN")
+    # --- Fetch CCA → portfolio for reference code ---
+    cca_resp = (
+        db.table("ccas")
+        .select("name, portfolio:portfolios(name)")
+        .eq("id", str(payload.cca_id))
+        .single()
+        .execute()
+    )
+    if not cca_resp.data:
+        raise HTTPException(404, "CCA not found")
+    cca_name = cca_resp.data["name"]
+    portfolio_name = (cca_resp.data.get("portfolio") or {}).get("name", "UNKNOWN")
 
     reference_code = (
         f"{academic_year}"
@@ -407,7 +421,7 @@ async def create_claim(
     claim_data = {
         "reference_code": reference_code,
         "claim_number": counter,
-        "claimer_id": str(payload.claimer_id),
+        "cca_id": str(payload.cca_id),
         "claim_description": payload.claim_description,
         "total_amount": str(payload.total_amount),
         "date": payload.date.isoformat(),
@@ -417,6 +431,16 @@ async def create_claim(
         "status": ClaimStatus.DRAFT.value,
         "other_emails": payload.other_emails,
     }
+    if payload.claimer_id is not None:
+        claim_data["claimer_id"] = str(payload.claimer_id)
+    if payload.one_off_name:
+        claim_data["one_off_name"] = payload.one_off_name
+    if payload.one_off_matric_no:
+        claim_data["one_off_matric_no"] = payload.one_off_matric_no
+    if payload.one_off_phone:
+        claim_data["one_off_phone"] = payload.one_off_phone
+    if payload.one_off_email:
+        claim_data["one_off_email"] = payload.one_off_email
     if _member.get("role") == "treasurer":
         claim_data["filled_by"] = str(_member["id"])
     elif payload.filled_by is not None:
