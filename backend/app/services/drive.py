@@ -111,6 +111,20 @@ def download_file(file_id: str) -> bytes:
     return fh.getvalue()
 
 
+def get_file_size(file_id: str) -> int:
+    """Return a Drive file's size from metadata without downloading it."""
+    drive = get_drive_service()
+    result = drive.files().get(
+        fileId=file_id,
+        fields="size",
+        supportsAllDrives=True,
+    ).execute()
+    size = result.get("size")
+    if size is None:
+        raise ValueError(f"Drive file has no size metadata: {file_id}")
+    return int(size)
+
+
 def set_public_readable(file_id: str) -> None:
     """Make a Drive file readable by anyone with the link."""
     try:

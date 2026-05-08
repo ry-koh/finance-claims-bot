@@ -33,7 +33,12 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
-def build_claim_email(claim: dict, receipts: list, bank_transactions: list = None) -> MIMEMultipart:
+def build_claim_email(
+    claim: dict,
+    receipts: list,
+    bank_transactions: list = None,
+    finance_director: dict | None = None,
+) -> MIMEMultipart:
     """
     Build a MIMEMultipart email for a claim submission.
 
@@ -56,9 +61,13 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     from app.services import pdf as pdf_service
 
     bank_transactions = bank_transactions or []
+    finance_director = finance_director or {}
 
     claimer = claim.get("claimer") or {}
     cca = claimer.get("cca") or {}
+    fd_name = finance_director.get("name") or "Finance Director"
+    fd_salutation = finance_director.get("salutation") or fd_name
+    fd_email = finance_director.get("email") or "68findirector.rh@gmail.com"
 
     # --- Name / identity fields ---
     first_name = (claimer.get("name") or "").split()[0] if claimer.get("name") else ""
@@ -152,7 +161,7 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
         remarks_section = ""
 
     # --- CC line for copy-paste block (always includes FD; plus any other_emails) ---
-    cc_all = ["68findirector.rh@gmail.com"] + list(cc_reminder_emails)
+    cc_all = [fd_email] + list(cc_reminder_emails)
     cc_line_html = f"<br><strong>CC:</strong> {', '.join(cc_all)}"
 
     # --- HTML body ---
@@ -165,10 +174,10 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     <strong>Subject:</strong> {reference_code}
   </p>
   <hr style="border: none; border-top: 2px solid #000; margin: 20px 0;">
-  <p>Dear Jun Kiat,</p>
+  <p>Dear {fd_salutation},</p>
   <p>Attached is the claims for {claim_description}.</p>
   <p>To whom it may concern,</p>
-  <p>I, {claimer_name_upper}, {claimer_matric_upper}, hereby authorise my treasurer, Jun Kiat, to collect reimbursement on my behalf.</p>
+  <p>I, {claimer_name_upper}, {claimer_matric_upper}, hereby authorise my treasurer, {fd_name}, to collect reimbursement on my behalf.</p>
   <strong>Claims Summary</strong><br>
   <table style="border-collapse: collapse; width: 100%; max-width: 500px;">
     <tr><td style="padding: 6px 10px; border: 1px solid #ccc; background-color: #f5f5f5; font-weight: bold; width: 40%;">CCA</td><td style="padding: 6px 10px; border: 1px solid #ccc;">{cca_name}</td></tr>

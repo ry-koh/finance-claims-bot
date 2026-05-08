@@ -1,4 +1,4 @@
-import { useStorageSummary, useSystemStatus } from '../api/admin'
+import { useBackfillStorageSizes, useStorageSummary, useSystemStatus } from '../api/admin'
 
 function formatBytes(bytes) {
   if (bytes == null) return 'Unknown'
@@ -39,11 +39,11 @@ function Section({ title, children }) {
   )
 }
 
-function ConfigRow({ label, ok }) {
+function ConfigRow({ label, ok, statusLabel }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5">
       <span className="text-sm text-gray-600">{label}</span>
-      <StatusPill ok={ok} />
+      <StatusPill ok={ok} label={statusLabel} />
     </div>
   )
 }
@@ -74,6 +74,7 @@ function ClaimList({ claims }) {
 export default function SystemStatusPage() {
   const { data, isLoading, isError, refetch } = useSystemStatus()
   const { data: storage } = useStorageSummary()
+  const backfillMut = useBackfillStorageSizes()
 
   if (isLoading) {
     return (
@@ -98,6 +99,9 @@ export default function SystemStatusPage() {
   const limits = data?.limits ?? {}
   const origins = config.allowed_origins ?? []
   const usagePercent = storage?.usage_ratio == null ? null : Math.min(100, storage.usage_ratio * 100)
+  const unknownFileCount = (storage?.sources ?? []).reduce((sum, source) => (
+    sum + (source.unknown_file_count || 0)
+  ), 0)
 
   return (
     <div className="min-h-full bg-gray-50 p-4">
@@ -113,10 +117,19 @@ export default function SystemStatusPage() {
         <Section title="Core Services">
           <ConfigRow label="Supabase" ok={data?.database?.status === 'ok'} />
           <ConfigRow label="Telegram bot token" ok={config.telegram_bot_token_set} />
-          <ConfigRow label="Webhook secret" ok={config.telegram_webhook_secret_set} />
+          <ConfigRow
+            label="Webhook secret"
+            ok={config.telegram_webhook_secret_set}
+            statusLabel={config.telegram_webhook_secret_explicit ? 'Explicit' : 'Fallback'}
+          />
           <ConfigRow label="Google Drive" ok={config.drive_refresh_token_set && config.google_drive_parent_folder_set} />
           <ConfigRow label="Gmail" ok={config.gmail_refresh_token_set} />
           <ConfigRow label="Cloudflare R2" ok={config.r2_config_set} />
+          {!config.telegram_webhook_secret_explicit && config.telegram_webhook_secret_set && (
+            <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              Fallback is active. Set TELEGRAM_WEBHOOK_SECRET_TOKEN in GitHub Actions and Cloud Run only if you want an explicit secret.
+            </p>
+          )}
         </Section>
 
         <Section title="Frontend Origins">
@@ -180,7 +193,28 @@ export default function SystemStatusPage() {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-xs text-gray-400">Older files may show as unknown until they are replaced or backfilled.</p>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-400">
+              Older files may show as unknown until metadata is backfilled.
+            </p>
+            <button
+              type="button"
+              disabled={!unknownFileCount || backfillMut.isPending}
+              onClick={() => backfillMut.mutate({ limit: 50 })}
+              className="shrink-0 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-40"
+            >
+              {backfillMut.isPending ? 'Backfilling...' : 'Backfill sizes'}
+            </button>
+          </div>
+          {backfillMut.data && (
+            <p className="mt-2 text-xs text-gray-500">
+              Backfilled {backfillMut.data.updated} file row{backfillMut.data.updated === 1 ? '' : 's'}
+              {backfillMut.data.failed ? `, ${backfillMut.data.failed} failed` : ''}.
+            </p>
+          )}
+          {backfillMut.isError && (
+            <p className="mt-2 text-xs text-red-500">Backfill failed. Check the backend logs and storage credentials.</p>
+          )}
         </Section>
 
         <Section title="Stuck Generation Locks">

@@ -6,19 +6,23 @@ export default function SettingsPage() {
   const updateMutation = useUpdateSettings()
 
   const [academicYear, setAcademicYear] = useState('')
+  const [accountName, setAccountName] = useState('')
   const [fdName, setFdName] = useState('')
   const [fdPhone, setFdPhone] = useState('')
   const [fdMatricNo, setFdMatricNo] = useState('')
   const [fdEmail, setFdEmail] = useState('')
+  const [fdSalutation, setFdSalutation] = useState('')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (data) {
       setAcademicYear(data.academic_year || '')
+      setAccountName(data.account_name || '')
       setFdName(data.fd_name || '')
       setFdPhone(data.fd_phone || '')
       setFdMatricNo(data.fd_matric_no || '')
       setFdEmail(data.fd_email || '')
+      setFdSalutation(data.fd_salutation || '')
     }
   }, [data])
 
@@ -27,10 +31,12 @@ export default function SettingsPage() {
     updateMutation.mutate(
       {
         academic_year: academicYear,
+        account_name: accountName,
         fd_name: fdName,
         fd_phone: fdPhone,
         fd_matric_no: fdMatricNo,
         fd_email: fdEmail,
+        fd_salutation: fdSalutation,
       },
       {
         onSuccess: () => {
@@ -70,14 +76,30 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Finance Director Profile</h2>
-          <p className="text-xs text-gray-400 mb-3">Used in generated documents (Summary, RFP, Transport form)</p>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Your App Identity</h2>
+          <p className="text-xs text-gray-400 mb-3">Used for audit timeline names and your director account identity.</p>
+          <label className="block text-xs text-gray-500 mb-1">Your Name</label>
+          <input
+            type="text"
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value)}
+            placeholder="e.g. Ryan Koh Jun Hao"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Document & Email Finance Director</h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Used in generated documents and confirmation emails. This can stay as the previous Finance Director until your handover is complete.
+          </p>
           <div className="space-y-3">
             {[
-              { label: 'Full Name', value: fdName, set: setFdName, type: 'text', placeholder: 'e.g. Tan Wei Ming' },
+              { label: 'Full Name', value: fdName, set: setFdName, type: 'text', placeholder: 'e.g. Goh Jun Kiat' },
+              { label: 'Email Salutation', value: fdSalutation, set: setFdSalutation, type: 'text', placeholder: 'e.g. Jun Kiat' },
               { label: 'Phone Number', value: fdPhone, set: setFdPhone, type: 'text', placeholder: 'e.g. 91234567' },
               { label: 'Matric Number', value: fdMatricNo, set: setFdMatricNo, type: 'text', placeholder: 'e.g. A0123456B' },
-              { label: 'Personal Email', value: fdEmail, set: setFdEmail, type: 'email', placeholder: 'e.g. weiming@example.com' },
+              { label: 'Personal Email / CC Email', value: fdEmail, set: setFdEmail, type: 'email', placeholder: 'e.g. 68findirector.rh@gmail.com' },
             ].map(({ label, value, set, type, placeholder }) => (
               <div key={label}>
                 <label className="block text-xs text-gray-500 mb-1">{label}</label>

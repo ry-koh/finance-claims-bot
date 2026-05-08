@@ -8,6 +8,7 @@ from typing import Optional
 from app.database import get_supabase
 from app.auth import get_claim_for_member, require_auth, require_finance_team
 from app.services import r2 as r2_service
+from app.services.app_settings import get_document_finance_director
 from app.services.events import log_claim_event
 from app.services.storage import insert_file_row
 from app.config import settings
@@ -72,6 +73,13 @@ def _get_full_claim(claim_id: str, db) -> dict:
 
 
 def _get_finance_director(db) -> dict:
+    fd = get_document_finance_director(db)
+    if not any(fd.get(k) for k in ("name", "matric_no", "phone", "email")):
+        raise HTTPException(500, "No document Finance Director profile configured. Update it in Settings.")
+    return fd
+
+
+def _get_finance_director_legacy(db) -> dict:
     result = (
         db.table("finance_team")
         .select("name,email,matric_number,phone_number")

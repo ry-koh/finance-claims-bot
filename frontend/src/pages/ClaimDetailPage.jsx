@@ -1838,7 +1838,23 @@ export default function ClaimDetailPage() {
     if (Object.values(loadingMap).some(Boolean)) return
     setActionError(null)
 
-    const errHandler = (err) => setActionError(extractError(err, 'Action failed. Please try again.'))
+    const errHandler = (err) => {
+      const detail = err?.response?.data?.detail
+      const isProcessing =
+        err?.response?.status === 409 &&
+        typeof detail === 'string' &&
+        (detail.includes('already in progress') || detail.includes('Processing already in progress'))
+
+      if (isProcessing) {
+        queryClient.setQueryData(CLAIM_KEYS.detail(id), (old) =>
+          old ? { ...old, error_message: '__generating__' } : old
+        )
+        invalidateClaim()
+        return
+      }
+
+      setActionError(extractError(err, 'Action failed. Please try again.'))
+    }
 
     if (type === 'submitForReview') {
       submitForReviewMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
@@ -2104,11 +2120,12 @@ export default function ClaimDetailPage() {
       <div className="px-4 pt-3 flex flex-col gap-4">
         {/* ── Generating banner — shown while docs are being built server-side ── */}
         {claim.error_message === '__generating__' && (
-          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+          <div className="sticky top-[4.25rem] z-10 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-sm">
             <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-blue-700">Your claim is being processed</p>
-              <p className="text-xs text-blue-600">The finance team is preparing your claim documents. This usually takes 1–2 minutes — you don't need to do anything. This page will refresh automatically.</p>
+              <p className="text-xs text-blue-600">The finance team is preparing your claim documents. This usually takes 1-2 minutes. This page will refresh automatically.</p>
+              <LoadingBar className="mt-2 min-w-0" />
             </div>
           </div>
         )}

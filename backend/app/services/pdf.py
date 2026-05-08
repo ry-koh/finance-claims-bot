@@ -46,6 +46,17 @@ def download_drive_file(file_id: str) -> bytes:
         raise ValueError(f"Could not download Drive file {file_id}: {exc}") from exc
 
 
+def get_drive_file_size(file_id: str) -> int:
+    """Return a Drive file's byte size using user OAuth credentials."""
+    from googleapiclient.discovery import build
+    drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
+    result = drive_service.files().get(fileId=file_id, fields="size").execute()
+    size = result.get("size")
+    if size is None:
+        raise ValueError(f"Drive file has no size metadata: {file_id}")
+    return int(size)
+
+
 
 def _add_image_page(pdf, drive_id: str, header_label: str) -> None:
     """Download an R2 image and embed it on a new PDF page.

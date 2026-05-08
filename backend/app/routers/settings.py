@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -6,24 +5,35 @@ from pydantic import BaseModel
 
 from app.auth import require_director
 from app.database import get_supabase
+from app.services.app_settings import (
+    DOCUMENT_FD_SETTING_KEYS,
+    get_document_finance_director,
+    get_setting,
+    upsert_setting,
+    upsert_settings,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 class SettingsResponse(BaseModel):
     academic_year: str
+    account_name: str
     fd_name: str
     fd_phone: str
     fd_matric_no: str
     fd_email: str
+    fd_salutation: str
 
 
 class SettingsUpdate(BaseModel):
     academic_year: Optional[str] = None
+    account_name: Optional[str] = None
     fd_name: Optional[str] = None
     fd_phone: Optional[str] = None
     fd_matric_no: Optional[str] = None
     fd_email: Optional[str] = None
+    fd_salutation: Optional[str] = None
 
 
 @router.get("", response_model=SettingsResponse)
@@ -31,27 +41,17 @@ async def get_settings(
     _director: dict = Depends(require_director),
     db=Depends(get_supabase),
 ):
-    try:
-        ay_resp = db.table("app_settings").select("value").eq("key", "academic_year").single().execute()
-        ay = ay_resp.data["value"] if ay_resp.data else ""
-    except Exception:
-        ay = ""
-
-    fd_resp = (
-        db.table("finance_team")
-        .select("name,email,matric_number,phone_number")
-        .eq("role", "director")
-        .limit(1)
-        .execute()
-    )
-    fd = fd_resp.data[0] if fd_resp.data else {}
+    ay = get_setting(db, "academic_year", "")
+    fd = get_document_finance_director(db)
 
     return {
         "academic_year": ay,
+        "account_name": _director.get("name") or "",
         "fd_name": fd.get("name") or "",
-        "fd_phone": fd.get("phone_number") or "",
-        "fd_matric_no": fd.get("matric_number") or "",
+        "fd_phone": fd.get("phone") or "",
+        "fd_matric_no": fd.get("matric_no") or "",
         "fd_email": fd.get("email") or "",
+        "fd_salutation": fd.get("salutation") or "",
     }
 
 
@@ -62,26 +62,23 @@ async def update_settings(
     db=Depends(get_supabase),
 ):
     if payload.academic_year is not None:
-        db.table("app_settings").upsert(
-            {
-                "key": "academic_year",
-                "value": payload.academic_year,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
-            on_conflict="key",
-        ).execute()
+        upsert_setting(db, "academic_year", payload.academic_year)
 
-    fd_update: dict = {}
+    if payload.account_name is not None:
+        db.table("finance_team").update({"name": payload.account_name.strip()}).eq("id", director["id"]).execute()
+
+    fd_settings: dict[str, str] = {}
     if payload.fd_name is not None:
-        fd_update["name"] = payload.fd_name
+        fd_settings[DOCUMENT_FD_SETTING_KEYS["name"]] = payload.fd_name.strip()
     if payload.fd_phone is not None:
-        fd_update["phone_number"] = payload.fd_phone
+        fd_settings[DOCUMENT_FD_SETTING_KEYS["phone"]] = payload.fd_phone.strip()
     if payload.fd_matric_no is not None:
-        fd_update["matric_number"] = payload.fd_matric_no
+        fd_settings[DOCUMENT_FD_SETTING_KEYS["matric_no"]] = payload.fd_matric_no.strip()
     if payload.fd_email is not None:
-        fd_update["email"] = payload.fd_email
+        fd_settings[DOCUMENT_FD_SETTING_KEYS["email"]] = payload.fd_email.strip()
+    if payload.fd_salutation is not None:
+        fd_settings[DOCUMENT_FD_SETTING_KEYS["salutation"]] = payload.fd_salutation.strip()
 
-    if fd_update:
-        db.table("finance_team").update(fd_update).eq("id", director["id"]).execute()
+    upsert_settings(db, fd_settings)
 
     return {"ok": True}

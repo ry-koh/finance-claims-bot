@@ -24,6 +24,9 @@ export const fetchSystemStatus = () =>
 export const fetchStorageSummary = () =>
   api.get('/admin/storage-summary').then((r) => r.data)
 
+export const backfillStorageSizes = ({ limit = 50 } = {}) =>
+  api.post('/admin/storage-summary/backfill', null, { params: { limit } }).then((r) => r.data)
+
 export function usePendingRegistrations() {
   return useQuery({
     queryKey: PENDING_KEYS.all,
@@ -54,6 +57,17 @@ export function useStorageSummary() {
     queryKey: ['admin', 'storage-summary'],
     queryFn: fetchStorageSummary,
     refetchInterval: 60_000,
+  })
+}
+
+export function useBackfillStorageSizes(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: backfillStorageSizes,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'storage-summary'] })
+    },
+    ...options,
   })
 }
 

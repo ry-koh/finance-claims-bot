@@ -34,6 +34,15 @@ def _has_value(value: str | None) -> bool:
     return bool((value or "").strip())
 
 
+STORAGE_SOURCES = [
+    ("receipt_images", "Receipt images", "r2"),
+    ("bank_transaction_images", "Bank transaction images", "r2"),
+    ("bank_transaction_refunds", "Refund images", "r2"),
+    ("claim_attachment_files", "Attachment files", "r2"),
+    ("claim_documents", "Claim documents", "drive"),
+]
+
+
 @router.get("/pending-registrations")
 async def list_pending(
     _director: dict = Depends(require_director),
@@ -122,7 +131,8 @@ async def system_status(
             "mini_app_url_set": _has_value(settings.MINI_APP_URL),
             "allowed_origins": _configured_cors_origins(),
             "telegram_bot_token_set": _has_value(settings.TELEGRAM_BOT_TOKEN),
-            "telegram_webhook_secret_set": _has_value(settings.TELEGRAM_WEBHOOK_SECRET_TOKEN),
+            "telegram_webhook_secret_set": _has_value(settings.telegram_webhook_secret),
+            "telegram_webhook_secret_explicit": _has_value(settings.TELEGRAM_WEBHOOK_SECRET_TOKEN),
             "google_service_account_set": _has_value(settings.GOOGLE_SERVICE_ACCOUNT_JSON),
             "gmail_refresh_token_set": _has_value(settings.GMAIL_REFRESH_TOKEN),
             "drive_refresh_token_set": _has_value(settings.DRIVE_REFRESH_TOKEN),
@@ -164,19 +174,12 @@ async def storage_summary(
     db: Client = Depends(get_supabase),
 ):
     """Estimate tracked storage usage from DB file_size_bytes columns."""
-    sources = [
-        ("receipt_images", "Receipt images", "r2"),
-        ("bank_transaction_images", "Bank transaction images", "r2"),
-        ("bank_transaction_refunds", "Refund images", "r2"),
-        ("claim_attachment_files", "Attachment files", "r2"),
-        ("claim_documents", "Claim documents", "drive"),
-    ]
     rows = []
     total_known = 0
     r2_known = 0
     unknown_sources = []
 
-    for table_name, label, storage_kind in sources:
+    for table_name, label, storage_kind in STORAGE_SOURCES:
         try:
             resp = db.table(table_name).select("file_size_bytes").execute()
             values = [row.get("file_size_bytes") for row in (resp.data or [])]
@@ -212,6 +215,82 @@ async def storage_summary(
         "usage_ratio": r2_known / settings.R2_STORAGE_LIMIT_BYTES if settings.R2_STORAGE_LIMIT_BYTES else None,
         "sources": rows,
         "unknown_sources": unknown_sources,
+    }
+
+
+def _row_file_ids(table_name: str, row: dict) -> list[str]:
+    if table_name == "bank_transaction_refunds":
+        ids = []
+        if row.get("drive_file_id"):
+            ids.append(row["drive_file_id"])
+        ids.extend([fid for fid in (row.get("extra_drive_file_ids") or []) if fid])
+        return ids
+    return [row["drive_file_id"]] if row.get("drive_file_id") else []
+
+
+def _lookup_file_size(file_id: str, storage_kind: str) -> int:
+    if storage_kind == "drive" and "/" not in file_id:
+        from app.services import pdf as pdf_service
+
+        return pdf_service.get_drive_file_size(file_id)
+
+    from app.services import r2 as r2_service
+
+    return r2_service.get_file_size(file_id)
+
+
+@router.post("/storage-summary/backfill")
+async def backfill_storage_sizes(
+    limit: int = Query(default=50, ge=1, le=200),
+    _director: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    """Backfill missing file_size_bytes using R2/Drive metadata only."""
+    updated = 0
+    failed: list[dict] = []
+    remaining = limit
+
+    for table_name, _label, storage_kind in STORAGE_SOURCES:
+        if remaining <= 0:
+            break
+
+        select_cols = "id, drive_file_id, file_size_bytes"
+        if table_name == "bank_transaction_refunds":
+            select_cols = "id, drive_file_id, extra_drive_file_ids, file_size_bytes"
+
+        try:
+            resp = (
+                db.table(table_name)
+                .select(select_cols)
+                .is_("file_size_bytes", "null")
+                .limit(remaining)
+                .execute()
+            )
+        except Exception as exc:
+            failed.append({"table": table_name, "id": None, "error": str(exc)[:180]})
+            continue
+
+        for row in resp.data or []:
+            file_ids = _row_file_ids(table_name, row)
+            if not file_ids:
+                failed.append({"table": table_name, "id": row.get("id"), "error": "No file id stored"})
+                continue
+            try:
+                size = sum(_lookup_file_size(file_id, storage_kind) for file_id in file_ids)
+                db.table(table_name).update({"file_size_bytes": size}).eq("id", row["id"]).execute()
+                updated += 1
+                remaining -= 1
+            except Exception as exc:
+                failed.append({"table": table_name, "id": row.get("id"), "error": str(exc)[:180]})
+
+            if remaining <= 0:
+                break
+
+    return {
+        "updated": updated,
+        "failed": len(failed),
+        "failures": failed[:10],
+        "limit": limit,
     }
 
 

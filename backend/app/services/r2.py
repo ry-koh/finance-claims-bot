@@ -104,6 +104,21 @@ def download_file(object_name: str) -> bytes:
         raise
 
 
+def get_file_size(object_name: str) -> int:
+    """Return an R2 object's size using metadata only."""
+    from botocore.exceptions import ClientError
+    client = _get_client()
+    try:
+        response = client.head_object(Bucket=settings.R2_BUCKET_NAME, Key=object_name)
+        return int(response.get("ContentLength") or 0)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "NoSuchKey":
+            raise ValueError(f"R2 object not found: {object_name}")
+        logger.exception("R2 head failed for %s: %s", object_name, exc)
+        raise
+
+
 def make_object_name(reference_code: str, file_type: str, timestamp: str) -> str:
     """Build the R2 object name: {reference_code}/receipts/{file_type}_{timestamp}.jpg"""
     return f"{reference_code}/receipts/{file_type}_{timestamp}.jpg"
