@@ -118,31 +118,6 @@ class FinanceTeamMemberUpdate(BaseModel):
 
 # ---------------------------------------------------------------------------
 
-class Claimer(BaseModel):
-    id: UUID
-    cca_id: UUID
-    name: str
-    matric_no: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-
-
-class ClaimerCreate(BaseModel):
-    cca_id: UUID
-    name: str
-    matric_no: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-
-
-class ClaimerUpdate(BaseModel):
-    cca_id: Optional[UUID] = None
-    name: Optional[str] = None
-    matric_no: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-
-
 # ---------------------------------------------------------------------------
 
 class ClaimLineItem(BaseModel):
@@ -246,7 +221,12 @@ class Claim(BaseModel):
     id: UUID
     reference_code: Optional[str] = None
     claim_number: Optional[int] = None
-    claimer_id: UUID
+    claimer_id: Optional[UUID] = None
+    cca_id: Optional[UUID] = None
+    one_off_name: Optional[str] = None
+    one_off_matric_no: Optional[str] = None
+    one_off_phone: Optional[str] = None
+    one_off_email: Optional[str] = None
     filled_by: Optional[UUID] = None
     processed_by: Optional[UUID] = None
     claim_description: str
@@ -265,7 +245,12 @@ class Claim(BaseModel):
 
 
 class ClaimCreate(BaseModel):
-    claimer_id: UUID
+    cca_id: UUID
+    claimer_id: Optional[UUID] = None
+    one_off_name: Optional[str] = None
+    one_off_matric_no: Optional[str] = None
+    one_off_phone: Optional[str] = None
+    one_off_email: Optional[str] = None
     filled_by: Optional[UUID] = None
     claim_description: str
     total_amount: Decimal
@@ -281,6 +266,11 @@ class ClaimCreate(BaseModel):
 
 class ClaimUpdate(BaseModel):
     claimer_id: Optional[UUID] = None
+    cca_id: Optional[UUID] = None
+    one_off_name: Optional[str] = None
+    one_off_matric_no: Optional[str] = None
+    one_off_phone: Optional[str] = None
+    one_off_email: Optional[str] = None
     filled_by: Optional[UUID] = None
     processed_by: Optional[UUID] = None
     claim_description: Optional[str] = None
@@ -296,8 +286,6 @@ class ClaimUpdate(BaseModel):
     is_partial: Optional[bool] = None
     partial_amount: Optional[Decimal] = None
     mf_approval_drive_id: Optional[str] = None
-    # Optimistic concurrency: if provided, the update is rejected with 409
-    # if the claim was modified by someone else since the client last fetched it.
     client_updated_at: Optional[str] = None
 
 
