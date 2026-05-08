@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import bot, claimers, claims, documents, email as email_router, images as images_router, portfolios, receipts
+from app.routers import bot, claims, documents, email as email_router, images as images_router, portfolios, receipts
 from app.routers import bank_transactions as bank_transactions_router
 from app.routers import registration as registration_router
 from app.routers import admin as admin_router
@@ -95,7 +95,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ---------------------------------------------------------------------------
 
 app.include_router(claims.router)
-app.include_router(claimers.router)
 app.include_router(receipts.router)
 app.include_router(documents.router)
 app.include_router(portfolios.router)
