@@ -31,7 +31,7 @@ async def send_claim_email(
     # 1. Fetch full claim
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:claimers(*, cca:ccas(*))")
+        .select("*, claimer:finance_team(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
         .eq("id", claim_id)
         .single()
         .execute()
@@ -56,14 +56,25 @@ async def send_claim_email(
         .execute()
     )
 
-    # 4. Validate claimer email
-    claimer = claim.get("claimer") or {}
-    claimer_email = claimer.get("email") or ""
+    # 4. Validate claimer email and normalize claimer shape
+    raw_claimer = claim.get("claimer") or {}
+    claimer_email = (
+        claim.get("one_off_email")
+        or raw_claimer.get("email")
+        or ""
+    )
     if not claimer_email:
         raise HTTPException(
             status_code=400,
             detail="Claimer does not have an email address",
         )
+    claim["claimer"] = {
+        "name": claim.get("one_off_name") or raw_claimer.get("name") or "",
+        "matric_no": claim.get("one_off_matric_no") or raw_claimer.get("matric_number") or "",
+        "phone": claim.get("one_off_phone") or raw_claimer.get("phone_number") or "",
+        "email": claimer_email,
+        "cca": claim.get("cca") or {},
+    }
 
     # 5. Validate claim status
     allowed_statuses = {"draft", "pending_review", "email_sent"}
@@ -148,7 +159,7 @@ async def resend_claim_email(
     # 1. Fetch full claim
     claim_resp = (
         db.table("claims")
-        .select("*, claimer:claimers(*, cca:ccas(*))")
+        .select("*, claimer:finance_team(id, name, email, matric_number, phone_number), cca:ccas(name, portfolio:portfolios(name))")
         .eq("id", claim_id)
         .single()
         .execute()
@@ -173,14 +184,25 @@ async def resend_claim_email(
         .execute()
     )
 
-    # 4. Validate claimer email
-    claimer = claim.get("claimer") or {}
-    claimer_email = claimer.get("email") or ""
+    # 4. Validate claimer email and normalize claimer shape
+    raw_claimer = claim.get("claimer") or {}
+    claimer_email = (
+        claim.get("one_off_email")
+        or raw_claimer.get("email")
+        or ""
+    )
     if not claimer_email:
         raise HTTPException(
             status_code=400,
             detail="Claimer does not have an email address",
         )
+    claim["claimer"] = {
+        "name": claim.get("one_off_name") or raw_claimer.get("name") or "",
+        "matric_no": claim.get("one_off_matric_no") or raw_claimer.get("matric_number") or "",
+        "phone": claim.get("one_off_phone") or raw_claimer.get("phone_number") or "",
+        "email": claimer_email,
+        "cca": claim.get("cca") or {},
+    }
 
     try:
         # 5. Build email

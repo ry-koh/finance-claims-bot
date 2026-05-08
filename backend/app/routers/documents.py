@@ -48,12 +48,24 @@ class SendTelegramPayload(BaseModel):
 
 def _get_full_claim(claim_id: str, db) -> dict:
     result = db.table("claims").select(
-        "*, claimer:claimers(*, cca:ccas(*, portfolio:portfolios(*))), "
+        "*, claimer:finance_team(id, name, email, matric_number, phone_number), "
+        "cca:ccas(name, portfolio:portfolios(name)), "
         "line_items:claim_line_items(*, receipts(*))"
     ).eq("id", claim_id).is_("deleted_at", "null").single().execute()
     if not result.data:
         raise HTTPException(404, "Claim not found")
-    return result.data
+    claim = result.data
+    # Normalize claimer to the shape expected by pdf/gmail services:
+    # {name, matric_no, phone, email, cca: {name, portfolio: {name}}}
+    raw_claimer = claim.get("claimer") or {}
+    claim["claimer"] = {
+        "name": claim.get("one_off_name") or raw_claimer.get("name") or "",
+        "matric_no": claim.get("one_off_matric_no") or raw_claimer.get("matric_number") or "",
+        "phone": claim.get("one_off_phone") or raw_claimer.get("phone_number") or "",
+        "email": claim.get("one_off_email") or raw_claimer.get("email") or "",
+        "cca": claim.get("cca") or {},
+    }
+    return claim
 
 
 def _get_finance_director(db) -> dict:
