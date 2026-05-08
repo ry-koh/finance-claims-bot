@@ -2145,13 +2145,13 @@ export default function ClaimDetailPage() {
   const canEdit = !isTreasurer || claim.status === 'draft'
 
   return (
-    <div className="flex flex-col min-h-full bg-gray-50 pb-6">
+    <div className="mobile-page flex min-h-full flex-col pb-6">
       {/* ── Header ── */}
-      <div className="bg-white px-4 pt-4 pb-3 border-b border-gray-100 sticky top-0 z-20">
-        <div className="flex items-center gap-2">
+      <div className="mobile-header sticky top-0 z-20 border-b px-4 py-3">
+        <div className="mx-auto flex max-w-lg items-center gap-2">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 active:bg-gray-200 shrink-0"
+            className="icon-button"
             aria-label="Back"
           >
             <IconChevronLeft className="w-4 h-4" />
@@ -2183,7 +2183,7 @@ export default function ClaimDetailPage() {
         </div>
       </div>
 
-      <div className="px-4 pt-3 flex flex-col gap-4">
+      <div className="mobile-content flex flex-col gap-4">
         {/* ── Generating banner — shown while docs are being built server-side ── */}
         {claim.error_message === '__generating__' && (
           <div className="sticky top-[4.25rem] z-10 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-sm">

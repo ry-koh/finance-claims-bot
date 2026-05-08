@@ -171,7 +171,7 @@ table {
 
 .ui-card {
   border: 1px solid var(--color-border);
-  border-radius: 0.875rem;
+  border-radius: 0.5rem;
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
@@ -277,6 +277,110 @@ table {
   margin-top: 0.25rem;
   color: var(--color-muted);
   font-size: 0.75rem;
+}
+
+.mobile-page {
+  min-height: 100%;
+  background:
+    var(--app-bg-pattern),
+    var(--color-bg);
+  background-size: var(--app-bg-size), var(--app-bg-size), auto;
+  color: var(--color-text);
+}
+
+.mobile-content {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 32rem;
+  padding: 1rem;
+}
+
+.mobile-header {
+  background: var(--color-bg-elevated);
+  background: color-mix(in srgb, var(--color-bg-elevated) 88%, transparent);
+  border-color: var(--color-border);
+  backdrop-filter: blur(16px);
+}
+
+.mobile-footer {
+  background: var(--color-bg-elevated);
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+  border-color: var(--color-border);
+  box-shadow: 0 -1px 0 rgba(148, 163, 184, 0.08), 0 -16px 40px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.icon-button {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface-muted);
+  color: var(--color-text-soft);
+}
+
+.stepper-shell {
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  padding: 0.875rem 0.75rem;
+}
+
+.stepper-dot {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stepper-dot-active {
+  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border));
+  background: var(--color-accent);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.stepper-dot-done {
+  border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
+  color: var(--color-success);
+}
+
+.stepper-line {
+  height: 1px;
+  flex: 1;
+  background: var(--color-border);
+}
+
+.stepper-line-done {
+  background: color-mix(in srgb, var(--color-success) 60%, var(--color-border));
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 68%, transparent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  color: var(--color-text);
 }
 
 .scrollbar-none {

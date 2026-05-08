@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
 function PendingBadge({ count }) {
@@ -43,6 +44,15 @@ function ThemeModeToggle() {
 }
 
 export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }) {
+  const { user } = useAuth()
+  const roleLabel = user?.role === 'director'
+    ? 'Finance Director'
+    : user?.role === 'member'
+    ? 'Finance Team'
+    : user?.role === 'treasurer'
+    ? 'CCA Treasurer'
+    : 'Finance Claims'
+
   return (
     <>
       {open && (
@@ -92,35 +102,12 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
 
         <div className="shrink-0 border-t border-gray-100 px-4 py-3 space-y-3">
           <ThemeModeToggle />
-          <div>
-            <p className="text-xs font-semibold text-gray-800">Ryan Koh Jun Hao</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">68th Finance Director, Raffles Hall</p>
-            <div className="flex gap-3 mt-2">
-              <a
-                href="https://linkedin.com/in/ry-koh/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-blue-600 font-medium hover:underline"
-              >
-                LinkedIn
-              </a>
-              <a
-                href="https://t.me/ry_koh"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-blue-500 font-medium hover:underline"
-              >
-                Telegram
-              </a>
-              <a
-                href="https://github.com/ry-koh/finance-claims-bot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-gray-500 font-medium hover:underline"
-              >
-                GitHub
-              </a>
-            </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+            <p className="truncate text-xs font-bold text-gray-800">{user?.name || 'Finance Claims'}</p>
+            <p className="mt-0.5 text-[11px] font-medium text-gray-500">{roleLabel}</p>
+            {user?.email && (
+              <p className="mt-1 truncate text-[11px] text-gray-400">{user.email}</p>
+            )}
           </div>
         </div>
       </div>

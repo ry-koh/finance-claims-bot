@@ -10,6 +10,7 @@ import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+import { IconChevronLeft } from '../components/Icons'
 import { getClaimReadiness } from '../utils/claimReadiness'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -29,27 +30,21 @@ function generateId() {
 function StepIndicator({ current }) {
   const steps = ['Who', 'What', 'Transactions']
   return (
-    <div className="flex items-start justify-center mb-6">
+    <div className="stepper-shell mb-5 flex items-start justify-center">
       {steps.map((label, i) => {
         const step = i + 1
         const active = step === current
         const done = step < current
         return (
           <Fragment key={step}>
-            <div className="flex flex-col items-center w-16">
+            <div className="flex w-20 flex-col items-center">
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                  done
-                    ? 'bg-blue-600 text-white'
-                    : active
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-200'
-                    : 'bg-gray-200 text-gray-500'
-                }`}
+                className={`stepper-dot ${done ? 'stepper-dot-done' : active ? 'stepper-dot-active' : ''}`}
               >
-                {done ? '✓' : step}
+                {done ? 'OK' : step}
               </div>
               <span
-                className={`text-[10px] mt-0.5 font-medium text-center ${
+                className={`mt-1 text-center text-[10px] font-bold uppercase tracking-wide ${
                   active ? 'text-blue-600' : done ? 'text-blue-400' : 'text-gray-400'
                 }`}
               >
@@ -58,7 +53,7 @@ function StepIndicator({ current }) {
             </div>
             {i < steps.length - 1 && (
               <div
-                className={`w-8 h-0.5 mt-3.5 ${done ? 'bg-blue-600' : 'bg-gray-200'}`}
+                className={`stepper-line mt-4 ${done ? 'stepper-line-done' : ''}`}
               />
             )}
           </Fragment>
@@ -1713,20 +1708,27 @@ export default function NewClaimPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="mobile-page flex h-full flex-col">
       {/* Header */}
-      <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center gap-3">
+      <div className="mobile-header border-b px-4 py-3">
+        <div className="mx-auto flex max-w-lg items-center gap-3">
         <button
           onClick={handleExit}
-          className="text-gray-500 text-lg leading-none p-1 -ml-1"
+          className="icon-button -ml-1"
+          aria-label="Back"
         >
-          ←
+          <IconChevronLeft className="h-4 w-4" />
         </button>
-        <h1 className="text-base font-bold text-gray-900">New Claim</h1>
+        <div>
+          <h1 className="text-base font-bold text-gray-900">New Claim</h1>
+          <p className="text-xs font-medium text-gray-500">Guided reimbursement claim setup</p>
+        </div>
+        </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mobile-content">
         <StepIndicator current={step} />
 
         {(draftRestored || restoredFilesMissing || hasUnsavedAttachedFiles) && (
@@ -1784,16 +1786,18 @@ export default function NewClaimPage() {
             <p className="text-sm text-red-700">{saveError}</p>
           </div>
         )}
+        </div>
       </div>
 
       {/* Footer navigation */}
-      <div className="shrink-0 bg-white border-t border-gray-100 px-4 py-3 flex gap-3">
+      <div className="mobile-footer shrink-0 border-t px-4 py-3">
+        <div className="mx-auto flex max-w-lg gap-3">
         {step > 1 && (
           <button
             type="button"
             onClick={() => setStep((s) => s - 1)}
             disabled={saving}
-            className="flex-1 border border-gray-300 text-gray-700 text-sm font-semibold py-2.5 rounded-xl disabled:opacity-60"
+            className="ui-button ui-button-secondary flex-1 disabled:opacity-60"
           >
             Back
           </button>
@@ -1807,7 +1811,7 @@ export default function NewClaimPage() {
               (step === 1 && !step1Valid) ||
               (step === 2 && !step2Valid)
             }
-            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50"
+            className="ui-button ui-button-primary flex-1 disabled:opacity-50"
           >
             Next
           </button>
@@ -1819,7 +1823,7 @@ export default function NewClaimPage() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+              className="ui-button ui-button-primary w-full disabled:opacity-50"
             >
               {saving ? (
                 <>
@@ -1835,6 +1839,7 @@ export default function NewClaimPage() {
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   )
