@@ -539,10 +539,13 @@ async def update_claim(
             .execute()
         )
         if docs_resp.data:
-            stale_document_types = [d["type"] for d in docs_resp.data]
-            stale_ids = [d["id"] for d in docs_resp.data]
-            # Mark them as stale
-            db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
+            # email_screenshot is an uploaded artifact — never mark it stale
+            PRESERVE_TYPES = {"email_screenshot"}
+            stale_docs = [d for d in docs_resp.data if d["type"] not in PRESERVE_TYPES]
+            stale_document_types = [d["type"] for d in stale_docs]
+            stale_ids = [d["id"] for d in stale_docs]
+            if stale_ids:
+                db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
 
     # Perform the update — with optional optimistic concurrency check
     client_ts = payload.client_updated_at
