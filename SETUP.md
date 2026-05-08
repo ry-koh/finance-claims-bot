@@ -166,14 +166,11 @@ Go to your GitHub repo → **Settings** → **Secrets and variables** → **Acti
 | `R2_ACCESS_KEY_ID` | From Step 3 |
 | `R2_SECRET_ACCESS_KEY` | From Step 3 |
 | `R2_BUCKET_NAME` | From Step 3 |
-| `FD_NAME` | Finance Director's full name (e.g. `Jun Kiat`) |
-| `FD_MATRIC_NO` | Finance Director's matric number |
-| `FD_PHONE` | Finance Director's phone number |
-| `FD_EMAIL` | Finance Director's personal email |
-| `ACADEMIC_YEAR` | e.g. `2526` |
 | `ALLOWED_ORIGINS` | `*` |
 
 > `APP_URL` and `MINI_APP_URL` cannot be set yet — you'll add them in Steps 6–8.
+
+> **FD details and academic year** (name, matric number, phone, email, academic year) are configured in-app by the Finance Director via the Settings page after first login — they are not set as environment variables.
 
 ### Trigger the first deploy
 1. Push to `main`:

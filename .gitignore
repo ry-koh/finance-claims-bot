@@ -1,11 +1,13 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
 .env
 venv/
 .venv/
 *.egg-info/
 dist/
+build/
 .pytest_cache/
 
 # Node
@@ -15,8 +17,16 @@ dist/
 .env.local
 .env.*.local
 
-# General
+# Editor / OS
 .DS_Store
 *.log
 .idea/
 .vscode/
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Git worktrees
+.worktrees/
+worktrees/
