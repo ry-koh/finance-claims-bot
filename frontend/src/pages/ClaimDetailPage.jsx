@@ -1249,44 +1249,78 @@ function AttachmentRequestPanel({ claim }) {
 
   // Finance team: "Request Attachment" form shown on submitted claims
   if (status === 'submitted' && isFinanceTeam) {
+    const acceptedRequests = requests.filter((r) => r.status === 'accepted')
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-        <h2 className="text-sm font-semibold text-amber-800 mb-2">
-          Request Additional Attachment
-        </h2>
-        {!showRequestForm ? (
-          <ActionButton variant="warning" onClick={() => setShowRequestForm(true)}>
-            Request Attachment
-          </ActionButton>
-        ) : (
-          <>
-            <textarea
-              className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 mb-3"
-              rows={3}
-              placeholder="Describe what NUS office needs..."
-              value={requestMsg}
-              onChange={(e) => setRequestMsg(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <ActionButton
-                variant="warning"
-                disabled={!requestMsg.trim()}
-                loading={requestAttachment.isPending}
-                onClick={() =>
-                  requestAttachment.mutate(
-                    { message: requestMsg },
-                    { onSuccess: () => { setRequestMsg(''); setShowRequestForm(false) } }
-                  )
-                }
-              >
-                Send Request
-              </ActionButton>
-              <ActionButton variant="secondary" onClick={() => { setShowRequestForm(false); setRequestMsg('') }}>
-                Cancel
-              </ActionButton>
+      <div className="space-y-3">
+        {/* History of accepted attachment requests */}
+        {acceptedRequests.map((req) => (
+          <div key={req.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                Accepted
+              </span>
+              <span className="text-xs text-gray-500">
+                {new Date(req.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
             </div>
-          </>
-        )}
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{req.request_message}</p>
+            {(req.files ?? []).length > 0 && (
+              <ul className="space-y-1">
+                {(req.files ?? []).map((f) => (
+                  <li key={f.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100 text-sm">
+                    <span className="truncate text-gray-800">{f.original_filename}</span>
+                    <button
+                      onClick={() => downloadFile.mutate(f.id, { onSuccess: ({ url }) => window.open(url, '_blank') })}
+                      className="text-blue-600 ml-2 text-xs font-medium active:text-blue-800 shrink-0"
+                    >
+                      Download
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+
+        {/* Request another attachment */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h2 className="text-sm font-semibold text-amber-800 mb-2">
+            Request Additional Attachment
+          </h2>
+          {!showRequestForm ? (
+            <ActionButton variant="warning" onClick={() => setShowRequestForm(true)}>
+              Request Attachment
+            </ActionButton>
+          ) : (
+            <>
+              <textarea
+                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 mb-3"
+                rows={3}
+                placeholder="Describe what NUS office needs..."
+                value={requestMsg}
+                onChange={(e) => setRequestMsg(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <ActionButton
+                  variant="warning"
+                  disabled={!requestMsg.trim()}
+                  loading={requestAttachment.isPending}
+                  onClick={() =>
+                    requestAttachment.mutate(
+                      { message: requestMsg },
+                      { onSuccess: () => { setRequestMsg(''); setShowRequestForm(false) } }
+                    )
+                  }
+                >
+                  Send Request
+                </ActionButton>
+                <ActionButton variant="secondary" onClick={() => { setShowRequestForm(false); setRequestMsg('') }}>
+                  Cancel
+                </ActionButton>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     )
   }
