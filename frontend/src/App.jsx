@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import RegistrationPage from './pages/RegistrationPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
+import { Button, Card } from './components/ui'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const NewClaimPage = lazy(() => import('./pages/NewClaimPage'))
@@ -29,22 +30,25 @@ const SopPage = lazy(() => import('./pages/SopPage'))
 
 function LoadingScreen() {
   return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+    <div className="app-shell flex items-center justify-center h-screen p-4">
+      <Card className="flex w-full max-w-xs flex-col items-center gap-3 p-6">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-semibold text-gray-500">Loading workspace</p>
+      </Card>
     </div>
   )
 }
 
 function ErrorScreen({ onRetry, message }) {
   return (
-    <div className="flex flex-col items-center justify-center h-screen gap-4 px-6 text-center">
-      <p className="text-gray-500 text-sm">{message || 'The server is busy. Please try again in a moment.'}</p>
-      <button
-        onClick={onRetry}
-        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg active:bg-blue-700"
-      >
-        Retry
-      </button>
+    <div className="app-shell flex flex-col items-center justify-center h-screen px-6 text-center">
+      <Card className="w-full max-w-sm p-6">
+        <h1 className="mb-2 text-base font-bold text-gray-900">Connection interrupted</h1>
+        <p className="mb-4 text-gray-500 text-sm">{message || 'The server is busy. Please try again in a moment.'}</p>
+        <Button onClick={onRetry} className="w-full">
+          Retry
+        </Button>
+      </Card>
     </div>
   )
 }

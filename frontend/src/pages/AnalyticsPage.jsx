@@ -98,7 +98,7 @@ function SummaryTable({ groupBy, data }) {
   const portfolioGroups = groupBy === 'cca' ? groupRowsByPortfolio(data.rows) : null
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
@@ -159,7 +159,7 @@ function FundBreakdownTable({ groupBy, data }) {
   const portfolioGroups = isCca ? groupRowsByPortfolio(data.rows) : null
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
@@ -263,64 +263,69 @@ export default function AnalyticsPage() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-lg font-bold text-gray-900 mb-4">Analytics</h1>
-
-      {/* Group-by toggle */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {GROUP_BY_OPTIONS.map(([val, label]) => (
-          <button
-            key={val}
-            type="button"
-            onClick={() => setGroupBy(val)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              groupBy === val
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 active:bg-gray-200'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-4">
+        <h1 className="text-lg font-bold text-gray-900">Analytics</h1>
+        <p className="text-xs text-gray-400">Portfolio, CCA, and fund spend views.</p>
       </div>
 
-      {/* Date filters */}
-      <div className="flex gap-3 mb-3 flex-wrap">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">From</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          />
+      <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        {/* Group-by toggle */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {GROUP_BY_OPTIONS.map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setGroupBy(val)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                groupBy === val
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 active:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">To</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          />
-        </div>
-      </div>
 
-      {/* Status checkboxes */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-5">
-        {ALL_STATUSES.map((s) => (
-          <label
-            key={s}
-            className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer"
-          >
+        {/* Date filters */}
+        <div className="flex gap-3 mb-3 flex-wrap">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">From</label>
             <input
-              type="checkbox"
-              checked={statuses.includes(s)}
-              onChange={() => toggleStatus(s)}
-              className="rounded border-gray-300"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
-            {STATUS_LABELS[s]}
-          </label>
-        ))}
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </div>
+        </div>
+
+        {/* Status checkboxes */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+          {ALL_STATUSES.map((s) => (
+            <label
+              key={s}
+              className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={statuses.includes(s)}
+                onChange={() => toggleStatus(s)}
+                className="rounded border-gray-300"
+              />
+              {STATUS_LABELS[s]}
+            </label>
+          ))}
+        </div>
       </div>
 
       {/* Results */}

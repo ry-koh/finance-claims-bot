@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useTheme } from '../context/ThemeContext'
 
 function PendingBadge({ count }) {
   if (!count) return null
@@ -6,6 +7,38 @@ function PendingBadge({ count }) {
     <span className="ml-auto w-5 h-5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
       {count > 9 ? '9+' : count}
     </span>
+  )
+}
+
+function ThemeModeToggle() {
+  const { mode, resolvedTheme, setMode } = useTheme()
+  const options = [
+    ['system', 'System'],
+    ['light', 'Light'],
+    ['dark', 'Dark'],
+  ]
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Theme</p>
+        <span className="text-[10px] font-semibold text-gray-400">
+          {resolvedTheme === 'dark' ? 'Dark active' : 'Light active'}
+        </span>
+      </div>
+      <div className="theme-toggle" role="group" aria-label="Theme mode">
+        {options.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            data-active={mode === value}
+            onClick={() => setMode(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -20,7 +53,7 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
       )}
 
       <div
-        className={`fixed top-0 left-0 h-full w-3/4 max-w-xs bg-white z-40 shadow-xl transform transition-transform duration-200 flex flex-col ${
+        className={`app-drawer fixed top-0 left-0 h-full w-3/4 max-w-xs z-40 transform transition-transform duration-200 flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -41,14 +74,14 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
                   end={item.end}
                   onClick={onClose}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium mb-0.5 ${
+                    `drawer-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium mb-0.5 ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 active:bg-gray-100'
+                        ? 'drawer-nav-link-active'
+                        : 'active:bg-gray-100'
                     }`
                   }
                 >
-                  <span className="w-5 h-5 shrink-0 text-gray-500">{item.icon}</span>
+                  <span className="w-5 h-5 shrink-0">{item.icon}</span>
                   <span className="flex-1">{item.label}</span>
                   {item.badge && <PendingBadge count={pendingCount} />}
                 </NavLink>
@@ -57,34 +90,37 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
           ))}
         </nav>
 
-        <div className="shrink-0 border-t border-gray-100 px-4 py-3">
-          <p className="text-xs font-semibold text-gray-800">Ryan Koh Jun Hao</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">68th Finance Director, Raffles Hall</p>
-          <div className="flex gap-3 mt-2">
-            <a
-              href="https://linkedin.com/in/ry-koh/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-blue-600 font-medium hover:underline"
-            >
-              LinkedIn
-            </a>
-            <a
-              href="https://t.me/ry_koh"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-blue-500 font-medium hover:underline"
-            >
-              Telegram
-            </a>
-            <a
-              href="https://github.com/ry-koh/finance-claims-bot"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-gray-500 font-medium hover:underline"
-            >
-              GitHub
-            </a>
+        <div className="shrink-0 border-t border-gray-100 px-4 py-3 space-y-3">
+          <ThemeModeToggle />
+          <div>
+            <p className="text-xs font-semibold text-gray-800">Ryan Koh Jun Hao</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">68th Finance Director, Raffles Hall</p>
+            <div className="flex gap-3 mt-2">
+              <a
+                href="https://linkedin.com/in/ry-koh/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-600 font-medium hover:underline"
+              >
+                LinkedIn
+              </a>
+              <a
+                href="https://t.me/ry_koh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-500 font-medium hover:underline"
+              >
+                Telegram
+              </a>
+              <a
+                href="https://github.com/ry-koh/finance-claims-bot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-gray-500 font-medium hover:underline"
+              >
+                GitHub
+              </a>
+            </div>
           </div>
         </div>
       </div>

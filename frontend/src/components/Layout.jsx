@@ -113,11 +113,11 @@ export default function Layout() {
   const navGroups = isDirector ? DIRECTOR_NAV : isTreasurer ? TREASURER_NAV : MEMBER_NAV
 
   return (
-    <div className="flex flex-col h-screen">
-      <header className="fixed top-0 left-0 right-0 z-20 h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
+    <div className="app-shell flex flex-col h-screen">
+      <header className="app-header fixed top-0 left-0 right-0 z-20 h-14 border-b flex items-center px-4 gap-3">
         <button
           onClick={() => setDrawerOpen(true)}
-          className="relative text-gray-700 p-1 -ml-1"
+          className="relative text-gray-700 p-2 -ml-2 rounded-xl active:bg-gray-100"
           aria-label="Open menu"
         >
           <IconMenu className="w-5 h-5" />
@@ -127,9 +127,9 @@ export default function Layout() {
             </span>
           )}
         </button>
-        <span className="font-semibold text-gray-900 text-base">{pageTitle}</span>
+        <span className="app-title font-semibold text-base">{pageTitle}</span>
       </header>
-      <main className="flex-1 overflow-y-auto pt-14">
+      <main className="app-main flex-1 overflow-y-auto pt-14">
         <Outlet />
       </main>
       <AppDrawer

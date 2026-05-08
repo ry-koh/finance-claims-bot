@@ -118,7 +118,7 @@ export default function ImageCropModal({ file, src: srcProp, fileNumber, fileTot
   if (!displaySrc) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
+    <div className="crop-modal fixed inset-0 z-[9999] flex flex-col bg-black">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3">
         <button

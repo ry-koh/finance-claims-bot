@@ -63,17 +63,40 @@ export default function TreasurerHomePage() {
   const navigate = useNavigate()
   const { data, isLoading, isError } = useClaims({ page_size: 200 })
   const claims = data?.items || []
+  const activeCount = claims.filter((claim) => !['submitted', 'reimbursed'].includes(claim.status)).length
+  const actionCount = claims.filter((claim) =>
+    (claim.status === 'draft' && getTreasurerNextStep(claim) && getTreasurerNextStep(claim) !== 'Ready to submit for review') ||
+    claim.status === 'attachment_requested'
+  ).length
+  const reimbursedCount = claims.filter((claim) => claim.status === 'reimbursed').length
 
   return (
     <div className="p-4 max-w-lg mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-lg font-bold text-gray-900">My Claims</h1>
-        <button
-          onClick={() => navigate('/claims/new')}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium"
-        >
-          + New Claim
-        </button>
+      <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">My Claims</h1>
+            <p className="text-xs text-gray-400">Track drafts, review, and reimbursements.</p>
+          </div>
+          <button
+            onClick={() => navigate('/claims/new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium"
+          >
+            + New Claim
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            ['Active', activeCount],
+            ['Action', actionCount],
+            ['Paid', reimbursedCount],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl bg-gray-50 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+              <p className="text-base font-bold text-gray-900 tabular-nums">{value}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (

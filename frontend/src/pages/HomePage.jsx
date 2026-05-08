@@ -246,11 +246,18 @@ export default function HomePage() {
   }, [actionResult])
 
   const allCount = Object.values(countsData ?? {}).reduce((a, b) => a + b, 0)
+  const reviewQueue = (countsData?.pending_review ?? 0) + (countsData?.attachment_uploaded ?? 0)
+  const documentQueue =
+    (countsData?.email_sent ?? 0) +
+    (countsData?.screenshot_pending ?? 0) +
+    (countsData?.screenshot_uploaded ?? 0) +
+    (countsData?.docs_generated ?? 0)
+  const completedCount = (countsData?.submitted ?? 0) + (countsData?.reimbursed ?? 0)
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
       {/* Header */}
-      <div className="bg-white px-4 pt-4 pb-2 border-b border-gray-100">
+      <div className="bg-white px-4 pt-4 pb-3 border-b border-gray-100 shadow-sm">
         {/* Header row */}
         {selectMode ? (
           <div className="space-y-2 mb-2">
@@ -297,32 +304,52 @@ export default function HomePage() {
             )}
           </div>
         ) : (
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-bold text-gray-900">Claims</h1>
-            <div className="flex items-center gap-3">
-              <button
-                disabled={isExporting}
-                onClick={async () => {
-                  setIsExporting(true)
-                  try {
-                    await exportClaims({
-                      status: activeStatus,
-                      search: debouncedSearch.trim() || undefined,
-                      date_from: dateFrom || undefined,
-                      date_to: dateTo || undefined,
-                    })
-                  } finally {
-                    setIsExporting(false)
-                  }
-                }}
-                className="text-sm text-gray-500 font-medium disabled:opacity-40"
-              >
-                {isExporting ? 'Exporting…' : 'Export'}
-              </button>
-              <button onClick={() => setSelectMode(true)}
-                className="text-sm text-blue-600 font-medium">Select</button>
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">Claims</h1>
+                <p className="text-xs text-gray-400">Finance workflow queue</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  disabled={isExporting}
+                  onClick={async () => {
+                    setIsExporting(true)
+                    try {
+                      await exportClaims({
+                        status: activeStatus,
+                        search: debouncedSearch.trim() || undefined,
+                        date_from: dateFrom || undefined,
+                        date_to: dateTo || undefined,
+                      })
+                    } finally {
+                      setIsExporting(false)
+                    }
+                  }}
+                  className="text-sm text-gray-500 font-medium disabled:opacity-40"
+                >
+                  {isExporting ? 'Exporting…' : 'Export'}
+                </button>
+                <button onClick={() => setSelectMode(true)}
+                  className="text-sm text-blue-600 font-medium">Select</button>
+              </div>
             </div>
-          </div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                ['Total', allCount],
+                ['Review', reviewQueue],
+                ['Docs', documentQueue],
+                ['Done', completedCount],
+                ['Errors', countsData?.error ?? 0],
+                ['Compiled', countsData?.compiled ?? 0],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+                  <p className="text-base font-bold text-gray-900 tabular-nums">{value}</p>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {!selectMode && (
