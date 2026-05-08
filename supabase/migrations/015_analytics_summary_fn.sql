@@ -15,9 +15,8 @@ BEGIN
         portfolios.name::text          AS portfolio,
         SUM(c.total_amount)::numeric   AS total
       FROM claims c
-      JOIN claimers    cl  ON cl.id          = c.claimer_id
-      JOIN ccas            ON ccas.id        = cl.cca_id
-      JOIN portfolios      ON portfolios.id  = ccas.portfolio_id
+      JOIN ccas       ON ccas.id       = c.cca_id
+      JOIN portfolios ON portfolios.id = ccas.portfolio_id
       WHERE c.deleted_at IS NULL
         AND (
           p_statuses IS NULL
@@ -36,9 +35,8 @@ BEGIN
         NULL::text                     AS portfolio,
         SUM(c.total_amount)::numeric   AS total
       FROM claims c
-      JOIN claimers    cl  ON cl.id          = c.claimer_id
-      JOIN ccas            ON ccas.id        = cl.cca_id
-      JOIN portfolios      ON portfolios.id  = ccas.portfolio_id
+      JOIN ccas       ON ccas.id       = c.cca_id
+      JOIN portfolios ON portfolios.id = ccas.portfolio_id
       WHERE c.deleted_at IS NULL
         AND (
           p_statuses IS NULL
