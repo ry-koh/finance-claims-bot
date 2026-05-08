@@ -14,12 +14,9 @@ Complete one-time setup. Do steps in order — each depends on the previous.
 
 ### Run the database migrations
 1. In your Supabase project, click **SQL Editor** in the left sidebar → **New query**
-2. Run each file in the `supabase/migrations/` folder in order by pasting its contents and clicking **Run**:
-   - `001_schema.sql`
-   - `002_indexes.sql`
-   - `003_functions.sql`
-   - `004_seed.sql`
-   - `005_transport_data.sql`
+2. Run each file in the `supabase/migrations/` folder **in numerical order** by pasting its contents and clicking **Run**:
+   - `001_schema.sql` through `020_analytics_fund_breakdown_fn.sql`
+   - Full list: `001` `002` `003` `004` `005` `006` `007` `008` `009` `010` `011` `012` `013` `014` `015` `016` `017` `018` `019` `020`
 3. You should see "Success. No rows returned" for each
 
 ### Copy your credentials
@@ -110,7 +107,7 @@ This is a separate token that authorises document generation and storage in Driv
 
 ## Step 3 — Cloudflare R2 (Image Storage)
 
-R2 stores receipt images and bank transaction screenshots uploaded from the UI.
+R2 stores receipt images, bank transaction screenshots, MF approval scans, exchange rate screenshots, and attachment request files uploaded from the UI.
 
 1. Go to [cloudflare.com](https://cloudflare.com) → **R2 Object Storage** → **Create bucket**
 2. Name it (e.g. `finance-claims`) → save the name as `R2_BUCKET_NAME`
