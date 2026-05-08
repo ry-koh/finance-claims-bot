@@ -222,11 +222,12 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 | New Claim | `/claims/new` | All | Multi-step form: claimer → receipts → bank transactions → transport |
 | Claim Detail | `/claims/:id` | All | Full claim view — edit fields, manage receipts/BTs, run pipeline, handle attachment requests |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
-| Identifier Data | `/identifiers` | Director, Member | Manage portfolios, CCAs, claimers |
+| Identifier Data | `/identifiers` | Director, Member | Edit treasurer matric numbers and phone numbers used in claim documents |
 | Contact | `/contact` | Director, Member | Send a message to a CCA treasurer via the Telegram bot |
 | Pending Registrations | `/pending-registrations` | Director | Approve or reject treasurer registrations |
 | Team | `/team` | Director | View and manage active team members |
 | Analytics | `/analytics` | Director | Claims volume by CCA/portfolio/fund with SA+MF breakdown and CSV export |
+| Portfolios & CCAs | `/ccas` | Director | Create, rename, and delete portfolios and CCAs. Deleting shows any linked treasurers who will be unassigned. |
 
 ---
 
