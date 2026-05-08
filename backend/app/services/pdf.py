@@ -377,7 +377,7 @@ def generate_summary(
             },
             {
                 "range": cell("C20"),
-                "values": [[finance_director.get('name', '')]],
+                "values": [[(finance_director.get('name') or '').upper()]],
             },
             {
                 "range": cell("I20"),
