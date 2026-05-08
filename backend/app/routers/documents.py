@@ -9,6 +9,7 @@ from app.database import get_supabase
 from app.auth import require_auth, require_finance_team
 from app.services import r2 as r2_service
 from app.config import settings
+from app.utils.rate_limit import guard
 from telegram import Bot
 from telegram.request import HTTPXRequest
 import io, tempfile, os, time, logging, re
@@ -463,6 +464,7 @@ async def generate_documents(
     _auth=Depends(require_finance_team),
 ):
     """Start document generation in the background. Returns immediately."""
+    guard(f"generate:{claim_id}", max_calls=2, window_seconds=15)
     claim = _get_full_claim(claim_id, db)
     blocked = {"draft", "pending_review"}
     if claim.get("status") in blocked:
@@ -485,6 +487,7 @@ def compile_documents(
     _auth=Depends(require_finance_team),
 ):
     """Merge all current documents into a single compiled PDF."""
+    guard(f"compile:{claim_id}", max_calls=2, window_seconds=15)
     claim = _get_full_claim(claim_id, db)
 
     if claim.get("status") not in ("docs_generated", "screenshot_uploaded", "compiled"):

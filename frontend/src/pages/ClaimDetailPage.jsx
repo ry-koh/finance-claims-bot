@@ -1619,6 +1619,7 @@ export default function ClaimDetailPage() {
 
   // Action dispatcher
   function handleAction(type, payload) {
+    if (Object.values(loadingMap).some(Boolean)) return
     setActionError(null)
 
     const errHandler = (err) => setActionError(extractError(err, 'Action failed. Please try again.'))

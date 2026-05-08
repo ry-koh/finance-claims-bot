@@ -5,6 +5,7 @@ from app.auth import require_finance_team
 from app.routers.bot import send_bot_notification
 from app.services import gmail as gmail_service
 from app.services import pdf as pdf_service
+from app.utils.rate_limit import guard
 
 router = APIRouter(prefix="/email", tags=["email"])
 
@@ -28,6 +29,8 @@ async def send_claim_email(
     - Sends email with receipt image attachments.
     - Updates claim status to 'email_sent'.
     """
+    guard(f"email:{claim_id}", max_calls=2, window_seconds=30)
+
     # 1. Fetch full claim
     claim_resp = (
         db.table("claims")
@@ -156,6 +159,8 @@ async def resend_claim_email(
     Same as /send but allows any claim status (for cases where the claimer
     did not receive the original email).  Does NOT update claim status.
     """
+    guard(f"email:{claim_id}", max_calls=2, window_seconds=30)
+
     # 1. Fetch full claim
     claim_resp = (
         db.table("claims")

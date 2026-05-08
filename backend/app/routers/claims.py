@@ -17,6 +17,7 @@ from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
 from app.routers.bot import send_bot_notification
 from app.services import r2 as r2_service
+from app.utils.rate_limit import guard
 
 
 class BulkStatusUpdate(PydanticBaseModel):
@@ -733,6 +734,7 @@ async def submit_for_review(
     db: Client = Depends(get_supabase),
 ):
     """Treasurer moves their DRAFT claim to PENDING_REVIEW."""
+    guard(f"submit-review:{claim_id}", max_calls=2, window_seconds=15)
     if member.get("role") != "treasurer":
         raise HTTPException(403, "Only treasurers can submit for review")
     claim = _get_claim_or_404(db, claim_id)
@@ -791,6 +793,7 @@ async def mark_submitted(
     db: Client = Depends(get_supabase),
 ):
     """Mark a compiled claim as submitted to school finance."""
+    guard(f"submit:{claim_id}", max_calls=2, window_seconds=15)
     resp = db.table("claims").update({"status": "submitted"}).eq("id", claim_id).eq("status", "compiled").execute()
     if not resp.data:
         raise HTTPException(409, "Claim is not in compiled status")
@@ -818,6 +821,7 @@ async def mark_reimbursed(
     db: Client = Depends(get_supabase),
 ):
     """Mark a submitted claim as reimbursed."""
+    guard(f"reimburse:{claim_id}", max_calls=2, window_seconds=15)
     resp = db.table("claims").update({"status": "reimbursed"}).eq("id", claim_id).eq("status", "submitted").execute()
     if not resp.data:
         raise HTTPException(409, "Claim is not in submitted status")

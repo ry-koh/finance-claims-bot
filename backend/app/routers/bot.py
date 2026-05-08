@@ -4,7 +4,10 @@ from telegram.request import HTTPXRequest
 from app.config import settings
 from app.database import get_supabase
 from app.auth import require_director
+from app.utils.rate_limit import guard, RateLimiter
 import logging
+
+_limiter_bot = RateLimiter()
 
 router = APIRouter(prefix="/bot", tags=["bot"])
 logger = logging.getLogger(__name__)
@@ -332,6 +335,10 @@ async def webhook(request: Request):
 
     if sender_id is None:
         return {"ok": True}
+
+    # Rate limit: 5 commands per 30 seconds per user
+    if not _limiter_bot.is_allowed(f"bot:{sender_id}", 5, 30):
+        return {"ok": True}  # silently drop; avoid spam feedback loop
 
     # Extract command and args; strip bot username suffix (e.g. /start@MyBot)
     parts = text.split()
