@@ -75,9 +75,10 @@ export function useClaim(id) {
     queryKey: CLAIM_KEYS.detail(id),
     queryFn: () => fetchClaim(id),
     enabled: !!id,
-    // Poll every 3s while docs are being generated, 15s otherwise
+    // Only poll during background doc generation; all other updates come via mutation invalidations.
+    // Continuous polling causes a race: an in-flight poll can overwrite fresh post-mutation data.
     refetchInterval: (query) =>
-      query.state.data?.error_message === '__generating__' ? 3_000 : 15_000,
+      query.state.data?.error_message === '__generating__' ? 3_000 : false,
   })
 }
 
