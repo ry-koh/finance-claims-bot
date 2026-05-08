@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval } from '../api/documents'
@@ -1354,6 +1354,7 @@ function AttachmentRequestPanel({ claim }) {
 export default function ClaimDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { state: locationState } = useLocation()
   const queryClient = useQueryClient()
 
   // Queries
@@ -1707,6 +1708,23 @@ export default function ClaimDetailPage() {
             >
               ×
             </button>
+          </div>
+        )}
+
+        {/* ── Save warnings from NewClaimPage (image upload failures) ── */}
+        {locationState?.imageWarnings?.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <p className="text-xs font-semibold text-amber-800 mb-1">Claim saved, but some images failed to upload:</p>
+            {locationState.imageWarnings.map((w, i) => (
+              <p key={i} className="text-xs text-amber-700">{w}</p>
+            ))}
+            <p className="text-xs text-amber-600 mt-1">You can add them manually by editing the receipt or bank transaction.</p>
+          </div>
+        )}
+        {locationState?.saveError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+            <p className="text-xs font-semibold text-red-700 mb-1">Claim created but some items may be missing:</p>
+            <p className="text-xs text-red-600">{locationState.saveError}</p>
           </div>
         )}
 

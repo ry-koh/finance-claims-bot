@@ -1449,6 +1449,7 @@ export default function NewClaimPage() {
     setSaveError('')
 
     let claimId = null
+    const imageWarnings = []
 
     try {
       const totalAmount = receipts.reduce((s, r) => s + r.amount, 0)
@@ -1511,7 +1512,13 @@ export default function NewClaimPage() {
         const created = await createBankTransaction({ claimId, amount: bt.amount })
         btIdMap[bt.localId] = created.id
         for (const file of (bt.files ?? [])) {
-          try { await uploadBankTransactionImage({ btId: created.id, file }) } catch {}
+          try {
+            await uploadBankTransactionImage({ btId: created.id, file })
+          } catch (e) {
+            const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
+            imageWarnings.push(`Bank transaction image: ${msg}`)
+            console.error('BT image upload failed:', e)
+          }
         }
         for (const refund of (bt.refunds ?? [])) {
           if (!refund.amount || !refund.files?.length) continue
@@ -1527,8 +1534,10 @@ export default function NewClaimPage() {
           try {
             const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
             driveIds.push(data.drive_file_id)
-          } catch {
-            // Non-fatal: Drive unavailable, continue saving
+          } catch (e) {
+            const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
+            imageWarnings.push(`Receipt image: ${msg}`)
+            console.error('Receipt image upload failed:', e)
           }
         }
         const fxDriveIds = []
@@ -1537,7 +1546,11 @@ export default function NewClaimPage() {
             try {
               const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'exchange_rate' })
               fxDriveIds.push(data.drive_file_id)
-            } catch {}
+            } catch (e) {
+              const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
+              imageWarnings.push(`FX rate image: ${msg}`)
+              console.error('FX image upload failed:', e)
+            }
           }
         }
         await createReceipt.mutateAsync({
@@ -1560,10 +1573,14 @@ export default function NewClaimPage() {
 
       savedSuccessfully.current = true
       sessionStorage.removeItem(DRAFT_KEY)
-      navigate(`/claims/${claimId}`)
+      navigate(`/claims/${claimId}`, {
+        state: imageWarnings.length > 0 ? { imageWarnings } : undefined,
+      })
     } catch (err) {
       if (claimId) {
-        navigate(`/claims/${claimId}`)
+        sessionStorage.removeItem(DRAFT_KEY)
+        const detail = err?.response?.data?.detail || err?.message || 'Some items may not have saved.'
+        navigate(`/claims/${claimId}`, { state: { saveError: detail } })
       } else {
         setSaveError(err?.response?.data?.detail || err?.message || 'Failed to save claim.')
         setSaving(false)
