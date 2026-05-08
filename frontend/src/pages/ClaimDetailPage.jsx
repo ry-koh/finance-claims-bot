@@ -1845,8 +1845,6 @@ export default function ClaimDetailPage() {
   const showErrorBanner = claim.status === 'error' && !errorDismissed
   const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
   const canEdit = !isTreasurer || claim.status === 'draft'
-  // Once finance team takes over (email_sent and beyond), treasurer only sees status + attachment panel
-  const treasurerStatusOnly = isTreasurer && claim.status !== 'draft' && claim.status !== 'pending_review'
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50 pb-6">
@@ -2189,7 +2187,7 @@ export default function ClaimDetailPage() {
         </div>
 
         {/* ── Bank Transactions ── */}
-        {!treasurerStatusOnly && <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">
               Bank Transactions ({claim.bank_transactions?.length ?? 0})
@@ -2238,10 +2236,10 @@ export default function ClaimDetailPage() {
               <p className="text-xs text-gray-400 text-center py-2">No bank transactions</p>
             )}
           </div>
-        </div>}
+        </div>
 
         {/* ── Unlinked Receipts ── */}
-        {!treasurerStatusOnly && <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">
               Unlinked Receipts ({unlinked.length})
@@ -2284,7 +2282,7 @@ export default function ClaimDetailPage() {
               isPartial={claim.is_partial}
             />
           )}
-        </div>}
+        </div>
 
         {/* ── Documents ── */}
         {!isTreasurer && claim.documents?.length > 0 && (
