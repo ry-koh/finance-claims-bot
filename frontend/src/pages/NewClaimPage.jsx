@@ -1321,7 +1321,7 @@ export default function NewClaimPage() {
         const { step: s, step1: s1, step2: s2, receipts: r, bankTransactions: bt, expandedBtId: eid } = JSON.parse(saved)
         if (s1) setStep1(s1)
         if (s2) setStep2(s2)
-        if (r) setReceipts(r.map((rec) => ({ ...rec, files: [], fx_screenshot_file: null })))
+        if (r) setReceipts(r.map((rec) => ({ ...rec, files: [], fx_screenshot_files: [] })))
         if (bt) setBankTransactions(bt.map((b) => ({ files: [], ...b, refunds: (b.refunds ?? []).map((r) => ({ ...r, file: null })) })))
         if (eid) setExpandedBtId(eid)
         if (s) setStep(s)
@@ -1406,12 +1406,12 @@ export default function NewClaimPage() {
 
       // Auto-append remarks for FX receipts and MF approval
       let autoRemarks = step2.remarks.trim()
-      const hasFxReceipt = receipts.some(r => r.is_foreign_currency && r.fx_screenshot_file)
+      const hasFxReceipt = receipts.some(r => r.is_foreign_currency && r.fx_screenshot_files?.length)
       const FX_REMARK = '- Exchange Rate Screenshot is Attached'
       const MF_REMARK = "- Master's Approval Screenshot is attached"
       if (hasFxReceipt && !autoRemarks.includes(FX_REMARK))
         autoRemarks = autoRemarks ? `${autoRemarks}\n${FX_REMARK}` : FX_REMARK
-      if (step2.wbsAccount === 'MF' && step2.mfApprovalFile && !autoRemarks.includes(MF_REMARK))
+      if (step2.wbsAccount === 'MF' && step2.mfApprovalFiles?.length && !autoRemarks.includes(MF_REMARK))
         autoRemarks = autoRemarks ? `${autoRemarks}\n${MF_REMARK}` : MF_REMARK
 
       // 1. Create the claim
