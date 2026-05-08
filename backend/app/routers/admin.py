@@ -142,6 +142,10 @@ async def system_status(
             "max_pdf_pages": settings.MAX_PDF_PAGES,
             "docgen_max_workers": settings.DOCGEN_MAX_WORKERS,
             "r2_storage_limit_bytes": settings.R2_STORAGE_LIMIT_BYTES,
+            "max_receipt_images_per_receipt": settings.MAX_RECEIPT_IMAGES_PER_RECEIPT,
+            "max_bank_images_per_transaction": settings.MAX_BANK_IMAGES_PER_TRANSACTION,
+            "max_refund_files_per_refund": settings.MAX_REFUND_FILES_PER_REFUND,
+            "max_attachment_files_per_request": settings.MAX_ATTACHMENT_FILES_PER_REQUEST,
         },
         "documents": {
             "stuck_generations": stuck_generations,
@@ -151,6 +155,63 @@ async def system_status(
             "error_claims": error_claims,
             "error_claim_count": len(error_claims),
         },
+    }
+
+
+@router.get("/storage-summary")
+async def storage_summary(
+    _director: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    """Estimate tracked storage usage from DB file_size_bytes columns."""
+    sources = [
+        ("receipt_images", "Receipt images", "r2"),
+        ("bank_transaction_images", "Bank transaction images", "r2"),
+        ("bank_transaction_refunds", "Refund images", "r2"),
+        ("claim_attachment_files", "Attachment files", "r2"),
+        ("claim_documents", "Claim documents", "drive"),
+    ]
+    rows = []
+    total_known = 0
+    r2_known = 0
+    unknown_sources = []
+
+    for table_name, label, storage_kind in sources:
+        try:
+            resp = db.table(table_name).select("file_size_bytes").execute()
+            values = [row.get("file_size_bytes") for row in (resp.data or [])]
+            known_values = [int(v) for v in values if v is not None]
+            source_total = sum(known_values)
+            total_known += source_total
+            if storage_kind == "r2":
+                r2_known += source_total
+            unknown_count = len(values) - len(known_values)
+            rows.append({
+                "table": table_name,
+                "label": label,
+                "storage": storage_kind,
+                "known_bytes": source_total,
+                "known_file_count": len(known_values),
+                "unknown_file_count": unknown_count,
+            })
+        except Exception:
+            unknown_sources.append(table_name)
+            rows.append({
+                "table": table_name,
+                "label": label,
+                "storage": storage_kind,
+                "known_bytes": 0,
+                "known_file_count": 0,
+                "unknown_file_count": None,
+            })
+
+    return {
+        "known_bytes": total_known,
+        "r2_known_bytes": r2_known,
+        "limit_bytes": settings.R2_STORAGE_LIMIT_BYTES,
+        "usage_ratio": r2_known / settings.R2_STORAGE_LIMIT_BYTES if settings.R2_STORAGE_LIMIT_BYTES else None,
+        "sources": rows,
+        "unknown_sources": unknown_sources,
     }
 
 

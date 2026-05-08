@@ -148,6 +148,7 @@ CREATE TABLE receipt_images (
   id            uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   receipt_id    uuid NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
   drive_file_id text NOT NULL,
+  file_size_bytes integer,
   created_at    timestamptz DEFAULT now()
 );
 
@@ -155,6 +156,7 @@ CREATE TABLE bank_transaction_images (
   id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   bank_transaction_id uuid NOT NULL REFERENCES bank_transactions(id) ON DELETE CASCADE,
   drive_file_id       text NOT NULL,
+  file_size_bytes     integer,
   created_at          timestamptz DEFAULT now()
 );
 
@@ -164,6 +166,7 @@ CREATE TABLE bank_transaction_refunds (
   amount              decimal(10,2) NOT NULL CHECK (amount > 0),
   drive_file_id       text NOT NULL,
   extra_drive_file_ids text[] DEFAULT '{}',
+  file_size_bytes     integer,
   created_at          timestamptz DEFAULT now()
 );
 
@@ -178,6 +181,7 @@ CREATE TABLE claim_documents (
   )),
   drive_file_id text NOT NULL,
   is_current    boolean NOT NULL DEFAULT true,
+  file_size_bytes integer,
   created_at    timestamptz DEFAULT now()
 );
 
@@ -196,6 +200,7 @@ CREATE TABLE claim_attachment_files (
   request_id        uuid NOT NULL REFERENCES claim_attachment_requests(id) ON DELETE CASCADE,
   file_url          text NOT NULL,
   original_filename text NOT NULL,
+  file_size_bytes   integer,
   uploaded_at       timestamptz NOT NULL DEFAULT now()
 );
 

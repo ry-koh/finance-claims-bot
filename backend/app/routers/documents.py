@@ -9,6 +9,7 @@ from app.database import get_supabase
 from app.auth import get_claim_for_member, require_auth, require_finance_team
 from app.services import r2 as r2_service
 from app.services.events import log_claim_event
+from app.services.storage import insert_file_row
 from app.config import settings
 from app.utils.rate_limit import guard
 from telegram import Bot
@@ -107,12 +108,13 @@ def _save_document(claim_id: str, doc_type: str, pdf_bytes: bytes, filename: str
     from app.services import pdf as pdf_service
     drive_file_id = pdf_service.upload_to_drive(pdf_bytes, filename, folder_id or settings.GOOGLE_DRIVE_PARENT_FOLDER_ID)
     db.table("claim_documents").update({"is_current": False}).eq("claim_id", claim_id).eq("type", doc_type).eq("is_current", True).execute()
-    db.table("claim_documents").insert({
+    insert_file_row(db, "claim_documents", {
         "claim_id": claim_id,
         "type": doc_type,
         "drive_file_id": drive_file_id,
         "is_current": True,
-    }).execute()
+        "file_size_bytes": len(pdf_bytes),
+    })
     return drive_file_id
 
 

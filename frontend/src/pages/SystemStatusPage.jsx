@@ -1,4 +1,4 @@
-import { useSystemStatus } from '../api/admin'
+import { useStorageSummary, useSystemStatus } from '../api/admin'
 
 function formatBytes(bytes) {
   if (bytes == null) return 'Unknown'
@@ -73,6 +73,7 @@ function ClaimList({ claims }) {
 
 export default function SystemStatusPage() {
   const { data, isLoading, isError, refetch } = useSystemStatus()
+  const { data: storage } = useStorageSummary()
 
   if (isLoading) {
     return (
@@ -96,6 +97,7 @@ export default function SystemStatusPage() {
   const config = data?.config ?? {}
   const limits = data?.limits ?? {}
   const origins = config.allowed_origins ?? []
+  const usagePercent = storage?.usage_ratio == null ? null : Math.min(100, storage.usage_ratio * 100)
 
   return (
     <div className="min-h-full bg-gray-50 p-4">
@@ -147,6 +149,38 @@ export default function SystemStatusPage() {
               <p className="font-semibold text-gray-800">{formatBytes(limits.r2_storage_limit_bytes)}</p>
             </div>
           </div>
+        </Section>
+
+        <Section title="Storage Usage">
+          <div className="mb-3">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs text-gray-400">Tracked R2 usage</p>
+                <p className="text-lg font-bold text-gray-900">{formatBytes(storage?.r2_known_bytes ?? 0)}</p>
+              </div>
+              <p className="text-xs text-gray-500">
+                {usagePercent == null ? 'Unknown' : `${usagePercent.toFixed(2)}%`} of {formatBytes(storage?.limit_bytes ?? limits.r2_storage_limit_bytes)}
+              </p>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full bg-blue-600"
+                style={{ width: `${usagePercent ?? 0}%` }}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {(storage?.sources ?? []).map((source) => (
+              <div key={source.table} className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-gray-600">{source.label}</span>
+                <span className="text-gray-400">
+                  {formatBytes(source.known_bytes)} {source.storage === 'drive' ? 'Drive' : 'R2'} tracked
+                  {source.unknown_file_count ? `, ${source.unknown_file_count} unknown` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-400">Older files may show as unknown until they are replaced or backfilled.</p>
         </Section>
 
         <Section title="Stuck Generation Locks">

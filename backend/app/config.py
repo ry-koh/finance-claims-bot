@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     DOCGEN_MAX_WORKERS: int = 1
     MAX_UPLOAD_BYTES: int = 8_000_000
     MAX_PDF_PAGES: int = 20
+    MAX_RECEIPT_IMAGES_PER_RECEIPT: int = 8
+    MAX_BANK_IMAGES_PER_TRANSACTION: int = 8
+    MAX_REFUND_FILES_PER_REFUND: int = 5
+    MAX_ATTACHMENT_FILES_PER_REQUEST: int = 10
     APP_URL: str = ""  # public HTTPS URL of this backend (e.g. https://api.yourdomain.duckdns.org)
     MINI_APP_URL: str = ""  # Vercel frontend URL (e.g. https://your-app.vercel.app)
     SUMMARY_TEMPLATE_ID: str = "1xPPlWy6T_tZqwFYHZlTSFYqciItF0Jm7Q25k1K-GHX4"

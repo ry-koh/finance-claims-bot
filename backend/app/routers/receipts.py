@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
 from app.services import r2, image
+from app.services.storage import insert_file_row
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/receipts", tags=["receipts"])
@@ -260,7 +261,11 @@ async def upload_image(
         logger.exception("R2 upload failed for claim %s: %s", claim_id, exc)
         raise HTTPException(status_code=502, detail=f"R2 upload failed: {str(exc)[:300]}")
 
-    return {"drive_file_id": object_name, "filename": f"{image_type}_{timestamp}.jpg"}
+    return {
+        "drive_file_id": object_name,
+        "filename": f"{image_type}_{timestamp}.jpg",
+        "file_size_bytes": len(file_bytes),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +286,19 @@ async def upload_receipt_image(
     receipt = receipt_resp.data[0]
     _assert_claim_editable(db, receipt["claim_id"], _auth)
     reference_code = receipt.get("claim", {}).get("reference_code", receipt["claim_id"])
+    existing_count = (
+        db.table("receipt_images")
+        .select("id", count="exact")
+        .eq("receipt_id", receipt_id)
+        .execute()
+        .count
+        or 0
+    )
+    if existing_count >= settings.MAX_RECEIPT_IMAGES_PER_RECEIPT:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} receipt images per receipt.",
+        )
 
     raw_bytes = await file.read()
     try:
@@ -293,10 +311,11 @@ async def upload_receipt_image(
     object_name = r2.make_object_name(reference_code, "receipt", timestamp)
     drive_file_id = r2.upload_file(processed, object_name)
 
-    img_resp = db.table("receipt_images").insert({
+    img_resp = insert_file_row(db, "receipt_images", {
         "receipt_id": receipt_id,
         "drive_file_id": drive_file_id,
-    }).execute()
+        "file_size_bytes": len(processed),
+    })
     if not img_resp.data:
         raise HTTPException(500, "Failed to save receipt image")
     return img_resp.data[0]
@@ -336,6 +355,16 @@ async def create_receipt(
     # 1. Fetch the claim (404 if not found or soft-deleted)
     _get_claim_or_404(db, payload.claim_id)
     _assert_claim_editable(db, payload.claim_id, _member)
+    if len(payload.receipt_image_drive_ids or []) > settings.MAX_RECEIPT_IMAGES_PER_RECEIPT:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} receipt images per receipt.",
+        )
+    if payload.bank_transaction_drive_ids and len(payload.bank_transaction_drive_ids) > settings.MAX_BANK_IMAGES_PER_TRANSACTION:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_BANK_IMAGES_PER_TRANSACTION} bank screenshots per transaction.",
+        )
 
     # 2. Check if a line item already exists for this category
     existing_line_item = _get_line_item_for_category(db, payload.claim_id, payload.category)
@@ -633,6 +662,11 @@ async def update_receipt(
 
     # Handle receipt images replacement
     if payload.receipt_image_drive_ids is not None:
+        if len(payload.receipt_image_drive_ids) > settings.MAX_RECEIPT_IMAGES_PER_RECEIPT:
+            raise HTTPException(
+                413,
+                f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} receipt images per receipt.",
+            )
         db.table("receipt_images").delete().eq("receipt_id", receipt_id).execute()
         for drive_id in payload.receipt_image_drive_ids:
             db.table("receipt_images").insert({"receipt_id": receipt_id, "drive_file_id": drive_id}).execute()
@@ -641,6 +675,11 @@ async def update_receipt(
     if payload.clear_bank_transaction:
         db.table("receipts").update({"bank_transaction_id": None}).eq("id", receipt_id).execute()
     elif payload.bank_transaction_drive_ids is not None:
+        if len(payload.bank_transaction_drive_ids) > settings.MAX_BANK_IMAGES_PER_TRANSACTION:
+            raise HTTPException(
+                413,
+                f"Maximum {settings.MAX_BANK_IMAGES_PER_TRANSACTION} bank screenshots per transaction.",
+            )
         bt_resp = db.table("bank_transactions").insert({"claim_id": receipt["claim_id"]}).execute()
         if bt_resp.data:
             bt_id = bt_resp.data[0]["id"]

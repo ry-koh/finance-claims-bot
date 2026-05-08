@@ -18,6 +18,7 @@ from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
 from app.routers.bot import send_bot_notification
 from app.services import r2 as r2_service
 from app.services.events import log_claim_event
+from app.services.storage import insert_file_row
 from app.utils.rate_limit import guard
 
 
@@ -1068,6 +1069,20 @@ async def upload_attachment_file(
     if not current_req:
         raise HTTPException(404, "No open attachment request found")
 
+    existing_files = (
+        db.table("claim_attachment_files")
+        .select("id", count="exact")
+        .eq("request_id", current_req["id"])
+        .execute()
+        .count
+        or 0
+    )
+    if existing_files >= settings.MAX_ATTACHMENT_FILES_PER_REQUEST:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_ATTACHMENT_FILES_PER_REQUEST} attachment files per request.",
+        )
+
     file_bytes = await file.read()
     if len(file_bytes) > settings.MAX_UPLOAD_BYTES:
         raise HTTPException(
@@ -1079,11 +1094,12 @@ async def upload_attachment_file(
     object_name = f"attachments/{claim_id}/{uuid_lib.uuid4()}.{ext}"
     r2_service.upload_file(file_bytes, object_name, file.content_type or "application/octet-stream")
 
-    file_resp = db.table("claim_attachment_files").insert({
+    file_resp = insert_file_row(db, "claim_attachment_files", {
         "request_id": current_req["id"],
         "file_url": object_name,
         "original_filename": filename,
-    }).execute()
+        "file_size_bytes": len(file_bytes),
+    })
     if not file_resp.data:
         r2_service.delete_file(object_name)
         raise HTTPException(500, "Failed to save file record")

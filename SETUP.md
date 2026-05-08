@@ -340,6 +340,25 @@ CREATE INDEX IF NOT EXISTS idx_claim_events_claim_created ON claim_events(claim_
 CREATE INDEX IF NOT EXISTS idx_claim_events_type ON claim_events(event_type);
 ```
 
+### Add file-size tracking for storage summary
+
+```sql
+ALTER TABLE receipt_images
+  ADD COLUMN IF NOT EXISTS file_size_bytes integer;
+
+ALTER TABLE bank_transaction_images
+  ADD COLUMN IF NOT EXISTS file_size_bytes integer;
+
+ALTER TABLE bank_transaction_refunds
+  ADD COLUMN IF NOT EXISTS file_size_bytes integer;
+
+ALTER TABLE claim_documents
+  ADD COLUMN IF NOT EXISTS file_size_bytes integer;
+
+ALTER TABLE claim_attachment_files
+  ADD COLUMN IF NOT EXISTS file_size_bytes integer;
+```
+
 ---
 
 ## If the Bot Stops Responding

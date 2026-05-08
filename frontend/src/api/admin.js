@@ -21,6 +21,9 @@ export const rejectRegistration = (memberId) =>
 export const fetchSystemStatus = () =>
   api.get('/admin/system-status').then((r) => r.data)
 
+export const fetchStorageSummary = () =>
+  api.get('/admin/storage-summary').then((r) => r.data)
+
 export function usePendingRegistrations() {
   return useQuery({
     queryKey: PENDING_KEYS.all,
@@ -42,6 +45,14 @@ export function useSystemStatus() {
   return useQuery({
     queryKey: ['admin', 'system-status'],
     queryFn: fetchSystemStatus,
+    refetchInterval: 60_000,
+  })
+}
+
+export function useStorageSummary() {
+  return useQuery({
+    queryKey: ['admin', 'storage-summary'],
+    queryFn: fetchStorageSummary,
     refetchInterval: 60_000,
   })
 }

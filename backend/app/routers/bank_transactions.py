@@ -6,8 +6,10 @@ from supabase import Client
 from datetime import datetime
 
 from app.auth import get_claim_for_member, require_auth
+from app.config import settings
 from app.database import get_supabase
 from app.services import r2, image
+from app.services.storage import insert_file_row
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bank-transactions", tags=["bank-transactions"])
@@ -22,7 +24,7 @@ def _get_bt_or_404(bt_id: str, db: Client) -> dict:
 
 async def _get_bt_and_upload_file(
     bt_id: str, file: UploadFile, db: Client, filename_prefix: str, member: dict
-) -> tuple[dict, str]:
+) -> tuple[dict, str, int]:
     """Verify BT exists, process image, upload to Drive. Returns (bt_row, drive_file_id)."""
     bt_resp = db.table("bank_transactions").select("*, claim:claims(reference_code)").eq("id", bt_id).execute()
     if not bt_resp.data:
@@ -46,7 +48,7 @@ async def _get_bt_and_upload_file(
     except Exception as exc:
         logger.exception("R2 upload failed for BT %s: %s", bt_id, exc)
         raise HTTPException(status_code=502, detail=f"R2 upload failed: {str(exc)[:300]}")
-    return bt, drive_file_id
+    return bt, drive_file_id, len(processed)
 
 
 @router.post("", status_code=201)
@@ -72,12 +74,27 @@ async def upload_bank_transaction_image(
     db: Client = Depends(get_supabase),
 ):
     """Upload an image for a bank transaction, store in Drive, persist Drive ID."""
-    _bt, drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "bank", _auth)
+    existing_count = (
+        db.table("bank_transaction_images")
+        .select("id", count="exact")
+        .eq("bank_transaction_id", bt_id)
+        .execute()
+        .count
+        or 0
+    )
+    if existing_count >= settings.MAX_BANK_IMAGES_PER_TRANSACTION:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_BANK_IMAGES_PER_TRANSACTION} bank screenshots per transaction.",
+        )
 
-    img_resp = db.table("bank_transaction_images").insert({
+    _bt, drive_file_id, file_size = await _get_bt_and_upload_file(bt_id, file, db, "bank", _auth)
+
+    img_resp = insert_file_row(db, "bank_transaction_images", {
         "bank_transaction_id": bt_id,
         "drive_file_id": drive_file_id,
-    }).execute()
+        "file_size_bytes": file_size,
+    })
     if not img_resp.data:
         raise HTTPException(status_code=500, detail="Failed to save bank transaction image")
     return img_resp.data[0]
@@ -115,18 +132,26 @@ async def create_bt_refund(
     """Create a refund for a bank transaction. Accepts one or more image files."""
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
+    if len(files) > settings.MAX_REFUND_FILES_PER_REFUND:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_REFUND_FILES_PER_REFUND} refund screenshots per refund.",
+        )
 
     drive_file_ids = []
+    file_sizes = []
     for f in files:
-        _, fid = await _get_bt_and_upload_file(bt_id, f, db, "refund", _auth)
+        _, fid, size = await _get_bt_and_upload_file(bt_id, f, db, "refund", _auth)
         drive_file_ids.append(fid)
+        file_sizes.append(size)
 
-    refund_resp = db.table("bank_transaction_refunds").insert({
+    refund_resp = insert_file_row(db, "bank_transaction_refunds", {
         "bank_transaction_id": bt_id,
         "amount": amount,
         "drive_file_id": drive_file_ids[0],
         "extra_drive_file_ids": drive_file_ids[1:] if len(drive_file_ids) > 1 else [],
-    }).execute()
+        "file_size_bytes": sum(file_sizes),
+    })
     if not refund_resp.data:
         raise HTTPException(status_code=500, detail="Failed to create refund")
     return refund_resp.data[0]
@@ -148,9 +173,15 @@ async def update_bt_refund_file(
         raise HTTPException(status_code=404, detail="Refund not found")
     old_file_id = resp.data[0].get("drive_file_id")
 
-    _bt, new_drive_file_id = await _get_bt_and_upload_file(bt_id, file, db, "refund", _auth)
+    _bt, new_drive_file_id, file_size = await _get_bt_and_upload_file(bt_id, file, db, "refund", _auth)
 
-    db.table("bank_transaction_refunds").update({"drive_file_id": new_drive_file_id}).eq("id", refund_id).execute()
+    try:
+        db.table("bank_transaction_refunds").update({
+            "drive_file_id": new_drive_file_id,
+            "file_size_bytes": file_size,
+        }).eq("id", refund_id).execute()
+    except Exception:
+        db.table("bank_transaction_refunds").update({"drive_file_id": new_drive_file_id}).eq("id", refund_id).execute()
 
     if old_file_id:
         try:
