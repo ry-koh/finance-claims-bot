@@ -288,6 +288,7 @@ class ClaimUpdate(BaseModel):
     is_partial: Optional[bool] = None
     mf_approval_drive_id: Optional[str] = None
     client_updated_at: Optional[str] = None
+    internal_notes: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

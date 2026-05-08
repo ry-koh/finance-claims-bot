@@ -284,6 +284,12 @@ CREATE TRIGGER trg_claim_status_dates
   FOR EACH ROW EXECUTE FUNCTION set_claim_status_dates();
 ```
 
+### Add internal_notes column to claims
+
+```sql
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS internal_notes text;
+```
+
 ### Add OTHERS as a valid WBS account value
 
 ```sql

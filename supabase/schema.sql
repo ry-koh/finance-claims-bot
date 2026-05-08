@@ -76,6 +76,7 @@ CREATE TABLE claims (
     END
   ) STORED,
   mf_approval_drive_id text,
+  internal_notes    text,
   remarks           text,
   other_emails      text[] DEFAULT '{}',
   rejection_comment text,

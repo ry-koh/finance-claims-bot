@@ -1129,6 +1129,79 @@ function BtCard({
   )
 }
 
+// ─── Internal Notes (finance team only) ──────────────────────────────────────
+
+function InternalNotesCard({ claim, claimId }) {
+  const updateClaimMut = useUpdateClaim()
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(claim.internal_notes ?? '')
+
+  function handleSave() {
+    updateClaimMut.mutate(
+      { id: claimId, internal_notes: value.trim() || null },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
+          setEditing(false)
+        },
+      }
+    )
+  }
+
+  function handleCancel() {
+    setValue(claim.internal_notes ?? '')
+    setEditing(false)
+  }
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold text-amber-800">Internal Notes</h2>
+        {!editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-amber-700 font-medium px-2 py-0.5 rounded-lg bg-amber-100 active:bg-amber-200"
+          >
+            {claim.internal_notes ? 'Edit' : '+ Add'}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            autoFocus
+            rows={3}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Notes visible only to finance team…"
+            className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-300"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={updateClaimMut.isPending}
+              className="text-xs font-medium px-3 py-1.5 bg-amber-600 text-white rounded-lg disabled:opacity-50"
+            >
+              {updateClaimMut.isPending ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancel}
+              className="text-xs font-medium px-3 py-1.5 bg-white border border-amber-300 text-amber-700 rounded-lg"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-amber-900 whitespace-pre-wrap">
+          {claim.internal_notes || <span className="text-amber-400 italic">No notes yet</span>}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ─── Review Panel (finance team, pending_review status) ──────────────────────
 
 
@@ -2164,6 +2237,11 @@ export default function ClaimDetailPage() {
               }
             }}
           />
+        )}
+
+        {/* ── Internal Notes (finance team only) ── */}
+        {isFinanceTeam && (
+          <InternalNotesCard claim={claim} claimId={id} />
         )}
 
         {/* ── Finance Review Panel — shown when claim is pending_review ── */}

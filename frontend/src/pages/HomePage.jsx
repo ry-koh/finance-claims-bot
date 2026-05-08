@@ -116,6 +116,11 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
       {claim.claim_description && (
         <p className="text-xs text-gray-400 truncate">{claim.claim_description}</p>
       )}
+      {claim.internal_notes && (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 truncate">
+          📝 {claim.internal_notes}
+        </p>
+      )}
 
       <div className="flex justify-between items-start mt-2">
         <span className="text-sm font-bold text-gray-800">
