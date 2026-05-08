@@ -71,10 +71,7 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     claim_description_upper = claim_description.upper()
     reference_code = claim.get("reference_code") or ""
 
-    total_amount = float(
-        claim.get("partial_amount") if claim.get("is_partial") and claim.get("partial_amount") is not None
-        else claim.get("total_amount") or 0
-    )
+    total_amount = float(claim.get("total_amount") or 0)
 
     # --- Other emails (for reminder only — not used as actual CC headers) ---
     other_emails = claim.get("other_emails") or []
@@ -83,7 +80,7 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     # --- Receipt list HTML ---
     receipt_lines = []
     for n, receipt in enumerate(receipts, start=1):
-        amount = float(receipt.get("amount") or 0)
+        amount = float(receipt["claimed_amount"] if receipt.get("claimed_amount") is not None else receipt.get("amount") or 0)
         company = receipt.get("company") or ""
         description = receipt.get("description") or ""
         raw_date = receipt.get("date") or ""
@@ -116,8 +113,8 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     auto_remarks: list[str] = []
     if claim.get("wbs_account") == "MF":
         auto_remarks.append(mf_line)
-    if claim.get("is_partial") and claim.get("partial_amount") is not None:
-        auto_remarks.append(f"- Partial Claim of ${float(claim['partial_amount']):.2f}")
+    if claim.get("is_partial"):
+        auto_remarks.append("- Partial Claim")
     for bt in bank_transactions:
         if bt.get("refunds"):
             refund_amounts = [float(r["amount"]) for r in bt["refunds"]]

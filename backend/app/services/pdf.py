@@ -358,17 +358,8 @@ def generate_summary(
         except Exception:
             formatted_date = str(raw_date)
 
-        # Compute total from line item receipts (more reliable than stored total_amount)
-        receipt_total = sum(
-            sum(float(r.get('amount', 0) or 0) for r in (item.get('receipts') or []))
-            for item in (line_items or [])
-        ) or float(claim.get('total_amount', 0) or 0)
-        # For partial claims, the claimed amount is partial_amount, not the receipt total
-        total_amount = (
-            float(claim['partial_amount'])
-            if claim.get('is_partial') and claim.get('partial_amount') is not None
-            else receipt_total
-        )
+        # Use trigger-maintained total_amount (reflects COALESCE(claimed_amount, amount) per receipt)
+        total_amount = float(claim.get('total_amount', 0) or 0)
 
         # --- Fixed cell values ---
         value_ranges = [
@@ -430,8 +421,11 @@ def generate_summary(
             ]
             descriptions_str = '\n'.join(descriptions) if descriptions else item.get('combined_description', '')
 
-            # Compute total from receipts (more reliable than stored total_amount)
-            item_amount = sum(float(r.get('amount', 0) or 0) for r in receipts)
+            # Use claimed_amount if set, otherwise fall back to amount
+            item_amount = sum(
+                float(r['claimed_amount'] if r.get('claimed_amount') is not None else r.get('amount', 0) or 0)
+                for r in receipts
+            )
 
             # One valueRange per row to keep addressing simple
             value_ranges.append({
@@ -487,7 +481,7 @@ def generate_rfp(
         replacements = {
             "{{MATRIC}}": (finance_director.get("matric_no") or "").upper(),
             "{{NAME}}": (finance_director.get("name") or "").upper(),
-            "{{TOTAL_AMOUNT}}": f"{float(claim['partial_amount']) if claim.get('is_partial') and claim.get('partial_amount') is not None else float(claim['total_amount']):.2f}",
+            "{{TOTAL_AMOUNT}}": f"{float(claim['total_amount']):.2f}",
             "{{REFERENCE_CODE}}": ref,
         }
 

@@ -899,7 +899,7 @@ function BtModal({ claimId, initial, onClose, onSaved }) {
 function BtCard({
   bt, btIndex, claimId, linkedReceipts, expanded, onToggle, onEdit, onDelete, onAddReceipt,
   saving, addingReceipt, onReceiptSaved, onReceiptCancelled, onEditReceipt, onDeleteReceipt, receiptSaving,
-  isTreasurer, canEdit = true,
+  isTreasurer, canEdit = true, isPartial,
 }) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -927,7 +927,7 @@ function BtCard({
   }
 
   const netAmount = bt.net_amount != null ? bt.net_amount : bt.amount
-  const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.amount ?? 0), 0)
+  const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.claimed_amount ?? r.amount ?? 0), 0)
   const tally = Math.abs((netAmount ?? 0) - receiptSum) < 0.005
 
   return (
@@ -1047,6 +1047,7 @@ function BtCard({
                 saving={receiptSaving}
                 isTreasurer={isTreasurer}
                 canEdit={canEdit}
+                isPartial={isPartial}
               />
             ))}
             {!linkedReceipts.length && !addingReceipt && (
@@ -1063,6 +1064,7 @@ function BtCard({
               saving={receiptSaving}
               claimId={claimId}
               isTreasurer={isTreasurer}
+              isPartial={isPartial}
             />
           )}
 
@@ -1665,7 +1667,6 @@ export default function ClaimDetailPage() {
       transport_form_needed: claim.transport_form_needed ?? false,
       transport_trips: existingTrips,
       is_partial: claim.is_partial ?? false,
-      partial_amount: claim.partial_amount != null ? String(claim.partial_amount) : '',
       other_emails: claim.other_emails ?? [],
     })
     setEditMode(true)
@@ -1678,12 +1679,11 @@ export default function ClaimDetailPage() {
 
   function handleSave() {
     // Strip enum/date fields and transport_trips (handled separately) to avoid Pydantic 422 errors
-    const { date, wbs_account, is_partial, partial_amount, transport_trips, ...rest } = editFields
+    const { date, wbs_account, is_partial, transport_trips, ...rest } = editFields
     const payload = { id, ...rest }
     if (date) payload.date = date
     if (wbs_account) payload.wbs_account = wbs_account
     payload.is_partial = is_partial
-    if (is_partial && partial_amount) payload.partial_amount = Number(partial_amount)
     // Optimistic concurrency: reject if someone else changed the claim while editing
     if (claim?.updated_at) payload.client_updated_at = claim.updated_at
 
@@ -1765,7 +1765,7 @@ export default function ClaimDetailPage() {
   }
 
   function recalcAndUpdateTotal(updatedReceipts) {
-    const total = updatedReceipts.reduce((s, r) => s + Number(r.amount), 0)
+    const total = updatedReceipts.reduce((s, r) => s + Number(r.claimed_amount ?? r.amount), 0)
     updateClaimMut.mutate({ id, total_amount: total }, { onSuccess: invalidateClaim })
   }
 
@@ -2093,24 +2093,9 @@ export default function ClaimDetailPage() {
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                 />
                 <label htmlFor="is_partial" className="text-sm text-gray-700">
-                  Partial claim
+                  Partial claim — set claimed amount per receipt
                 </label>
               </div>
-              {editFields.is_partial && (
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Partial Amount</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={editFields.partial_amount}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, partial_amount: e.target.value }))
-                    }
-                    className="w-full max-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    placeholder="0.00"
-                  />
-                </div>
-              )}
 
               {/* Other emails */}
               <div>
@@ -2151,7 +2136,7 @@ export default function ClaimDetailPage() {
                 value={claim.transport_form_needed ? 'Yes' : 'No'}
               />
               {claim.is_partial && (
-                <InfoRow label="Partial Claim" value={`$${Number(claim.partial_amount ?? 0).toFixed(2)}`} />
+                <InfoRow label="Partial Claim" value="Yes — see claimed amounts per receipt" />
               )}
             </div>
           )}
@@ -2238,6 +2223,7 @@ export default function ClaimDetailPage() {
                   receiptSaving={createReceiptMut.isPending || updateReceiptMut.isPending || deleteReceiptMut.isPending}
                   isTreasurer={isTreasurer}
                   canEdit={canEdit}
+                  isPartial={claim.is_partial}
                 />
               )
             })}
@@ -2273,6 +2259,7 @@ export default function ClaimDetailPage() {
                 saving={updateReceiptMut.isPending || deleteReceiptMut.isPending}
                 isTreasurer={isTreasurer}
                 canEdit={canEdit}
+                isPartial={claim.is_partial}
               />
             ))}
             {!unlinked.length && !showAddUnlinked && (
@@ -2287,6 +2274,7 @@ export default function ClaimDetailPage() {
               saving={createReceiptMut.isPending}
               claimId={id}
               isTreasurer={isTreasurer}
+              isPartial={claim.is_partial}
             />
           )}
         </div>
@@ -2388,12 +2376,12 @@ function InfoRow({ label, value, bold }) {
 }
 
 const EMPTY_RECEIPT_FIELDS = {
-  description: '', amount: '', category: '', gst_code: 'IE',
+  description: '', amount: '', claimed_amount: '', category: '', gst_code: 'IE',
   dr_cr: 'DR', receipt_no: '', company: '', date: '',
   is_foreign_currency: false, exchange_rate_screenshot_drive_id: null,
 }
 
-function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId, isTreasurer }) {
+function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId, isTreasurer, isPartial }) {
   const [f, setF] = useState({ ...EMPTY_RECEIPT_FIELDS, ...initial })
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
   const [err, setErr] = useState({})
@@ -2471,6 +2459,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
     onSave({
       ...f,
       amount: Number(f.amount),
+      claimed_amount: (isPartial && f.claimed_amount) ? Number(f.claimed_amount) : null,
       receipt_image_drive_ids: receiptImageDriveIds,
       bank_transaction_id: bankTransactionId,
     })
@@ -2526,6 +2515,18 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
           </div>
         )}
       </div>
+      {isPartial && (
+        <div>
+          <input
+            className={inputCls}
+            type="number"
+            inputMode="decimal"
+            placeholder="Claimed Amount (leave blank = full amount)"
+            value={f.claimed_amount}
+            onChange={set('claimed_amount')}
+          />
+        </div>
+      )}
       {!isTreasurer && (
         <div className="grid grid-cols-2 gap-2">
           <select className={inputCls} value={f.gst_code} onChange={set('gst_code')}>
@@ -2623,7 +2624,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   )
 }
 
-function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, canEdit = true }) {
+function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, canEdit = true, isPartial }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -2657,6 +2658,7 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
           initial={{
             description: receipt.description ?? '',
             amount: String(receipt.amount ?? ''),
+            claimed_amount: String(receipt.claimed_amount ?? ''),
             category: receipt.category ?? '',
             gst_code: receipt.gst_code ?? 'IE',
             dr_cr: receipt.dr_cr ?? 'DR',
@@ -2673,6 +2675,7 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
           saving={saving}
           claimId={claimId}
           isTreasurer={isTreasurer}
+          isPartial={isPartial}
         />
       </div>
     )
@@ -2686,7 +2689,8 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
             {receipt.receipt_no ? `#${receipt.receipt_no} — ` : ''}{receipt.description ?? 'Receipt'}
           </p>
           <p className="text-xs text-gray-500">
-            {receipt.category ?? '—'} · {formatAmount(receipt.amount)}
+            {receipt.category ?? '—'} · {formatAmount(receipt.claimed_amount ?? receipt.amount)}
+            {receipt.claimed_amount != null && <span className="text-gray-400"> (full: {formatAmount(receipt.amount)})</span>}
             {receipt.company ? ` · ${receipt.company}` : ''}
           </p>
           <p className="text-xs text-gray-400">{receipt.gst_code} · {receipt.dr_cr}</p>

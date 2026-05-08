@@ -371,6 +371,8 @@ async def create_receipt(
         "description": payload.description,
         "amount": payload.amount,
     }
+    if payload.claimed_amount is not None:
+        receipt_data["claimed_amount"] = payload.claimed_amount
     if payload.receipt_no is not None:
         receipt_data["receipt_no"] = payload.receipt_no
     if payload.company is not None:
@@ -561,6 +563,9 @@ async def update_receipt(
             update_data[field] = value
     if payload.date:  # treat empty string as absent
         update_data["date"] = payload.date
+    # claimed_amount uses model_fields_set to allow explicit null (clearing the value)
+    if "claimed_amount" in payload.model_fields_set:
+        update_data["claimed_amount"] = payload.claimed_amount
     if payload.is_foreign_currency is not None:
         update_data["is_foreign_currency"] = payload.is_foreign_currency
         if not payload.is_foreign_currency:

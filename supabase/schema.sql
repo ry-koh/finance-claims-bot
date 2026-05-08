@@ -130,6 +130,7 @@ CREATE TABLE receipts (
   company                         text,
   date                            date,
   amount                          numeric(10,2) NOT NULL,
+  claimed_amount                  numeric(10,2),
   is_foreign_currency             boolean NOT NULL DEFAULT false,
   exchange_rate_screenshot_drive_id text,
   receipt_image_drive_id          text,
@@ -267,7 +268,7 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   UPDATE claims
   SET total_amount = (
-    SELECT COALESCE(SUM(amount), 0)
+    SELECT COALESCE(SUM(COALESCE(claimed_amount, amount)), 0)
     FROM receipts
     WHERE claim_id = COALESCE(NEW.claim_id, OLD.claim_id)
   )
@@ -287,7 +288,7 @@ BEGIN
   IF COALESCE(NEW.line_item_id, OLD.line_item_id) IS NOT NULL THEN
     UPDATE claim_line_items
     SET total_amount = (
-      SELECT COALESCE(SUM(amount), 0)
+      SELECT COALESCE(SUM(COALESCE(claimed_amount, amount)), 0)
       FROM receipts
       WHERE line_item_id = COALESCE(NEW.line_item_id, OLD.line_item_id)
     )

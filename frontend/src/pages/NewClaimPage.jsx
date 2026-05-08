@@ -439,32 +439,17 @@ function Step2({ data, onChange, isTreasurer, wbsOptions }) {
       )}
 
       {/* Partial Claim */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <input
-            id="is-partial"
-            type="checkbox"
-            checked={data.isPartial}
-            onChange={(e) => onChange({ isPartial: e.target.checked, partialAmount: '' })}
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
-          />
-          <label htmlFor="is-partial" className="text-sm text-gray-700">
-            Partial claim (amount claimed is less than receipt total)
-          </label>
-        </div>
-        {data.isPartial && (
-          <div>
-            <Label required>Amount Claimed ($)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={data.partialAmount}
-              onChange={(v) => onChange({ partialAmount: v })}
-              placeholder="0.00"
-            />
-          </div>
-        )}
+      <div className="flex items-center gap-2">
+        <input
+          id="is-partial"
+          type="checkbox"
+          checked={data.isPartial}
+          onChange={(e) => onChange({ isPartial: e.target.checked })}
+          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+        />
+        <label htmlFor="is-partial" className="text-sm text-gray-700">
+          Partial claim — set claimed amount per receipt in Step 3
+        </label>
       </div>
 
       {/* Transport Form Needed */}
@@ -541,6 +526,7 @@ function Step2({ data, onChange, isTreasurer, wbsOptions }) {
 const EMPTY_RECEIPT = {
   description: '',
   amount: '',
+  claimed_amount: '',
   category: '',
   gst_code: 'IE',
   dr_cr: 'DR',
@@ -552,9 +538,11 @@ const EMPTY_RECEIPT = {
   fx_screenshot_files: [],
 }
 
-function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer }) {
+function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer, isPartial }) {
   const [form, setForm] = useState(
-    initial ? { ...initial, amount: String(initial.amount) } : EMPTY_RECEIPT
+    initial
+      ? { ...initial, amount: String(initial.amount), claimed_amount: String(initial.claimed_amount ?? '') }
+      : EMPTY_RECEIPT
   )
   const [errors, setErrors] = useState({})
 
@@ -588,7 +576,12 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer }
       }
     }
 
-    const result = { ...form, amount: Number(form.amount), category: isTreasurer ? (form.category || 'N/A') : form.category }
+    const result = {
+      ...form,
+      amount: Number(form.amount),
+      claimed_amount: (isPartial && form.claimed_amount) ? Number(form.claimed_amount) : undefined,
+      category: isTreasurer ? (form.category || 'N/A') : form.category,
+    }
     if (onEdit) {
       onEdit(result)
     } else {
@@ -663,6 +656,20 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer }
           </div>
         )}
       </div>
+
+      {isPartial && (
+        <div>
+          <Label>Claimed Amount ($)</Label>
+          <p className="text-xs text-gray-400 mb-1">Leave blank to claim the full amount above</p>
+          <Input
+            type="number"
+            inputMode="decimal"
+            value={form.claimed_amount}
+            onChange={(v) => set('claimed_amount', v)}
+            placeholder="0.00"
+          />
+        </div>
+      )}
 
       {!isTreasurer && (
         <div className="grid grid-cols-2 gap-2">
@@ -772,7 +779,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer }
 
 // ─── DraftReceiptRow ──────────────────────────────────────────────────────────
 
-function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTreasurer }) {
+function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTreasurer, isPartial }) {
   const [editing, setEditing] = useState(false)
 
   if (editing) {
@@ -783,6 +790,7 @@ function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTrea
           onEdit={(updated) => { onEdit(receipt.localId, updated); setEditing(false) }}
           existingCategories={existingCategories.filter((c) => c !== receipt.category)}
           isTreasurer={isTreasurer}
+          isPartial={isPartial}
         />
         <button
           type="button"
@@ -806,7 +814,10 @@ function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTrea
         </p>
       </div>
       <div className="flex items-center gap-2 ml-2 shrink-0">
-        <span className="text-xs font-bold text-gray-900">${receipt.amount.toFixed(2)}</span>
+        <span className="text-xs font-bold text-gray-900">
+          ${(receipt.claimed_amount ?? receipt.amount).toFixed(2)}
+          {receipt.claimed_amount != null && <span className="text-gray-400 font-normal"> ({receipt.amount.toFixed(2)})</span>}
+        </span>
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -983,10 +994,10 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
 function BtDraftCard({
   bt, btIndex, linkedReceipts, expanded, onToggle, onRemove, onEdit,
   onAddReceipt, onRemoveReceipt, onEditReceipt, existingCategories,
-  onAddBtFiles, onRemoveBtFile, isTreasurer,
+  onAddBtFiles, onRemoveBtFile, isTreasurer, isPartial,
 }) {
   const [showReceiptForm, setShowReceiptForm] = useState(false)
-  const receiptSum = linkedReceipts.reduce((s, r) => s + r.amount, 0)
+  const receiptSum = linkedReceipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
   const netAmount = bt.refunds?.length > 0
     ? bt.amount - bt.refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
     : null
@@ -1042,6 +1053,7 @@ function BtDraftCard({
                   onRemove={onRemoveReceipt}
                   existingCategories={existingCategories}
                   isTreasurer={isTreasurer}
+                  isPartial={isPartial}
                 />
               ))}
             </div>
@@ -1061,6 +1073,7 @@ function BtDraftCard({
                 onAdd={(r) => { onAddReceipt(r); setShowReceiptForm(false) }}
                 existingCategories={existingCategories}
                 isTreasurer={isTreasurer}
+                isPartial={isPartial}
               />
               <button
                 type="button"
@@ -1082,14 +1095,14 @@ function BtDraftCard({
 function Step3({
   bankTransactions, onAddBt, onRemoveBt, onEditBt,
   receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
-  expandedBtId, onSetExpandedBtId, isTreasurer,
+  expandedBtId, onSetExpandedBtId, isTreasurer, isPartial,
 }) {
   const [showBtModal, setShowBtModal] = useState(false)
   const [editingBt, setEditingBt] = useState(null)
   const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
 
   const allCategories = useMemo(() => receipts.map((r) => r.category), [receipts])
-  const total = receipts.reduce((s, r) => s + r.amount, 0)
+  const total = receipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
   const unlinkedReceipts = receipts.filter((r) => !r.btLocalId)
 
   function handleBtSave(data) {
@@ -1126,6 +1139,7 @@ function Step3({
                 onAddBtFiles={() => {}}
                 onRemoveBtFile={() => {}}
                 isTreasurer={isTreasurer}
+                isPartial={isPartial}
               />
             )
           })}
@@ -1163,6 +1177,7 @@ function Step3({
                 onRemove={onRemoveReceipt}
                 existingCategories={allCategories}
                 isTreasurer={isTreasurer}
+                isPartial={isPartial}
               />
             ))}
           </div>
@@ -1174,6 +1189,7 @@ function Step3({
               onAdd={(r) => { onAddReceipt(r); setShowUnlinkedForm(false) }}
               existingCategories={allCategories}
               isTreasurer={isTreasurer}
+              isPartial={isPartial}
             />
             <button type="button" onClick={() => setShowUnlinkedForm(false)} className="w-full mt-2 text-xs text-gray-500 py-1">
               Cancel
@@ -1291,7 +1307,6 @@ const DEFAULT_STEP2 = {
   transportTrips: [],
   mfApprovalFiles: [],
   isPartial: false,
-  partialAmount: '',
   otherEmails: [],
 }
 
@@ -1432,7 +1447,6 @@ export default function NewClaimPage() {
         other_emails: step2.otherEmails,
         transport_form_needed: step2.transportFormNeeded,
         is_partial: step2.isPartial,
-        partial_amount: step2.isPartial && step2.partialAmount ? Number(step2.partialAmount) : undefined,
       }
       if (!isTreasurer) {
         if (step1.isOneOff) {
@@ -1530,6 +1544,7 @@ export default function NewClaimPage() {
           company: r.company || undefined,
           date: r.date || undefined,
           amount: r.amount,
+          claimed_amount: r.claimed_amount ?? undefined,
           category: r.category,
           gst_code: r.gst_code,
           dr_cr: r.dr_cr,
@@ -1598,6 +1613,7 @@ export default function NewClaimPage() {
             expandedBtId={expandedBtId}
             onSetExpandedBtId={setExpandedBtId}
             isTreasurer={isTreasurer}
+            isPartial={step2.isPartial}
           />
         )}
 

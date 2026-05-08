@@ -44,7 +44,6 @@ STALE_TRIGGER_FIELDS = {
     "claimer_id",
     "transport_form_needed",
     "is_partial",
-    "partial_amount",
 }
 
 
@@ -178,7 +177,7 @@ async def export_claims(
         db.table("claims")
         .select(
             "id, reference_code, claim_number, status, claim_description, "
-            "total_amount, is_partial, partial_amount, wbs_account, wbs_no, "
+            "total_amount, is_partial, wbs_account, wbs_no, "
             "transport_form_needed, remarks, date, created_at, "
             "one_off_name, one_off_matric_no, one_off_phone, one_off_email, "
             "claimer:finance_team!claims_claimer_id_fkey(id, name)"
@@ -227,7 +226,7 @@ async def export_claims(
     writer = csv.writer(output)
     writer.writerow([
         "Reference Code", "Claimer", "Status", "WBS Account", "WBS No",
-        "Total Amount", "Is Partial", "Partial Amount",
+        "Total Amount", "Is Partial",
         "Claim Description", "Transport Form", "Date", "Created At",
         "One-off Name", "One-off Matric", "One-off Phone", "One-off Email",
     ])
@@ -241,7 +240,6 @@ async def export_claims(
             c.get("wbs_no") or "",
             c.get("total_amount") or "",
             c.get("is_partial") or False,
-            c.get("partial_amount") or "",
             c.get("claim_description") or "",
             c.get("transport_form_needed") or False,
             c.get("date") or "",
@@ -559,9 +557,6 @@ async def create_claim(
         claim_data["wbs_no"] = payload.wbs_no
     if payload.remarks is not None:
         claim_data["remarks"] = payload.remarks
-    if payload.is_partial and payload.partial_amount is not None:
-        claim_data["partial_amount"] = str(payload.partial_amount)
-
     create_resp = db.table("claims").insert(claim_data).execute()
     if not create_resp.data:
         raise HTTPException(status_code=500, detail="Failed to create claim")

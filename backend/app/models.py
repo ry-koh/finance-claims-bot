@@ -186,6 +186,7 @@ class ReceiptCreate(BaseModel):
     is_foreign_currency: bool = False
     exchange_rate_screenshot_drive_id: Optional[str] = None
     exchange_rate_screenshot_drive_ids: Optional[List[str]] = None
+    claimed_amount: Optional[float] = None
 
 
 class ReceiptUpdate(BaseModel):
@@ -194,6 +195,7 @@ class ReceiptUpdate(BaseModel):
     company: Optional[str] = None
     date: Optional[str] = None  # ISO format YYYY-MM-DD
     amount: Optional[float] = None
+    claimed_amount: Optional[float] = None
     category: Optional[str] = None
     gst_code: Optional[str] = None
     dr_cr: Optional[str] = None
@@ -261,7 +263,6 @@ class ClaimCreate(BaseModel):
     other_emails: List[str] = []
     transport_form_needed: bool = False
     is_partial: bool = False
-    partial_amount: Optional[Decimal] = None
 
 
 class ClaimUpdate(BaseModel):
@@ -284,7 +285,6 @@ class ClaimUpdate(BaseModel):
     error_message: Optional[str] = None
     transport_form_needed: Optional[bool] = None
     is_partial: Optional[bool] = None
-    partial_amount: Optional[Decimal] = None
     mf_approval_drive_id: Optional[str] = None
     client_updated_at: Optional[str] = None
 
