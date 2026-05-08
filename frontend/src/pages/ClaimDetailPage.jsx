@@ -31,6 +31,31 @@ import CroppableThumb from '../components/CroppableThumb'
 
 const EMPTY_TRIP = { from: '', to: '', purpose: '', date: '', time: '', amount: '', distance_km: '' }
 
+// DD/MM/YYYY → YYYY-MM-DD (returns '' if invalid)
+function parseDMY(dmy) {
+  if (!dmy) return ''
+  const m = dmy.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+
+// YYYY-MM-DD → DD/MM/YYYY (for display when loading saved trips)
+function formatDMY(ymd) {
+  if (!ymd) return ''
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ymd
+}
+
+// HH:MM (24-hour) → H:MM AM/PM (for display when loading old-format times)
+function format24To12(hm) {
+  if (!hm) return ''
+  const m = hm.match(/^(\d{1,2}):(\d{2})$/)
+  if (!m) return hm
+  const h = parseInt(m[1], 10)
+  const period = h < 12 ? 'AM' : 'PM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}:${m[2]} ${period}`
+}
+
 function TransportTripsInput({ trips, onChange }) {
   function addTrip() {
     if (trips.length >= 3) return
@@ -57,11 +82,11 @@ function TransportTripsInput({ trips, onChange }) {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-xs text-gray-500">Date</label>
-              <input type="date" value={trip.date} onChange={(e) => updateTrip(i, 'date', e.target.value)} className={inputCls} />
+              <input type="text" value={trip.date} onChange={(e) => updateTrip(i, 'date', e.target.value)} placeholder="DD/MM/YYYY" inputMode="numeric" className={inputCls} />
             </div>
             <div>
               <label className="text-xs text-gray-500">Time Started</label>
-              <input type="time" value={trip.time} onChange={(e) => updateTrip(i, 'time', e.target.value)} className={inputCls} />
+              <input type="text" value={trip.time} onChange={(e) => updateTrip(i, 'time', e.target.value)} placeholder="9:30 AM" className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -1527,8 +1552,8 @@ export default function ClaimDetailPage() {
       from: t.from_location ?? '',
       to: t.to_location ?? '',
       purpose: t.purpose ?? '',
-      date: t.date ?? '',
-      time: t.time ?? '',
+      date: formatDMY(t.date ?? ''),
+      time: format24To12(t.time ?? ''),
       amount: t.amount != null ? String(t.amount) : '',
       distance_km: t.distance_km != null ? String(t.distance_km) : '',
     }))
@@ -1574,7 +1599,7 @@ export default function ClaimDetailPage() {
                 from_location: t.from,
                 to_location: t.to,
                 purpose: t.purpose,
-                date: t.date || undefined,
+                date: parseDMY(t.date) || undefined,
                 time: t.time || undefined,
                 amount: t.amount ? Number(t.amount) : 0,
                 distance_km: t.distance_km ? Number(t.distance_km) : undefined,

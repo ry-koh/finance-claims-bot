@@ -254,6 +254,13 @@ function Step1({ data, onChange }) {
 
 const EMPTY_TRIP = { from: '', to: '', purpose: '', date: '', time: '', amount: '', distance_km: '' }
 
+// DD/MM/YYYY → YYYY-MM-DD for backend submission (PDF requires YYYY-MM-DD)
+function parseDMY(dmy) {
+  if (!dmy) return ''
+  const m = dmy.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+
 function TransportTripsInput({ trips, onChange }) {
   function addTrip() {
     if (trips.length >= 3) return
@@ -281,11 +288,11 @@ function TransportTripsInput({ trips, onChange }) {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-xs text-gray-500">Date</label>
-              <Input type="date" value={trip.date} onChange={(v) => updateTrip(i, 'date', v)} />
+              <Input value={trip.date} onChange={(v) => updateTrip(i, 'date', v)} placeholder="DD/MM/YYYY" inputMode="numeric" />
             </div>
             <div>
               <label className="text-xs text-gray-500">Time Started</label>
-              <Input type="time" value={trip.time} onChange={(v) => updateTrip(i, 'time', v)} />
+              <Input value={trip.time} onChange={(v) => updateTrip(i, 'time', v)} placeholder="9:30 AM" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -1459,7 +1466,7 @@ export default function NewClaimPage() {
               from_location: t.from,
               to_location: t.to,
               purpose: t.purpose,
-              date: t.date || undefined,
+              date: parseDMY(t.date) || undefined,
               time: t.time || undefined,
               amount: Number(t.amount) || 0,
               distance_km: t.distance_km ? Number(t.distance_km) : undefined,
