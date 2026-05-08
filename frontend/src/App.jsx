@@ -21,6 +21,7 @@ import HelpNewQuestionPage from './pages/HelpNewQuestionPage'
 import HelpQuestionDetailPage from './pages/HelpQuestionDetailPage'
 import HelpInboxPage from './pages/HelpInboxPage'
 import HelpInboxThreadPage from './pages/HelpInboxThreadPage'
+import CcasPage from './pages/CcasPage'
 
 function LoadingScreen() {
   return (
@@ -87,6 +88,7 @@ export default function App() {
                 <Route path="team" element={<FinanceTeamPage />} />
                 <Route path="cca-treasurers" element={<CcaTreasurersPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
+                <Route path="ccas" element={<CcasPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </>
             )}

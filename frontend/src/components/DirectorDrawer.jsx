@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { usePendingCount } from '../api/admin'
-import { IconHome, IconPlus, IconBarChart, IconUserCheck, IconMail, IconShield, IconUsers, IconSettings, IconChat } from './Icons'
+import { IconHome, IconPlus, IconBarChart, IconUserCheck, IconMail, IconShield, IconUsers, IconSettings, IconChat, IconLayers } from './Icons'
 
 const NAV_GROUPS = [
   {
@@ -18,6 +18,7 @@ const NAV_GROUPS = [
       { to: '/help-inbox', label: 'Help Inbox', icon: <IconMail /> },
       { to: '/team', label: 'Finance Team', icon: <IconShield /> },
       { to: '/cca-treasurers', label: 'CCA Treasurers', icon: <IconUsers /> },
+      { to: '/ccas', label: 'Portfolios & CCAs', icon: <IconLayers /> },
       { to: '/settings', label: 'Settings', icon: <IconSettings /> },
     ],
   },

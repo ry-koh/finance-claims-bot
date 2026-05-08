@@ -137,6 +137,53 @@ export function IconPaperclip({ className = 'w-4 h-4' }) {
   )
 }
 
+export function IconLayers({ className = 'w-5 h-5' }) {
+  return (
+    <svg {...BASE} className={className}>
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </svg>
+  )
+}
+
+export function IconPencil({ className = 'w-4 h-4' }) {
+  return (
+    <svg {...BASE} className={className}>
+      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  )
+}
+
+export function IconTrash({ className = 'w-4 h-4' }) {
+  return (
+    <svg {...BASE} className={className}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+    </svg>
+  )
+}
+
+export function IconCheck({ className = 'w-4 h-4' }) {
+  return (
+    <svg {...BASE} className={className}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
+}
+
+export function IconX({ className = 'w-4 h-4' }) {
+  return (
+    <svg {...BASE} className={className}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+
 export function IconFileText({ className = 'w-8 h-8' }) {
   return (
     <svg {...BASE} className={className}>
