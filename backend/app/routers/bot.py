@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
+from telegram import Bot, Update, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram.request import HTTPXRequest
 from app.config import settings
 from app.database import get_supabase
 from app.auth import require_director
@@ -12,7 +14,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_bot():
-    from telegram import Bot  # lazy import
     return Bot(token=settings.TELEGRAM_BOT_TOKEN)
 
 
@@ -31,8 +32,6 @@ async def _send_message(bot, chat_id: int, text: str, **kwargs) -> None:
 async def send_bot_notification(telegram_id, text: str) -> None:
     """Fire-and-forget: send a Telegram message to a user. Silently ignores all errors."""
     try:
-        from telegram import Bot
-        from telegram.request import HTTPXRequest
         bot = Bot(
             token=settings.TELEGRAM_BOT_TOKEN,
             request=HTTPXRequest(connect_timeout=10, read_timeout=30),
@@ -65,7 +64,6 @@ async def _get_member(db, telegram_id: int) -> dict | None:
 
 async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> None:
     member = await _get_member(db, telegram_id)
-    from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # lazy import
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
     )
@@ -122,7 +120,6 @@ async def _handle_register_director(
         await _send_message(bot, chat_id, f"Failed to register: {exc}")
         return
 
-    from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # lazy import
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
     )
@@ -316,7 +313,6 @@ async def webhook(request: Request):
         return {"ok": True}  # Return 200 to prevent Telegram retries
 
     try:
-        from telegram import Update  # lazy import
         update = Update.de_json(data, bot=None)
     except Exception as exc:
         logger.warning("Could not parse Telegram update: %s", exc)
