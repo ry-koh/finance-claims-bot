@@ -370,6 +370,7 @@ async def create_claim(
     counter = counter_resp.data
 
     # --- Validate claimer ---
+    effective_claimer_id: Optional[UUID] = None
     if _member.get("role") == "treasurer":
         if payload.wbs_account == WBSAccount.MBH:
             raise HTTPException(400, "Treasurers cannot select MBH as WBS account")
@@ -382,8 +383,10 @@ async def create_claim(
         allowed_cca_ids = {row["cca_id"] for row in (cca_links.data or [])}
         if str(payload.cca_id) not in allowed_cca_ids:
             raise HTTPException(403, "You can only create claims for your own CCAs")
-        payload.claimer_id = UUID(_member["id"])
+        effective_claimer_id = UUID(_member["id"])
     else:
+        if payload.claimer_id is not None and payload.one_off_name:
+            raise HTTPException(422, "Provide either claimer_id or one_off_name, not both")
         if payload.claimer_id is None and not payload.one_off_name:
             raise HTTPException(422, "Provide either claimer_id or one_off_name")
         if payload.claimer_id is not None:
@@ -391,11 +394,13 @@ async def create_claim(
                 db.table("finance_team")
                 .select("id, role")
                 .eq("id", str(payload.claimer_id))
+                .eq("role", "treasurer")
                 .single()
                 .execute()
             )
             if not ft_check.data:
-                raise HTTPException(404, "Claimer not found in finance team")
+                raise HTTPException(404, "Claimer not found — must be a registered treasurer")
+        effective_claimer_id = payload.claimer_id  # may be None if one-off
 
     # --- Fetch CCA → portfolio for reference code ---
     cca_resp = (
@@ -431,8 +436,8 @@ async def create_claim(
         "status": ClaimStatus.DRAFT.value,
         "other_emails": payload.other_emails,
     }
-    if payload.claimer_id is not None:
-        claim_data["claimer_id"] = str(payload.claimer_id)
+    if effective_claimer_id is not None:
+        claim_data["claimer_id"] = str(effective_claimer_id)
     if payload.one_off_name:
         claim_data["one_off_name"] = payload.one_off_name
     if payload.one_off_matric_no:
