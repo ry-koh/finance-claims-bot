@@ -5,7 +5,7 @@ import { usePendingCount } from '../api/admin'
 import AppDrawer from './AppDrawer'
 import {
   IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconMenu, IconBookOpen,
-  IconBarChart, IconUserCheck, IconShield, IconSettings, IconLayers,
+  IconBarChart, IconUserCheck, IconShield, IconSettings, IconLayers, IconAlertTriangle,
 } from './Icons'
 
 const PAGE_TITLES = {
@@ -22,6 +22,7 @@ const PAGE_TITLES = {
   '/help/new': 'Ask a Question',
   '/help-inbox': 'Help Inbox',
   '/ccas': 'Portfolios & CCAs',
+  '/system-status': 'System Status',
   '/sop': 'SOP',
 }
 
@@ -43,6 +44,7 @@ const DIRECTOR_NAV = [
       { to: '/cca-treasurers', label: 'CCA Treasurers', icon: <IconUsers /> },
       { to: '/ccas', label: 'Portfolios & CCAs', icon: <IconLayers /> },
       { to: '/settings', label: 'Settings', icon: <IconSettings /> },
+      { to: '/system-status', label: 'System Status', icon: <IconAlertTriangle /> },
     ],
   },
   {

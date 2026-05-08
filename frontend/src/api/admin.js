@@ -18,6 +18,9 @@ export const approveRegistration = (memberId) =>
 export const rejectRegistration = (memberId) =>
   api.delete(`/admin/reject/${memberId}`).then((r) => r.data)
 
+export const fetchSystemStatus = () =>
+  api.get('/admin/system-status').then((r) => r.data)
+
 export function usePendingRegistrations() {
   return useQuery({
     queryKey: PENDING_KEYS.all,
@@ -32,6 +35,14 @@ export function usePendingCount(enabled = true) {
     queryFn: fetchPendingCount,
     refetchInterval: 60_000,
     enabled,
+  })
+}
+
+export function useSystemStatus() {
+  return useQuery({
+    queryKey: ['admin', 'system-status'],
+    queryFn: fetchSystemStatus,
+    refetchInterval: 60_000,
   })
 }
 

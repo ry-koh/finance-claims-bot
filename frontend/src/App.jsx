@@ -18,6 +18,7 @@ const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const ApprovalWizardPage = lazy(() => import('./pages/ApprovalWizardPage'))
 const ContactPage = lazy(() => import('./pages/ContactPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const SystemStatusPage = lazy(() => import('./pages/SystemStatusPage'))
 const HelpPage = lazy(() => import('./pages/HelpPage'))
 const HelpNewQuestionPage = lazy(() => import('./pages/HelpNewQuestionPage'))
 const HelpQuestionDetailPage = lazy(() => import('./pages/HelpQuestionDetailPage'))
@@ -94,6 +95,7 @@ export default function App() {
                   <Route path="analytics" element={<AnalyticsPage />} />
                   <Route path="ccas" element={<CcasPage />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route path="system-status" element={<SystemStatusPage />} />
                 </>
               )}
             </>

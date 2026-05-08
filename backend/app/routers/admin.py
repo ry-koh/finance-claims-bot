@@ -4,9 +4,34 @@ from supabase import Client
 from typing import Optional
 
 from app.auth import require_auth, require_director
+from app.config import settings
 from app.database import get_supabase
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _normalise_origin(origin: str) -> str:
+    return (origin or "").strip().rstrip("/")
+
+
+def _configured_cors_origins() -> list[str]:
+    raw_allowed = settings.ALLOWED_ORIGINS or ""
+    parts = [part.strip() for part in raw_allowed.split(",") if part.strip()]
+    if "*" in parts or raw_allowed.strip() == "*":
+        return ["*"]
+    origins: list[str] = []
+    for origin in parts:
+        normalised = _normalise_origin(origin)
+        if normalised and normalised not in origins:
+            origins.append(normalised)
+    mini_app_origin = _normalise_origin(settings.MINI_APP_URL)
+    if mini_app_origin and mini_app_origin not in origins:
+        origins.append(mini_app_origin)
+    return origins or ["*"]
+
+
+def _has_value(value: str | None) -> bool:
+    return bool((value or "").strip())
 
 
 @router.get("/pending-registrations")
@@ -50,6 +75,83 @@ async def pending_count(
         .execute()
     )
     return {"count": resp.count or 0}
+
+
+@router.get("/system-status")
+async def system_status(
+    _director: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    """Return a director-only operational snapshot without exposing secrets."""
+    db_status = "ok"
+    db_error = None
+    try:
+        db.table("finance_team").select("count", count="exact").limit(0).execute()
+    except Exception as exc:
+        db_status = "error"
+        db_error = str(exc)[:300]
+
+    def safe_claims_query(builder):
+        try:
+            return builder.execute().data or []
+        except Exception:
+            return []
+
+    stuck_generations = safe_claims_query(
+        db.table("claims")
+        .select("id, reference_code, status, updated_at, error_message")
+        .eq("error_message", "__generating__")
+        .is_("deleted_at", "null")
+        .order("updated_at", desc=False)
+        .limit(10)
+    )
+    error_claims = safe_claims_query(
+        db.table("claims")
+        .select("id, reference_code, status, updated_at, error_message")
+        .eq("status", "error")
+        .is_("deleted_at", "null")
+        .order("updated_at", desc=True)
+        .limit(10)
+    )
+
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "database": {"status": db_status, "error": db_error},
+        "config": {
+            "app_url_set": _has_value(settings.APP_URL),
+            "mini_app_url_set": _has_value(settings.MINI_APP_URL),
+            "allowed_origins": _configured_cors_origins(),
+            "telegram_bot_token_set": _has_value(settings.TELEGRAM_BOT_TOKEN),
+            "telegram_webhook_secret_set": _has_value(settings.TELEGRAM_WEBHOOK_SECRET_TOKEN),
+            "google_service_account_set": _has_value(settings.GOOGLE_SERVICE_ACCOUNT_JSON),
+            "gmail_refresh_token_set": _has_value(settings.GMAIL_REFRESH_TOKEN),
+            "drive_refresh_token_set": _has_value(settings.DRIVE_REFRESH_TOKEN),
+            "google_drive_parent_folder_set": _has_value(settings.GOOGLE_DRIVE_PARENT_FOLDER_ID),
+            "r2_config_set": all(
+                _has_value(v)
+                for v in [
+                    settings.R2_ACCOUNT_ID,
+                    settings.R2_ACCESS_KEY_ID,
+                    settings.R2_SECRET_ACCESS_KEY,
+                    settings.R2_BUCKET_NAME,
+                ]
+            ),
+        },
+        "limits": {
+            "max_upload_bytes": settings.MAX_UPLOAD_BYTES,
+            "max_pdf_pages": settings.MAX_PDF_PAGES,
+            "docgen_max_workers": settings.DOCGEN_MAX_WORKERS,
+            "r2_storage_limit_bytes": settings.R2_STORAGE_LIMIT_BYTES,
+        },
+        "documents": {
+            "stuck_generations": stuck_generations,
+            "stuck_generation_count": len(stuck_generations),
+        },
+        "claims": {
+            "error_claims": error_claims,
+            "error_claim_count": len(error_claims),
+        },
+    }
 
 
 @router.post("/approve/{member_id}")
