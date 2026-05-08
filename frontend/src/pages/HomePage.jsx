@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useClaims, useClaimCounts, useBulkUpdateStatus } from '../api/claims'
+import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
 
 // Status definitions: [tabLabel, backendValue, tailwind colour classes for badge]
@@ -123,6 +123,7 @@ export default function HomePage() {
 
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [isExporting, setIsExporting] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
   const [actionResult, setActionResult] = useState(null)
 
@@ -241,8 +242,29 @@ export default function HomePage() {
         ) : (
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-lg font-bold text-gray-900">Claims</h1>
-            <button onClick={() => setSelectMode(true)}
-              className="text-sm text-blue-600 font-medium">Select</button>
+            <div className="flex items-center gap-3">
+              <button
+                disabled={isExporting}
+                onClick={async () => {
+                  setIsExporting(true)
+                  try {
+                    await exportClaims({
+                      status: activeStatus,
+                      search: debouncedSearch.trim() || undefined,
+                      date_from: dateFrom || undefined,
+                      date_to: dateTo || undefined,
+                    })
+                  } finally {
+                    setIsExporting(false)
+                  }
+                }}
+                className="text-sm text-gray-500 font-medium disabled:opacity-40"
+              >
+                {isExporting ? 'Exporting…' : 'Export'}
+              </button>
+              <button onClick={() => setSelectMode(true)}
+                className="text-sm text-blue-600 font-medium">Select</button>
+            </div>
           </div>
         )}
 

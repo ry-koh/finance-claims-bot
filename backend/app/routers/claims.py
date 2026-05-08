@@ -1,10 +1,13 @@
 import asyncio
+import csv
+import io
 import uuid as uuid_lib
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel as PydanticBaseModel
 from supabase import Client
 
@@ -155,6 +158,107 @@ async def list_claims(
         "page": page,
         "page_size": page_size,
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /claims/export  — must be before /{claim_id} to avoid path conflict
+# ---------------------------------------------------------------------------
+
+@router.get("/export")
+async def export_claims(
+    status: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Export all matching claims as CSV (no pagination)."""
+    query = (
+        db.table("claims")
+        .select(
+            "id, reference_code, claim_number, status, claim_description, "
+            "total_amount, is_partial, partial_amount, wbs_account, wbs_no, "
+            "transport_form_needed, remarks, date, created_at, "
+            "one_off_name, one_off_matric_no, one_off_phone, one_off_email, "
+            "claimer:finance_team!claims_claimer_id_fkey(id, name)"
+        )
+        .is_("deleted_at", "null")
+        .order("created_at", desc=True)
+    )
+
+    if _member.get("role") == "treasurer":
+        query = query.eq("filled_by", _member["id"])
+    else:
+        treasurer_resp = db.table("finance_team").select("id").eq("role", "treasurer").execute()
+        treasurer_ids = [t["id"] for t in (treasurer_resp.data or [])]
+        if treasurer_ids:
+            id_list = ",".join(treasurer_ids)
+            query = query.or_(f"filled_by.is.null,filled_by.not.in.({id_list}),status.neq.draft")
+
+    if status:
+        query = query.eq("status", status)
+
+    if search and search.strip():
+        s = search.strip()
+        or_parts = [f"reference_code.ilike.%{s}%", f"one_off_name.ilike.%{s}%"]
+        ft_resp = (
+            db.table("finance_team").select("id").ilike("name", f"%{s}%").eq("role", "treasurer").execute()
+        )
+        ft_ids = [r["id"] for r in (ft_resp.data or [])]
+        if ft_ids:
+            or_parts.append(f"claimer_id.in.({','.join(ft_ids)})")
+        query = query.or_(",".join(or_parts))
+
+    if date_from:
+        query = query.gte("created_at", date_from)
+    if date_to:
+        from datetime import date as _date, timedelta
+        try:
+            exclusive_end = (_date.fromisoformat(date_to) + timedelta(days=1)).isoformat()
+            query = query.lt("created_at", exclusive_end)
+        except ValueError:
+            pass
+
+    resp = query.limit(5000).execute()
+    claims = resp.data or []
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Reference Code", "Claimer", "Status", "WBS Account", "WBS No",
+        "Total Amount", "Is Partial", "Partial Amount",
+        "Claim Description", "Transport Form", "Date", "Created At",
+        "One-off Name", "One-off Matric", "One-off Phone", "One-off Email",
+    ])
+    for c in claims:
+        claimer_name = (c.get("claimer") or {}).get("name") or c.get("one_off_name") or ""
+        writer.writerow([
+            c.get("reference_code") or "",
+            claimer_name,
+            c.get("status") or "",
+            c.get("wbs_account") or "",
+            c.get("wbs_no") or "",
+            c.get("total_amount") or "",
+            c.get("is_partial") or False,
+            c.get("partial_amount") or "",
+            c.get("claim_description") or "",
+            c.get("transport_form_needed") or False,
+            c.get("date") or "",
+            (c.get("created_at") or "")[:10],
+            c.get("one_off_name") or "",
+            c.get("one_off_matric_no") or "",
+            c.get("one_off_phone") or "",
+            c.get("one_off_email") or "",
+        ])
+
+    output.seek(0)
+    filename = "claims_export.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------

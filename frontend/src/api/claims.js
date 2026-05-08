@@ -23,6 +23,21 @@ export const fetchClaims = ({ status, page, page_size, search, date_from, date_t
 export const fetchClaimCounts = () =>
   api.get('/claims/counts').then((r) => r.data)
 
+export const exportClaims = async ({ status, search, date_from, date_to } = {}) => {
+  const params = {}
+  if (status) params.status = status
+  if (search) params.search = search
+  if (date_from) params.date_from = date_from
+  if (date_to) params.date_to = date_to
+  const resp = await api.get('/claims/export', { params, responseType: 'blob' })
+  const url = URL.createObjectURL(new Blob([resp.data], { type: 'text/csv' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'claims_export.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export const fetchClaim = (id) =>
   api.get(`/claims/${id}`).then((r) => r.data)
 
