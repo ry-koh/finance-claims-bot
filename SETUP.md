@@ -12,12 +12,10 @@ Complete one-time setup. Do steps in order — each depends on the previous.
 3. Give it a name (e.g. `finance-claims`), set a database password, choose a region close to Singapore
 4. Wait ~2 minutes for it to provision
 
-### Run the database migrations
+### Run the database schema
 1. In your Supabase project, click **SQL Editor** in the left sidebar → **New query**
-2. Run each file in the `supabase/migrations/` folder **in numerical order** by pasting its contents and clicking **Run**:
-   - `001_schema.sql` through `020_analytics_fund_breakdown_fn.sql`
-   - Full list: `001` `002` `003` `004` `005` `006` `007` `008` `009` `010` `011` `012` `013` `014` `015` `016` `017` `018` `019` `020`
-3. You should see "Success. No rows returned" for each
+2. Open `supabase/schema.sql`, paste the entire contents, and click **Run**
+3. You should see "Success. No rows returned"
 
 ### Copy your credentials
 1. Go to **Settings** → **API**
