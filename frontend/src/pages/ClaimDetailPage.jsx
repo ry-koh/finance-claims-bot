@@ -1610,8 +1610,9 @@ export default function ClaimDetailPage() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const claimer = claim.claimer ?? {}
-  const cca = claimer.cca ?? {}
+  const cca = claim.cca ?? {}
   const portfolio = cca.portfolio ?? {}
+  const claimerName = claim.one_off_name || claimer.name || '—'
   const showErrorBanner = claim.status === 'error' && !errorDismissed
   const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
   const canEdit = !isTreasurer || claim.status === 'draft'
@@ -1888,7 +1889,7 @@ export default function ClaimDetailPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2 text-sm">
-              <InfoRow label="Claimer" value={claimer.name ?? '—'} />
+              <InfoRow label="Claimer" value={claimerName} />
               <InfoRow
                 label="CCA / Portfolio"
                 value={
