@@ -1,9 +1,8 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
-import { useClaimers, useCreateClaimer, fetchClaimers } from '../api/claimers'
+import { useTreasurerOptions } from '../api/admin'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
@@ -136,47 +135,20 @@ function Textarea({ value, onChange, placeholder, rows = 3 }) {
 // ─── Step 1: Who ──────────────────────────────────────────────────────────────
 
 function Step1({ data, onChange }) {
-  const [showAddClaimer, setShowAddClaimer] = useState(false)
-  const [newClaimer, setNewClaimer] = useState({ name: '', matric_no: '', phone: '', email: '' })
-  const [addClaimerError, setAddClaimerError] = useState('')
-
   const { data: portfolios = [], isLoading: portfoliosLoading } = usePortfolios()
   const { data: ccas = [], isLoading: ccasLoading } = useCcasByPortfolio(data.portfolioId)
-  const { data: claimers = [], isLoading: claimersLoading } = useClaimers({ cca_id: data.ccaId })
-  const createClaimer = useCreateClaimer()
+  const { data: treasurers = [], isLoading: treasurersLoading } = useTreasurerOptions(data.ccaId)
 
   const portfolioOptions = portfolios.map((p) => ({ value: p.id, label: p.name }))
   const ccaOptions = ccas.map((c) => ({ value: c.id, label: c.name }))
-  const claimerOptions = claimers.map((c) => ({ value: c.id, label: c.name }))
+  const treasurerOptions = treasurers.map((t) => ({ value: t.id, label: t.name }))
 
   function handlePortfolioChange(val) {
-    onChange({ portfolioId: val, ccaId: '', claimerId: '' })
+    onChange({ portfolioId: val, ccaId: '', claimerId: '', isOneOff: false })
   }
 
   function handleCcaChange(val) {
-    onChange({ ccaId: val, claimerId: '' })
-  }
-
-  async function handleAddClaimer() {
-    setAddClaimerError('')
-    if (!newClaimer.name.trim()) {
-      setAddClaimerError('Name is required')
-      return
-    }
-    try {
-      const created = await createClaimer.mutateAsync({
-        name: newClaimer.name.trim(),
-        matric_no: newClaimer.matric_no.trim() || undefined,
-        phone: newClaimer.phone.trim() || undefined,
-        email: newClaimer.email.trim() || undefined,
-        cca_id: data.ccaId,
-      })
-      onChange({ claimerId: created.id })
-      setShowAddClaimer(false)
-      setNewClaimer({ name: '', matric_no: '', phone: '', email: '' })
-    } catch {
-      setAddClaimerError('Failed to create claimer. Please try again.')
-    }
+    onChange({ ccaId: val, claimerId: '', isOneOff: false })
   }
 
   return (
@@ -208,96 +180,72 @@ function Step1({ data, onChange }) {
         />
       </div>
 
-      {/* Claimer */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label required>Claimer</Label>
-          {data.ccaId && !showAddClaimer && (
+      {/* Treasurer or One-Off Toggle */}
+      {data.ccaId && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <Label required>Claimer</Label>
             <button
               type="button"
-              onClick={() => setShowAddClaimer(true)}
+              onClick={() => onChange({ isOneOff: !data.isOneOff, claimerId: '' })}
               className="text-xs text-blue-600 font-medium"
             >
-              + Add New
+              {data.isOneOff ? 'Select treasurer instead' : 'One-off claimer'}
             </button>
+          </div>
+
+          {!data.isOneOff && (
+            <Select
+              value={data.claimerId}
+              onChange={(val) => onChange({ claimerId: val })}
+              placeholder={treasurersLoading ? 'Loading…' : treasurers.length === 0 ? 'No treasurers for this CCA' : 'Select treasurer…'}
+              options={treasurerOptions}
+              disabled={treasurersLoading || treasurers.length === 0}
+            />
+          )}
+
+          {data.isOneOff && (
+            <div className="border border-blue-200 rounded-xl bg-blue-50 p-3 mt-1 space-y-2">
+              <p className="text-xs font-semibold text-blue-700 mb-2">One-off Claimer</p>
+              <div>
+                <Label required>Name</Label>
+                <Input
+                  value={data.oneOffName}
+                  onChange={(v) => onChange({ oneOffName: v })}
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Matric No.</Label>
+                  <Input
+                    value={data.oneOffMatricNo}
+                    onChange={(v) => onChange({ oneOffMatricNo: v })}
+                    placeholder="A0XXXXXXX"
+                  />
+                </div>
+                <div>
+                  <Label>Phone</Label>
+                  <Input
+                    value={data.oneOffPhone}
+                    onChange={(v) => onChange({ oneOffPhone: v })}
+                    placeholder="XXXXXXXX"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>School Email</Label>
+                <Input
+                  type="email"
+                  value={data.oneOffEmail}
+                  onChange={(v) => onChange({ oneOffEmail: v })}
+                  placeholder="XXX@u.nus.edu"
+                />
+              </div>
+            </div>
           )}
         </div>
-
-        {!showAddClaimer && (
-          <Select
-            value={data.claimerId}
-            onChange={(val) => onChange({ claimerId: val })}
-            placeholder={data.ccaId ? (claimersLoading ? 'Loading…' : 'Select claimer…') : 'Select CCA first'}
-            options={claimerOptions}
-            disabled={!data.ccaId || claimersLoading}
-          />
-        )}
-
-        {/* Inline Add Claimer Form */}
-        {showAddClaimer && (
-          <div className="border border-blue-200 rounded-xl bg-blue-50 p-3 mt-1 space-y-2">
-            <p className="text-xs font-semibold text-blue-700 mb-2">New Claimer</p>
-            <div>
-              <Label required>Name</Label>
-              <Input
-                value={newClaimer.name}
-                onChange={(v) => setNewClaimer((p) => ({ ...p, name: v }))}
-                placeholder="Full name"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Matric No.</Label>
-                <Input
-                  value={newClaimer.matric_no}
-                  onChange={(v) => setNewClaimer((p) => ({ ...p, matric_no: v }))}
-                  placeholder="A0XXXXXXX"
-                />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input
-                  value={newClaimer.phone}
-                  onChange={(v) => setNewClaimer((p) => ({ ...p, phone: v }))}
-                  placeholder="XXXXXXXX"
-                />
-              </div>
-            </div>
-            <div>
-              <Label>School Email</Label>
-              <Input
-                type="email"
-                value={newClaimer.email}
-                onChange={(v) => setNewClaimer((p) => ({ ...p, email: v }))}
-                placeholder="XXX@u.nus.edu"
-              />
-            </div>
-            {addClaimerError && (
-              <p className="text-xs text-red-600">{addClaimerError}</p>
-            )}
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleAddClaimer}
-                disabled={createClaimer.isPending}
-                className="flex-1 bg-blue-600 text-white text-sm font-medium py-1.5 rounded-lg disabled:opacity-60"
-              >
-                {createClaimer.isPending ? 'Saving…' : 'Save Claimer'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddClaimer(false)
-                  setAddClaimerError('')
-                }}
-                className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-1.5 rounded-lg"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }
@@ -1274,29 +1222,20 @@ function Step3({
 // ─── Treasurer CCA / Claimer Picker ──────────────────────────────────────────
 
 function TreasurerClaimerPicker({ user, value, onChange }) {
-  const ccaIds = (user?.ccas || []).map((c) => c.id)
-
-  const { data: claimers = [], isLoading } = useQuery({
-    queryKey: ['claimers', 'treasurer', ccaIds.join(',')],
-    queryFn: () =>
-      Promise.all(ccaIds.map((id) => fetchClaimers({ cca_id: id }))).then((results) => results.flat()),
-    enabled: ccaIds.length > 0,
-  })
+  const ccas = user?.ccas || []
 
   useEffect(() => {
-    if (claimers.length === 1 && !value) {
-      onChange(claimers[0].id)
+    if (ccas.length === 1 && !value) {
+      onChange(ccas[0].id)
     }
-  }, [claimers, value, onChange])
+  }, [ccas, value, onChange])
 
-  if (ccaIds.length === 0) return <p className="text-sm text-gray-400">No CCAs assigned to your account.</p>
-  if (isLoading) return <p className="text-sm text-gray-400">Loading your CCA info…</p>
-  if (claimers.length === 0) return <p className="text-sm text-gray-400">No claimers found for your CCAs.</p>
+  if (ccas.length === 0) return <p className="text-sm text-gray-400">No CCAs assigned to your account.</p>
 
-  if (claimers.length === 1) {
+  if (ccas.length === 1) {
     return (
       <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
-        Claiming as: <strong>{claimers[0].name}</strong> ({claimers[0].cca?.name})
+        Claiming for: <strong>{ccas[0].name}</strong>
       </div>
     )
   }
@@ -1312,9 +1251,9 @@ function TreasurerClaimerPicker({ user, value, onChange }) {
         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
       >
         <option value="" disabled>Select CCA</option>
-        {claimers.map((c) => (
+        {ccas.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.name} — {c.cca?.name}
+            {c.name}
           </option>
         ))}
       </select>
@@ -1326,7 +1265,16 @@ function TreasurerClaimerPicker({ user, value, onChange }) {
 
 const DRAFT_KEY = 'new_claim_draft'
 
-const DEFAULT_STEP1 = { portfolioId: '', ccaId: '', claimerId: '' }
+const DEFAULT_STEP1 = {
+  portfolioId: '',
+  ccaId: '',
+  claimerId: '',
+  isOneOff: false,
+  oneOffName: '',
+  oneOffMatricNo: '',
+  oneOffPhone: '',
+  oneOffEmail: '',
+}
 const DEFAULT_STEP2 = {
   claimDescription: '',
   date: today(),
@@ -1402,7 +1350,9 @@ export default function NewClaimPage() {
 
   // ── Step validation ──────────────────────────────────────────────────────
 
-  const step1Valid = isTreasurer ? !!step1.claimerId : step1.portfolioId && step1.ccaId && step1.claimerId
+  const step1Valid = isTreasurer
+    ? !!step1.ccaId
+    : step1.portfolioId && step1.ccaId && (step1.claimerId || (step1.isOneOff && step1.oneOffName.trim()))
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -1465,8 +1415,8 @@ export default function NewClaimPage() {
         autoRemarks = autoRemarks ? `${autoRemarks}\n${MF_REMARK}` : MF_REMARK
 
       // 1. Create the claim
-      const claim = await createClaim.mutateAsync({
-        claimer_id: step1.claimerId,
+      const claimPayload = {
+        cca_id: step1.ccaId,
         claim_description: step2.claimDescription.trim(),
         total_amount: totalAmount,
         date: step2.date,
@@ -1476,7 +1426,19 @@ export default function NewClaimPage() {
         transport_form_needed: step2.transportFormNeeded,
         is_partial: step2.isPartial,
         partial_amount: step2.isPartial && step2.partialAmount ? Number(step2.partialAmount) : undefined,
-      })
+      }
+      if (!isTreasurer) {
+        if (step1.isOneOff) {
+          claimPayload.one_off_name = step1.oneOffName.trim()
+          if (step1.oneOffMatricNo.trim()) claimPayload.one_off_matric_no = step1.oneOffMatricNo.trim()
+          if (step1.oneOffPhone.trim()) claimPayload.one_off_phone = step1.oneOffPhone.trim()
+          if (step1.oneOffEmail.trim()) claimPayload.one_off_email = step1.oneOffEmail.trim()
+        } else {
+          claimPayload.claimer_id = step1.claimerId
+        }
+      }
+      // For treasurer: server auto-sets claimer_id = current user
+      const claim = await createClaim.mutateAsync(claimPayload)
 
       claimId = claim?.id ?? claim?.claim?.id
       if (!claimId) throw new Error('No claim ID returned from server')
@@ -1611,8 +1573,8 @@ export default function NewClaimPage() {
         {step === 1 && isTreasurer && (
           <TreasurerClaimerPicker
             user={user}
-            value={step1.claimerId}
-            onChange={(claimerId) => updateStep1({ claimerId })}
+            value={step1.ccaId}
+            onChange={(ccaId) => updateStep1({ ccaId })}
           />
         )}
         {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} wbsOptions={availableWbsAccounts} />}
