@@ -114,7 +114,14 @@ def build_claim_email(claim: dict, receipts: list, bank_transactions: list = Non
     if claim.get("wbs_account") == "MF":
         auto_remarks.append(mf_line)
     if claim.get("is_partial"):
-        auto_remarks.append("- Partial Claim")
+        partial_lines = [
+            f"- {r.get('description') or 'Receipt'}: ${float(r['claimed_amount']):.2f} claimed of ${float(r['amount']):.2f} paid"
+            for r in receipts if r.get("claimed_amount") is not None
+        ]
+        if partial_lines:
+            auto_remarks.extend(partial_lines)
+        else:
+            auto_remarks.append("- Partial Claim")
     for bt in bank_transactions:
         if bt.get("refunds"):
             refund_amounts = [float(r["amount"]) for r in bt["refunds"]]

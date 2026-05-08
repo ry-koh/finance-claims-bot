@@ -260,7 +260,14 @@ def _do_generate(claim_id: str, db) -> dict:
             auto_remarks.append("- Claimed from Master Fund")
 
         if claim.get("is_partial"):
-            auto_remarks.append("- Partial Claim")
+            partial_lines = [
+                f"- {r.get('description') or 'Receipt'}: ${float(r['claimed_amount']):.2f} claimed of ${float(r['amount']):.2f} paid"
+                for r in all_receipts if r.get("claimed_amount") is not None
+            ]
+            if partial_lines:
+                auto_remarks.extend(partial_lines)
+            else:
+                auto_remarks.append("- Partial Claim")
 
         for bt in bank_transactions:
             if bt.get("refunds"):
