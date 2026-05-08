@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import HomePage from './pages/HomePage'
@@ -55,6 +56,8 @@ export default function App() {
   const isDirector = user.role === 'director'
 
   return (
+    <>
+    <Analytics />
     <Routes>
       {!isTreasurer && (
         <Route path="/claims/:id/approve" element={<ApprovalWizardPage />} />
@@ -92,5 +95,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </>
   )
 }
