@@ -438,14 +438,15 @@ async def create_claim(
     }
     if effective_claimer_id is not None:
         claim_data["claimer_id"] = str(effective_claimer_id)
-    if payload.one_off_name:
-        claim_data["one_off_name"] = payload.one_off_name
-    if payload.one_off_matric_no:
-        claim_data["one_off_matric_no"] = payload.one_off_matric_no
-    if payload.one_off_phone:
-        claim_data["one_off_phone"] = payload.one_off_phone
-    if payload.one_off_email:
-        claim_data["one_off_email"] = payload.one_off_email
+    if _member.get("role") != "treasurer":
+        if payload.one_off_name:
+            claim_data["one_off_name"] = payload.one_off_name
+        if payload.one_off_matric_no:
+            claim_data["one_off_matric_no"] = payload.one_off_matric_no
+        if payload.one_off_phone:
+            claim_data["one_off_phone"] = payload.one_off_phone
+        if payload.one_off_email:
+            claim_data["one_off_email"] = payload.one_off_email
     if _member.get("role") == "treasurer":
         claim_data["filled_by"] = str(_member["id"])
     elif payload.filled_by is not None:
