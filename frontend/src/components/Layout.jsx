@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useIsDirector, useIsTreasurer } from '../context/AuthContext'
 import { usePendingCount } from '../api/admin'
 import DirectorDrawer from './DirectorDrawer'
-import { IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconMenu } from './Icons'
+import { IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconMenu, IconBookOpen } from './Icons'
 
 const PAGE_TITLES = {
   '/': 'Home',
@@ -85,15 +85,26 @@ export default function Layout() {
           <span>New Claim</span>
         </NavLink>
         {isTreasurer ? (
-          <NavLink
-            to="/help"
-            className={({ isActive }) =>
-              `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
-            }
-          >
-            <IconHelp className="w-5 h-5" />
-            <span>Help</span>
-          </NavLink>
+          <>
+            <NavLink
+              to="/help"
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              }
+            >
+              <IconHelp className="w-5 h-5" />
+              <span>Help</span>
+            </NavLink>
+            <NavLink
+              to="/sop"
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              }
+            >
+              <IconBookOpen className="w-5 h-5" />
+              <span>SOP</span>
+            </NavLink>
+          </>
         ) : (
           <>
             <NavLink
@@ -122,6 +133,15 @@ export default function Layout() {
             >
               <IconMail className="w-5 h-5" />
               <span>Inbox</span>
+            </NavLink>
+            <NavLink
+              to="/sop"
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              }
+            >
+              <IconBookOpen className="w-5 h-5" />
+              <span>SOP</span>
             </NavLink>
           </>
         )}

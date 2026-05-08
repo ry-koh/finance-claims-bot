@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { usePendingCount } from '../api/admin'
-import { IconHome, IconPlus, IconBarChart, IconUserCheck, IconMail, IconShield, IconUsers, IconSettings, IconChat, IconLayers } from './Icons'
+import { IconHome, IconPlus, IconBarChart, IconUserCheck, IconMail, IconShield, IconUsers, IconSettings, IconChat, IconLayers, IconBookOpen } from './Icons'
 
 const NAV_GROUPS = [
   {
@@ -26,6 +26,7 @@ const NAV_GROUPS = [
     label: 'Other',
     items: [
       { to: '/contact', label: 'Contact', icon: <IconChat /> },
+      { to: '/sop', label: 'SOP', icon: <IconBookOpen /> },
     ],
   },
 ]

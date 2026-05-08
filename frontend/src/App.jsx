@@ -22,6 +22,7 @@ import HelpQuestionDetailPage from './pages/HelpQuestionDetailPage'
 import HelpInboxPage from './pages/HelpInboxPage'
 import HelpInboxThreadPage from './pages/HelpInboxThreadPage'
 import CcasPage from './pages/CcasPage'
+import SopPage from './pages/SopPage'
 
 function LoadingScreen() {
   return (
@@ -94,6 +95,7 @@ export default function App() {
             )}
           </>
         )}
+        <Route path="sop" element={<SopPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
