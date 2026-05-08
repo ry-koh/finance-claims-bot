@@ -17,6 +17,7 @@ from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
 from app.routers.bot import send_bot_notification
 from app.services import r2 as r2_service
+from app.services.events import log_claim_event
 from app.utils.rate_limit import guard
 
 
@@ -477,6 +478,40 @@ async def get_claim(
 # GET /claims/{claim_id}/line-items — Get all line items with nested receipts
 # ---------------------------------------------------------------------------
 
+@router.get("/{claim_id}/events")
+async def get_claim_events(
+    claim_id: str,
+    _member: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Return the audit timeline for a claim. Empty until the claim_events migration is run."""
+    get_claim_for_member(db, claim_id, _member)
+    try:
+        resp = (
+            db.table("claim_events")
+            .select("*")
+            .eq("claim_id", claim_id)
+            .order("created_at")
+            .execute()
+        )
+    except Exception:
+        return []
+    events = resp.data or []
+    actor_ids = list({event["actor_id"] for event in events if event.get("actor_id")})
+    actors: dict[str, dict] = {}
+    if actor_ids:
+        actor_resp = (
+            db.table("finance_team")
+            .select("id, name, role")
+            .in_("id", actor_ids)
+            .execute()
+        )
+        actors = {actor["id"]: actor for actor in (actor_resp.data or [])}
+    for event in events:
+        event["actor"] = actors.get(event.get("actor_id"))
+    return events
+
+
 @router.get("/{claim_id}/line-items")
 async def get_claim_line_items(
     claim_id: str,
@@ -647,7 +682,16 @@ async def create_claim(
     if not create_resp.data:
         raise HTTPException(status_code=500, detail="Failed to create claim")
 
-    return create_resp.data[0]
+    created_claim = create_resp.data[0]
+    log_claim_event(
+        db,
+        created_claim["id"],
+        _member.get("id"),
+        "claim_created",
+        "Claim created",
+        {"reference_code": created_claim.get("reference_code")},
+    )
+    return created_claim
 
 
 # ---------------------------------------------------------------------------
@@ -671,6 +715,10 @@ async def bulk_update_status(
 
     resp = query.execute()
     updated = len(resp.data) if resp.data else 0
+    event_type = "marked_submitted" if payload.status == ClaimStatus.SUBMITTED else "marked_reimbursed"
+    message = "Marked as submitted" if payload.status == ClaimStatus.SUBMITTED else "Marked as reimbursed"
+    for claim in resp.data or []:
+        log_claim_event(db, claim["id"], _member.get("id"), event_type, message, {"bulk": True})
     return {"updated": updated, "skipped": len(payload.claim_ids) - updated}
 
 
@@ -753,6 +801,15 @@ async def update_claim(
 
     if stale_ids:
         db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
+
+    log_claim_event(
+        db,
+        claim_id,
+        _member.get("id"),
+        "claim_updated",
+        "Claim details updated",
+        {"fields": sorted(update_data.keys()), "stale_documents": stale_document_types},
+    )
 
     return {
         "claim": update_resp.data[0],
@@ -838,6 +895,7 @@ async def submit_for_review(
     }).eq("id", claim_id).eq("status", ClaimStatus.DRAFT.value).execute()
     if not resp.data:
         raise HTTPException(409, "Claim is no longer in draft status")
+    log_claim_event(db, claim_id, member.get("id"), "submitted_for_review", "Submitted for finance review")
     return {"success": True, "status": ClaimStatus.PENDING_REVIEW.value}
 
 
@@ -871,6 +929,14 @@ async def reject_review(
                 ft.data[0]["telegram_id"],
                 f"❌ Claim {ref} was rejected.\n\nFeedback: {payload.comment}\n\nPlease update and resubmit via the Claims App."
             ))
+    log_claim_event(
+        db,
+        claim_id,
+        _member.get("id"),
+        "review_rejected",
+        "Finance review rejected",
+        {"comment": payload.comment},
+    )
     return {"success": True, "status": ClaimStatus.DRAFT.value}
 
 
@@ -899,6 +965,7 @@ async def mark_submitted(
                 ft.data[0]["telegram_id"],
                 f"📬 Claim {ref} has been submitted to the school finance office. We will notify you when it is reimbursed."
             ))
+    log_claim_event(db, claim_id, _member.get("id"), "marked_submitted", "Marked as submitted")
     return {"success": True, "status": "submitted"}
 
 
@@ -927,6 +994,7 @@ async def mark_reimbursed(
                 ft.data[0]["telegram_id"],
                 f"✅ Claim {ref} has been reimbursed! Please verify that you have received your payment."
             ))
+    log_claim_event(db, claim_id, _member.get("id"), "marked_reimbursed", "Marked as reimbursed")
     return {"success": True, "status": "reimbursed"}
 
 
@@ -955,6 +1023,14 @@ async def request_attachment(
         raise HTTPException(500, "Failed to create attachment request")
 
     db.table("claims").update({"status": "attachment_requested"}).eq("id", claim_id).execute()
+    log_claim_event(
+        db,
+        claim_id,
+        member.get("id"),
+        "attachment_requested",
+        "Additional attachment requested",
+        {"message": payload.message},
+    )
 
     # One-off claimers have no app access — skip Telegram notification
     is_one_off = claim.get("claimer_id") is None
@@ -1012,7 +1088,16 @@ async def upload_attachment_file(
         r2_service.delete_file(object_name)
         raise HTTPException(500, "Failed to save file record")
 
-    return file_resp.data[0]
+    uploaded = file_resp.data[0]
+    log_claim_event(
+        db,
+        claim_id,
+        member.get("id"),
+        "attachment_file_uploaded",
+        "Attachment file uploaded",
+        {"filename": filename},
+    )
+    return uploaded
 
 
 # ---------------------------------------------------------------------------
@@ -1045,6 +1130,7 @@ async def submit_attachments(
 
     db.table("claim_attachment_requests").update({"status": "submitted"}).eq("id", current_req["id"]).execute()
     db.table("claims").update({"status": "attachment_uploaded"}).eq("id", claim_id).execute()
+    log_claim_event(db, claim_id, member.get("id"), "attachments_submitted", "Attachments submitted for review")
 
     director_resp = db.table("finance_team").select("telegram_id").eq("role", "director").execute()
     if director_resp.data and director_resp.data[0].get("telegram_id"):
@@ -1078,6 +1164,7 @@ async def accept_attachments(
 
     db.table("claim_attachment_requests").update({"status": "accepted"}).eq("id", current_req["id"]).execute()
     db.table("claims").update({"status": "submitted"}).eq("id", claim_id).execute()
+    log_claim_event(db, claim_id, member.get("id"), "attachments_accepted", "Additional attachments accepted")
 
     return {"ok": True}
 
@@ -1113,6 +1200,14 @@ async def reject_attachments(
         raise HTTPException(500, "Failed to create new attachment request")
 
     db.table("claims").update({"status": "attachment_requested"}).eq("id", claim_id).execute()
+    log_claim_event(
+        db,
+        claim_id,
+        member.get("id"),
+        "attachments_rejected",
+        "Additional attachments need revision",
+        {"message": payload.message},
+    )
 
     # One-off claimers have no app access — skip Telegram notification
     is_one_off = claim.get("claimer_id") is None

@@ -199,6 +199,16 @@ CREATE TABLE claim_attachment_files (
   uploaded_at       timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE claim_events (
+  id         uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  claim_id   uuid NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  actor_id   uuid REFERENCES finance_team(id) ON DELETE SET NULL,
+  event_type text NOT NULL,
+  message    text NOT NULL,
+  metadata   jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE app_settings (
   key        text PRIMARY KEY,
   value      text NOT NULL,
@@ -242,6 +252,8 @@ CREATE INDEX idx_bt_refunds_bt       ON bank_transaction_refunds(bank_transactio
 CREATE INDEX idx_bt_claim            ON bank_transactions(claim_id);
 CREATE INDEX idx_attachment_requests_claim ON claim_attachment_requests(claim_id);
 CREATE INDEX idx_attachment_files_request  ON claim_attachment_files(request_id);
+CREATE INDEX idx_claim_events_claim_created ON claim_events(claim_id, created_at);
+CREATE INDEX idx_claim_events_type          ON claim_events(event_type);
 CREATE INDEX idx_help_questions_asker  ON help_questions(asker_id);
 CREATE INDEX idx_help_questions_status ON help_questions(status);
 CREATE INDEX idx_help_answers_question ON help_answers(question_id);

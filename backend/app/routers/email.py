@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_supabase
 from app.auth import require_finance_team
 from app.routers.bot import send_bot_notification
+from app.services.events import log_claim_event
 from app.services import gmail as gmail_service
 from app.services import pdf as pdf_service
 from app.utils.rate_limit import guard
@@ -140,6 +141,14 @@ async def send_claim_email(
         db.table("claims").update(
             {"status": "email_sent", "error_message": None}
         ).eq("id", claim_id).execute()
+        log_claim_event(
+            db,
+            claim_id,
+            _member.get("id"),
+            "email_sent",
+            "Confirmation email sent",
+            {"sent_to": claimer_email, "message_id": message_id},
+        )
 
         # Notify the treasurer who created the claim
         filled_by_id = claim.get("filled_by")
@@ -160,6 +169,14 @@ async def send_claim_email(
             db.table("claims").update(
                 {"status": "error", "error_message": str(exc)}
             ).eq("id", claim_id).execute()
+            log_claim_event(
+                db,
+                claim_id,
+                _member.get("id"),
+                "email_failed",
+                "Confirmation email failed",
+                {"error": str(exc)[:300]},
+            )
         except Exception:
             pass
         raise HTTPException(
@@ -208,6 +225,14 @@ async def resend_claim_email(
 
         # 6. Send
         message_id = gmail_service.send_email(claimer_email, reference_code, msg)
+        log_claim_event(
+            db,
+            claim_id,
+            _member.get("id"),
+            "email_resent",
+            "Confirmation email resent",
+            {"sent_to": claimer_email, "message_id": message_id},
+        )
 
     except HTTPException:
         raise

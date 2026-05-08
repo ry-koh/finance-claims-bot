@@ -323,6 +323,23 @@ SELECT p.id, 'B&C' FROM p
 ON CONFLICT DO NOTHING;
 ```
 
+### Add claim event timeline
+
+```sql
+CREATE TABLE IF NOT EXISTS claim_events (
+  id         uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  claim_id   uuid NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  actor_id   uuid REFERENCES finance_team(id) ON DELETE SET NULL,
+  event_type text NOT NULL,
+  message    text NOT NULL,
+  metadata   jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_claim_events_claim_created ON claim_events(claim_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_claim_events_type ON claim_events(event_type);
+```
+
 ---
 
 ## If the Bot Stops Responding

@@ -8,6 +8,7 @@ from typing import Optional
 from app.database import get_supabase
 from app.auth import get_claim_for_member, require_auth, require_finance_team
 from app.services import r2 as r2_service
+from app.services.events import log_claim_event
 from app.config import settings
 from app.utils.rate_limit import guard
 from telegram import Bot
@@ -479,7 +480,25 @@ async def generate_documents(
         raise HTTPException(409, "Document generation is already in progress for this claim.")
 
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
+    result = await loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
+    log_claim_event(
+        db,
+        claim_id,
+        _auth.get("id"),
+        "documents_generated",
+        "Documents generated",
+        {"documents": result.get("documents", []), "claim_status": result.get("claim_status")},
+    )
+    if result.get("claim_status") == "compiled":
+        log_claim_event(
+            db,
+            claim_id,
+            _auth.get("id"),
+            "documents_compiled",
+            "Compiled PDF generated",
+            {"page_count": result.get("page_count")},
+        )
+    return result
 
 
 @router.post("/compile/{claim_id}")
@@ -507,6 +526,14 @@ def compile_documents(
         db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
         raise HTTPException(500, f"PDF compilation failed: {e}")
 
+    log_claim_event(
+        db,
+        claim_id,
+        _auth.get("id"),
+        "documents_compiled",
+        "Compiled PDF generated",
+        {"page_count": result["page_count"]},
+    )
     return {"success": True, "claim_status": "compiled", "page_count": result["page_count"]}
 
 
@@ -543,7 +570,25 @@ async def upload_screenshot(
 
     # Keep this request open so Cloud Run keeps CPU allocated for the worker.
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
+    result = await loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
+    log_claim_event(
+        db,
+        claim_id,
+        _auth.get("id"),
+        "email_screenshot_uploaded",
+        "Email screenshot uploaded",
+        {"file_count": len(files_data), "claim_status": result.get("claim_status")},
+    )
+    if result.get("claim_status") == "compiled":
+        log_claim_event(
+            db,
+            claim_id,
+            _auth.get("id"),
+            "documents_compiled",
+            "Compiled PDF generated",
+            {"page_count": result.get("page_count")},
+        )
+    return result
 
 
 @router.post("/transport-data/{claim_id}")
@@ -589,6 +634,7 @@ async def upload_mf_approval(
         "mf_approval_drive_id": new_ids[0],
         "mf_approval_drive_ids": new_ids,
     }).eq("id", claim_id).execute()
+    log_claim_event(db, claim_id, _auth.get("id"), "mf_approval_uploaded", "Master Fund approval uploaded")
     return {"success": True, "drive_file_id": drive_file_id}
 
 

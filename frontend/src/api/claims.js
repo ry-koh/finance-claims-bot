@@ -41,6 +41,9 @@ export const exportClaims = async ({ status, search, date_from, date_to } = {}) 
 export const fetchClaim = (id) =>
   api.get(`/claims/${id}`).then((r) => r.data)
 
+export const fetchClaimEvents = (id) =>
+  api.get(`/claims/${id}/events`).then((r) => r.data)
+
 export const createClaim = (body) =>
   api.post('/claims', body).then((r) => r.data)
 
@@ -79,6 +82,15 @@ export function useClaim(id) {
     // Continuous polling causes a race: an in-flight poll can overwrite fresh post-mutation data.
     refetchInterval: (query) =>
       query.state.data?.error_message === '__generating__' ? 3_000 : false,
+  })
+}
+
+export function useClaimEvents(id) {
+  return useQuery({
+    queryKey: [...CLAIM_KEYS.detail(id), 'events'],
+    queryFn: () => fetchClaimEvents(id),
+    enabled: !!id,
+    staleTime: 30_000,
   })
 }
 

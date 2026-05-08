@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useClaim, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
+import { useClaim, useClaimEvents, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval, submitTransportData } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
@@ -1698,6 +1698,75 @@ function AttachmentRequestPanel({ claim }) {
   return null
 }
 
+const EVENT_LABELS = {
+  claim_created: 'Claim created',
+  claim_updated: 'Claim updated',
+  submitted_for_review: 'Submitted for review',
+  review_rejected: 'Review rejected',
+  email_sent: 'Email sent',
+  email_resent: 'Email resent',
+  email_failed: 'Email failed',
+  email_screenshot_uploaded: 'Email screenshot uploaded',
+  documents_generated: 'Documents generated',
+  documents_compiled: 'Compiled PDF generated',
+  marked_submitted: 'Marked submitted',
+  marked_reimbursed: 'Marked reimbursed',
+  attachment_requested: 'Attachment requested',
+  attachment_file_uploaded: 'Attachment file uploaded',
+  attachments_submitted: 'Attachments submitted',
+  attachments_accepted: 'Attachments accepted',
+  attachments_rejected: 'Attachments rejected',
+  mf_approval_uploaded: 'MF approval uploaded',
+}
+
+function formatEventTime(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleString('en-SG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function ClaimTimeline({ events = [] }) {
+  if (!events.length) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Timeline</h2>
+        <p className="text-xs text-gray-400">No timeline events yet. New actions will appear after the audit migration is run.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <h2 className="text-sm font-semibold text-gray-700 mb-3">Timeline</h2>
+      <div className="space-y-3">
+        {events.map((event) => {
+          const actor = event.actor?.name || 'System'
+          const label = EVENT_LABELS[event.event_type] || event.message || event.event_type
+          return (
+            <div key={event.id} className="flex gap-3">
+              <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium text-gray-800">{label}</p>
+                  <span className="shrink-0 text-[11px] text-gray-400">{formatEventTime(event.created_at)}</span>
+                </div>
+                <p className="text-xs text-gray-500">{event.message}</p>
+                <p className="text-[11px] text-gray-400">{actor}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function ClaimDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1706,6 +1775,7 @@ export default function ClaimDetailPage() {
 
   // Queries
   const { data: claim, isLoading, isError, refetch } = useClaim(id)
+  const { data: claimEvents = [] } = useClaimEvents(id)
 
   // Role
   const isTreasurer = useIsTreasurer()
@@ -1757,6 +1827,7 @@ export default function ClaimDetailPage() {
 
   function invalidateClaim() {
     queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+    queryClient.invalidateQueries({ queryKey: [...CLAIM_KEYS.detail(id), 'events'] })
   }
 
   // Action dispatcher
@@ -2334,6 +2405,8 @@ export default function ClaimDetailPage() {
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Progress</h2>
           <StatusPipeline claim={claim} onAction={handleAction} isTreasurer={isTreasurer} />
         </div>
+
+        <ClaimTimeline events={claimEvents} />
 
         {/* ── Bank Transactions ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
