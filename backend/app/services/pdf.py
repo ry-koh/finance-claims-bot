@@ -156,11 +156,11 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
             # FX screenshots stored as extra drive IDs on the receipt row
             for fxid in (receipt.get("exchange_rate_screenshot_drive_ids") or []):
                 if fxid:
-                    _add_image_page(pdf, fxid, f"[Exchange Rate — {_receipt_header(receipt)}]")
+                    _add_image_page(pdf, fxid, f"[Exchange Rate - {_receipt_header(receipt)}]")
             if not (receipt.get("exchange_rate_screenshot_drive_ids")):
                 fxid_single = receipt.get("exchange_rate_screenshot_drive_id")
                 if fxid_single:
-                    _add_image_page(pdf, fxid_single, f"[Exchange Rate — {_receipt_header(receipt)}]")
+                    _add_image_page(pdf, fxid_single, f"[Exchange Rate - {_receipt_header(receipt)}]")
         for img in (bt.get("images") or []):
             if img.get("drive_file_id"):
                 _add_image_page(pdf, img["drive_file_id"], "[Bank Transaction]")
@@ -180,11 +180,11 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
                 _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
         for fxid in (receipt.get("exchange_rate_screenshot_drive_ids") or []):
             if fxid:
-                _add_image_page(pdf, fxid, f"[Exchange Rate — {_receipt_header(receipt)}]")
+                _add_image_page(pdf, fxid, f"[Exchange Rate - {_receipt_header(receipt)}]")
         if not (receipt.get("exchange_rate_screenshot_drive_ids")):
             fxid_single = receipt.get("exchange_rate_screenshot_drive_id")
             if fxid_single:
-                _add_image_page(pdf, fxid_single, f"[Exchange Rate — {_receipt_header(receipt)}]")
+                _add_image_page(pdf, fxid_single, f"[Exchange Rate - {_receipt_header(receipt)}]")
 
     # Ensure at least one page so pypdf can read the file
     if pdf.page == 0:
