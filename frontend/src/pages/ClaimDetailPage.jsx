@@ -1780,6 +1780,7 @@ const EVENT_LABELS = {
   documents_compiled: 'Compiled PDF generated',
   marked_submitted: 'Marked submitted',
   marked_reimbursed: 'Marked reimbursed',
+  reimbursement_batch_completed: 'Reimbursement batch completed',
   attachment_requested: 'Attachment requested',
   attachment_file_uploaded: 'Attachment file uploaded',
   attachments_submitted: 'Attachments submitted',

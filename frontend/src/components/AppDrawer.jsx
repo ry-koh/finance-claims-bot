@@ -43,6 +43,23 @@ function ThemeModeToggle() {
   )
 }
 
+function formatTelegramUsername(username) {
+  const trimmed = username?.trim()
+  if (!trimmed) return ''
+  return trimmed.startsWith('@') ? trimmed : `@${trimmed}`
+}
+
+function AccountDetail({ label, value }) {
+  if (!value) return null
+
+  return (
+    <div className="flex items-start justify-between gap-2 text-[11px] leading-snug">
+      <span className="shrink-0 font-semibold text-gray-400">{label}</span>
+      <span className="min-w-0 text-right font-medium text-gray-600 break-words">{value}</span>
+    </div>
+  )
+}
+
 export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }) {
   const { user } = useAuth()
   const roleLabel = user?.role === 'director'
@@ -52,6 +69,8 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
     : user?.role === 'treasurer'
     ? 'CCA Treasurer'
     : 'Finance Claims'
+  const telegramUsername = formatTelegramUsername(user?.telegram_username)
+  const ccaNames = user?.ccas?.length ? user.ccas.map((cca) => cca.name).join(', ') : ''
 
   return (
     <>
@@ -103,11 +122,17 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
         <div className="shrink-0 border-t border-gray-100 px-4 py-3 space-y-3">
           <ThemeModeToggle />
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-            <p className="truncate text-xs font-bold text-gray-800">{user?.name || 'Finance Claims'}</p>
+            <p className="truncate text-xs font-bold text-gray-800" title={user?.name || 'Finance Claims'}>
+              {user?.name || 'Finance Claims'}
+            </p>
             <p className="mt-0.5 text-[11px] font-medium text-gray-500">{roleLabel}</p>
-            {user?.email && (
-              <p className="mt-1 truncate text-[11px] text-gray-400">{user.email}</p>
-            )}
+            <div className="mt-2 space-y-1 border-t border-gray-100 pt-2">
+              <AccountDetail label="Email" value={user?.email} />
+              <AccountDetail label="Matric" value={user?.matric_number} />
+              <AccountDetail label="Phone" value={user?.phone_number} />
+              <AccountDetail label="Telegram" value={telegramUsername} />
+              <AccountDetail label="CCA" value={ccaNames} />
+            </div>
           </div>
         </div>
       </div>

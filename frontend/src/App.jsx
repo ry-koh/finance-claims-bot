@@ -18,6 +18,7 @@ const CcaTreasurersPage = lazy(() => import('./pages/CcaTreasurersPage'))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const ApprovalWizardPage = lazy(() => import('./pages/ApprovalWizardPage'))
 const ContactPage = lazy(() => import('./pages/ContactPage'))
+const ReimbursementProcessPage = lazy(() => import('./pages/ReimbursementProcessPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const SystemStatusPage = lazy(() => import('./pages/SystemStatusPage'))
 const HelpPage = lazy(() => import('./pages/HelpPage'))
@@ -115,6 +116,7 @@ export default function App() {
                   <Route path="team" element={<FinanceTeamPage />} />
                   <Route path="cca-treasurers" element={<CcaTreasurersPage />} />
                   <Route path="analytics" element={<AnalyticsPage />} />
+                  <Route path="reimbursements" element={<ReimbursementProcessPage />} />
                   <Route path="ccas" element={<CcasPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="system-status" element={<SystemStatusPage />} />

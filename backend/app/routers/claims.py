@@ -34,6 +34,10 @@ class RejectReviewRequest(PydanticBaseModel):
 class AttachmentRequestBody(PydanticBaseModel):
     message: str
 
+
+class ReimbursementClaimsRequest(PydanticBaseModel):
+    claim_ids: list[str]
+
 router = APIRouter(prefix="/claims", tags=["claims"])
 
 # ---------------------------------------------------------------------------
@@ -66,6 +70,134 @@ def _get_claim_or_404(db: Client, claim_id: str) -> dict:
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
     return resp.data[0]
+
+
+def _normalise_claim_ids(claim_ids: list[str]) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for raw in claim_ids:
+        try:
+            claim_id = str(uuid_lib.UUID(str(raw).strip()))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid claim ID: {raw}") from exc
+        if claim_id not in seen:
+            ids.append(claim_id)
+            seen.add(claim_id)
+    return ids
+
+
+def _money(value) -> float:
+    return round(float(value or 0), 2)
+
+
+def _format_money(value) -> str:
+    return f"SGD {_money(value):.2f}"
+
+
+def _claim_payee(claim: dict) -> dict:
+    claimer = claim.get("claimer") or {}
+    if claim.get("claimer_id"):
+        return {
+            "key": f"member:{claim['claimer_id']}",
+            "name": claimer.get("name") or "Unknown claimer",
+            "phone_number": claimer.get("phone_number") or "",
+            "email": claimer.get("email") or "",
+            "telegram_id": claimer.get("telegram_id"),
+            "payee_type": "registered",
+        }
+
+    name = claim.get("one_off_name") or "One-off claimer"
+    phone = claim.get("one_off_phone") or ""
+    email = claim.get("one_off_email") or ""
+    return {
+        "key": f"oneoff:{name.lower()}|{phone}|{email.lower()}",
+        "name": name,
+        "phone_number": phone,
+        "email": email,
+        "telegram_id": None,
+        "payee_type": "one_off",
+    }
+
+
+def _fetch_reimbursement_claims(db: Client, claim_ids: list[str]) -> list[dict]:
+    if not claim_ids:
+        return []
+    resp = (
+        db.table("claims")
+        .select(
+            "id, reference_code, status, total_amount, claim_description, date, "
+            "one_off_name, one_off_phone, one_off_email, claimer_id, "
+            "claimer:finance_team!claims_claimer_id_fkey(id, name, email, phone_number, telegram_id)"
+        )
+        .in_("id", claim_ids)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    order = {claim_id: idx for idx, claim_id in enumerate(claim_ids)}
+    return sorted(resp.data or [], key=lambda row: order.get(row.get("id"), len(order)))
+
+
+def _build_reimbursement_preview(db: Client, claim_ids: list[str]) -> dict:
+    claims = _fetch_reimbursement_claims(db, claim_ids)
+    found_ids = {claim["id"] for claim in claims}
+    skipped = [
+        {"id": claim_id, "reason": "Claim was not found"}
+        for claim_id in claim_ids
+        if claim_id not in found_ids
+    ]
+    groups_by_key: dict[str, dict] = {}
+
+    for claim in claims:
+        if claim.get("status") != ClaimStatus.SUBMITTED.value:
+            skipped.append({
+                "id": claim["id"],
+                "reference_code": claim.get("reference_code"),
+                "reason": "Claim is not submitted",
+            })
+            continue
+
+        payee = _claim_payee(claim)
+        group = groups_by_key.setdefault(payee["key"], {
+            **payee,
+            "claim_count": 0,
+            "total_amount": 0.0,
+            "claims": [],
+        })
+        amount = _money(claim.get("total_amount"))
+        group["claim_count"] += 1
+        group["total_amount"] = _money(group["total_amount"] + amount)
+        group["claims"].append({
+            "id": claim["id"],
+            "reference_code": claim.get("reference_code"),
+            "amount": amount,
+            "description": claim.get("claim_description") or "",
+            "date": claim.get("date"),
+        })
+
+    groups = sorted(groups_by_key.values(), key=lambda group: group["name"].lower())
+    return {
+        "groups": groups,
+        "skipped": skipped,
+        "total_claims": sum(group["claim_count"] for group in groups),
+        "total_payees": len(groups),
+        "total_amount": _money(sum(group["total_amount"] for group in groups)),
+        "notifiable_payees": sum(1 for group in groups if group.get("telegram_id")),
+    }
+
+
+def _reimbursement_message(group: dict) -> str:
+    claim_lines = [
+        f"- {claim.get('reference_code') or claim['id']}: {_format_money(claim.get('amount'))}"
+        for claim in group["claims"]
+    ]
+    claim_word = "claim" if len(group["claims"]) == 1 else "claims"
+    return (
+        "Reimbursement completed.\n\n"
+        f"You should have received {_format_money(group['total_amount'])} for "
+        f"{len(group['claims'])} {claim_word}:\n"
+        + "\n".join(claim_lines)
+        + "\n\nPlease verify that the PayLah/PayNow payment was received."
+    )
 
 
 def _get_current_attachment_request(db: Client, claim_id: str) -> dict | None:
@@ -739,6 +871,120 @@ async def bulk_update_status(
     for claim in resp.data or []:
         log_claim_event(db, claim["id"], _member.get("id"), event_type, message, {"bulk": True})
     return {"updated": updated, "skipped": len(payload.claim_ids) - updated}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/reimbursements/preview
+# ---------------------------------------------------------------------------
+
+@router.post("/reimbursements/preview")
+async def preview_reimbursements(
+    payload: ReimbursementClaimsRequest,
+    _member: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    claim_ids = _normalise_claim_ids(payload.claim_ids)
+    if not claim_ids:
+        raise HTTPException(status_code=422, detail="claim_ids must not be empty")
+    return _build_reimbursement_preview(db, claim_ids)
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/reimbursements/complete
+# ---------------------------------------------------------------------------
+
+@router.post("/reimbursements/complete")
+async def complete_reimbursements(
+    payload: ReimbursementClaimsRequest,
+    member: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    guard(f"reimbursements:{member.get('id')}", max_calls=3, window_seconds=60)
+    claim_ids = _normalise_claim_ids(payload.claim_ids)
+    if not claim_ids:
+        raise HTTPException(status_code=422, detail="claim_ids must not be empty")
+
+    preview = _build_reimbursement_preview(db, claim_ids)
+    payable_ids = [
+        claim["id"]
+        for group in preview["groups"]
+        for claim in group["claims"]
+    ]
+    if not payable_ids:
+        return {
+            "updated": 0,
+            "skipped": len(claim_ids),
+            "messages_sent": 0,
+            "messages_skipped": 0,
+            "groups": [],
+            "skipped_claims": preview["skipped"],
+        }
+
+    resp = (
+        db.table("claims")
+        .update({"status": ClaimStatus.REIMBURSED.value})
+        .in_("id", payable_ids)
+        .eq("status", ClaimStatus.SUBMITTED.value)
+        .execute()
+    )
+    updated_ids = {claim["id"] for claim in (resp.data or [])}
+    skipped_claims = list(preview["skipped"])
+    for claim_id in payable_ids:
+        if claim_id not in updated_ids:
+            skipped_claims.append({
+                "id": claim_id,
+                "reason": "Claim was no longer submitted when completing reimbursement",
+            })
+
+    completed_groups = []
+    messages_sent = 0
+    messages_skipped = 0
+
+    for group in preview["groups"]:
+        updated_claims = [claim for claim in group["claims"] if claim["id"] in updated_ids]
+        if not updated_claims:
+            continue
+
+        completed_group = {
+            **group,
+            "claims": updated_claims,
+            "claim_count": len(updated_claims),
+            "total_amount": _money(sum(claim["amount"] for claim in updated_claims)),
+        }
+        completed_groups.append(completed_group)
+
+        for claim in updated_claims:
+            log_claim_event(
+                db,
+                claim["id"],
+                member.get("id"),
+                "reimbursement_batch_completed",
+                "Reimbursed through payout workflow",
+                {
+                    "payee": completed_group["name"],
+                    "payee_total_amount": completed_group["total_amount"],
+                    "batch_claim_count": completed_group["claim_count"],
+                },
+            )
+
+        telegram_id = completed_group.get("telegram_id")
+        if telegram_id:
+            sent = await send_bot_notification(telegram_id, _reimbursement_message(completed_group))
+            if sent:
+                messages_sent += 1
+            else:
+                messages_skipped += 1
+        else:
+            messages_skipped += 1
+
+    return {
+        "updated": len(updated_ids),
+        "skipped": len(skipped_claims),
+        "messages_sent": messages_sent,
+        "messages_skipped": messages_skipped,
+        "groups": completed_groups,
+        "skipped_claims": skipped_claims,
+    }
 
 
 # ---------------------------------------------------------------------------

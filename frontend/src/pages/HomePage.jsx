@@ -217,6 +217,11 @@ export default function HomePage() {
   const canSendSelected = selectedIds.size > 0
   const canSubmitSelected = selectedClaims.some((c) => c.status === 'compiled')
   const canReimburseSelected = selectedClaims.some((c) => c.status === 'submitted')
+  const openReimbursementProcess = () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    navigate(`/reimbursements?claim_ids=${encodeURIComponent(ids.join(','))}`)
+  }
 
   const handleConfirm = async () => {
     const action = confirmAction  // capture before clearing
@@ -229,9 +234,6 @@ export default function HomePage() {
       } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
         setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
-      } else if (action === 'reimburse') {
-        const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'reimbursed' })
-        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as reimbursed${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
       }
     } catch {
       setActionResult('Action failed. Please try again.')
@@ -532,11 +534,11 @@ export default function HomePage() {
             {bulkStatusMutation.isPending ? 'Updating…' : `Submitted (${selectedIds.size})`}
           </button>
           <button
-            disabled={!canReimburseSelected || bulkStatusMutation.isPending}
-            onClick={() => canReimburseSelected && setConfirmAction('reimburse')}
+            disabled={!canReimburseSelected}
+            onClick={() => canReimburseSelected && openReimbursementProcess()}
             className="flex-1 bg-teal-600 disabled:bg-teal-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
-            {bulkStatusMutation.isPending ? 'Updating…' : `Reimbursed (${selectedIds.size})`}
+            Process ({selectedIds.size})
           </button>
         </div>
       )}
@@ -546,14 +548,12 @@ export default function HomePage() {
         <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50">
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl mb-4 mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
-              {confirmAction === 'send' ? 'Send to Telegram?' : confirmAction === 'submit' ? 'Mark as Submitted?' : 'Mark as Reimbursed?'}
+              {confirmAction === 'send' ? 'Send to Telegram?' : 'Mark as Submitted?'}
             </h3>
             <p className="text-sm text-gray-500 mb-5">
               {confirmAction === 'send'
                 ? `Send ${selectedIds.size} compiled PDF${selectedIds.size !== 1 ? 's' : ''} to yourself on Telegram. Claims without a compiled PDF will be skipped.`
-                : confirmAction === 'submit'
-                ? `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as submitted.`
-                : `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as reimbursed.`}
+                : `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as submitted.`}
             </p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmAction(null)}

@@ -176,6 +176,31 @@ export function useBulkUpdateStatus(options = {}) {
   })
 }
 
+export const fetchReimbursementPreview = ({ claim_ids }) =>
+  api.post('/claims/reimbursements/preview', { claim_ids }).then((r) => r.data)
+
+export function useReimbursementPreview(claimIds = []) {
+  return useQuery({
+    queryKey: ['reimbursements', 'preview', claimIds],
+    queryFn: () => fetchReimbursementPreview({ claim_ids: claimIds }),
+    enabled: claimIds.length > 0,
+  })
+}
+
+export const completeReimbursements = ({ claim_ids }) =>
+  api.post('/claims/reimbursements/complete', { claim_ids }).then((r) => r.data)
+
+export function useCompleteReimbursements(options = {}) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: completeReimbursements,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
+    },
+    ...options,
+  })
+}
+
 export const submitForReview = (claimId) =>
   api.post(`/claims/${claimId}/submit-review`).then((r) => r.data)
 

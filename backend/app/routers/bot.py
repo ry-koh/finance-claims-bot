@@ -34,8 +34,8 @@ async def _send_message(bot, chat_id: int, text: str, **kwargs) -> None:
         logger.error("Failed to send Telegram message to %s: %s", chat_id, exc)
 
 
-async def send_bot_notification(telegram_id, text: str) -> None:
-    """Fire-and-forget: send a Telegram message to a user. Silently ignores all errors."""
+async def send_bot_notification(telegram_id, text: str) -> bool:
+    """Send a Telegram message to a user. Return False if Telegram rejects it."""
     try:
         bot = Bot(
             token=settings.TELEGRAM_BOT_TOKEN,
@@ -48,8 +48,10 @@ async def send_bot_notification(telegram_id, text: str) -> None:
                 await bot.close()
             except Exception:
                 pass
+        return True
     except Exception as exc:
         logger.warning("Bot notification failed for %s: %s", telegram_id, exc)
+        return False
 
 
 async def _get_member(db, telegram_id: int) -> dict | None:

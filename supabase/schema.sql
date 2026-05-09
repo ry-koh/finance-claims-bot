@@ -560,5 +560,11 @@ ON CONFLICT DO NOTHING;
 INSERT INTO document_counters (academic_year, counter) VALUES ('2526', 0)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO app_settings (key, value) VALUES ('academic_year', '2526')
+INSERT INTO app_settings (key, value) VALUES
+  ('academic_year', '2526'),
+  ('claim_submission_to_email', 'rh.finance@u.nus.edu'),
+  ('claim_submission_cc_email', '68findirector.rh@gmail.com'),
+  ('document_fd_name', ''),
+  ('document_fd_salutation', ''),
+  ('document_fd_email', '')
 ON CONFLICT DO NOTHING;

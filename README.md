@@ -15,7 +15,7 @@ Three types of users interact with the system:
 
 | Role | Access | Responsibilities |
 |---|---|---|
-| **Finance Director** | Full access + director tools | Approves team registrations, manages team membership, views analytics; Gmail account used to send emails |
+| **Finance Director** | Full access + director tools | Approves team registrations, manages team membership, views analytics, configures document/email settings |
 | **Finance Member** | Claims + approval wizard | Creates and processes claims end-to-end |
 | **CCA Treasurer** | Own claims only | Registers via the mini app, creates draft claims, submits for finance review, receives bot messages |
 | **One-off Claimer** | None | Not an app user; name/email/matric/phone stored directly on the claim |
@@ -51,6 +51,8 @@ For one-off claimers in `attachment_requested` state, the finance team uploads f
 
 Any step can land in `error` with a stored message; the UI shows a retry button.
 
+Treasurers see simplified status labels only: `Draft`, `Needs Action`, `In Review`, `Awaiting Submission`, `Submitted`, and `Reimbursed`. Finance/director views keep the detailed internal statuses needed for processing.
+
 ---
 
 ## Tech Stack
@@ -58,6 +60,7 @@ Any step can land in `error` with a stored message; the UI shows a retry button.
 ### Frontend
 - **React 18 + Vite + Tailwind CSS**
 - **TanStack Query v5** for server state, **React Router v6** for routing
+- Theme-aware mobile UI with light/dark/system modes and treasurer-focused claim health panels
 - Hosted on **Vercel** (`frontend/vercel.json` has a single SPA rewrite rule)
 - Runs inside Telegram as a **Mini App**; user identity comes from `window.Telegram.WebApp.initData`
 
@@ -82,7 +85,7 @@ Any step can land in `error` with a stored message; the UI shows a retry button.
 - **pypdf**: merges all generated PDFs into a single compiled document
 
 ### Integrations
-- **Gmail API** (OAuth2 refresh token): sends emails from the Finance Director's personal Gmail account
+- **Gmail API** (OAuth2 refresh token): sends confirmation emails from the configured Gmail account
 - **python-telegram-bot**: webhook handler for bot commands; sends compiled PDF to FD's Telegram chat; delivers finance-team messages to treasurer chats
 
 ---
@@ -125,15 +128,32 @@ Wizard progress is saved to `sessionStorage` so accidental back-navigation doesn
 ## Email Flow
 
 1. Finance team clicks **Send Email** on a claim
-2. Backend builds an HTML email:
-   - **To**: claimer's email (+ any extra recipients)
-   - **Subject**: claim reference code
-   - **Body**: claims summary (CCA, event, amount, PayNow number), itemised receipt list, auto-generated remarks
+2. Backend builds an HTML confirmation email to the claimer:
+   - **Actual email To**: the claimer's email
+   - **Actual subject**: claim reference code
+   - **Body**: instructions plus a copy-paste claim submission block
+   - **Copy-paste To**: configured `claim_submission_to_email` (for example `rh.finance@u.nus.edu`)
+   - **Copy-paste CC**: configured `claim_submission_cc_email` plus any extra recipients on the claim
+   - **Salutation**: configured document/email Finance Director salutation
    - **Auto-remarks**: Master's Fund flag, partial claim indicator, refund breakdowns, foreign currency notes
    - **Attachments**: receipt images and bank transaction screenshots
-3. Email sent via Gmail API from FD's account
+3. Email is sent via Gmail API from the configured OAuth Gmail account
 4. Finance team uploads a screenshot of the sent email
 5. Screenshot is included in the compiled PDF as proof of correspondence
+
+---
+
+## Settings, Identity, and Email Routing
+
+The Settings page separates app identity, document identity, and claim email routing.
+
+| Setting area | Stored in | Used for |
+|---|---|---|
+| **Your App Identity** | `finance_team.name` and `finance_team.email` | Drawer/account identity and audit timeline actor names |
+| **Claim Email Routing** | `app_settings.claim_submission_to_email` and `app_settings.claim_submission_cc_email` | The `To` and default `CC` lines inside the claim email copy-paste block |
+| **Document & Email Finance Director** | `app_settings.document_fd_*` | Generated document identity, email salutation, and transport form FD personal email |
+
+These settings do not change the Gmail OAuth account used to send the confirmation email. The Gmail sender is controlled by `GMAIL_REFRESH_TOKEN`.
 
 ---
 
@@ -200,6 +220,7 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 | **BankTransactionRefund** | A refund against a BT — amount and screenshot |
 | **ClaimDocument** | A generated file — versioned; only `is_current=true` is used per type; email screenshot is never marked stale |
 | **ClaimAttachmentRequest** | A request cycle for additional attachments — tracks request message, status, and uploaded files |
+| **AppSettings** | Key/value settings for academic year, claim email routing, and document/email Finance Director profile |
 
 ---
 
@@ -221,16 +242,19 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 | Page | Path | Roles | Purpose |
 |---|---|---|---|
 | Home | `/` | Director, Member | Claims list with scrollable status pills, search, date filters, bulk actions, and CSV export. Cards show submitted/reimbursed dates when available. |
-| Treasurer Home | `/` | Treasurer | Own draft/submitted claims. Cards show submitted/reimbursed dates when available. |
-| New Claim | `/claims/new` | All | Multi-step form: claimer → receipts → bank transactions → transport |
-| Claim Detail | `/claims/:id` | All | Full claim view — edit fields, manage receipts/BTs, run pipeline, handle attachment requests |
+| Treasurer Home | `/` | Treasurer | Own claims grouped by simplified statuses: Needs Action, Draft, In Review, Awaiting Submission, Submitted, Reimbursed. |
+| New Claim | `/claims/new` | All | Multi-step form: claimer, receipts, bank transactions, transport; includes claim health checks and draft recovery notices |
+| Claim Detail | `/claims/:id` | All | Full claim view: edit fields, manage receipts/BTs, run pipeline, handle attachment requests, and view claim health |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
 | Identifier Data | `/identifiers` | Director, Member | Edit treasurer matric numbers and phone numbers used in claim documents |
 | Contact | `/contact` | Director, Member | Send a message to a CCA treasurer via the Telegram bot |
 | Pending Registrations | `/pending-registrations` | Director | Approve or reject treasurer registrations |
 | Team | `/team` | Director | View and manage active team members |
 | Analytics | `/analytics` | Director | Claims volume by CCA/portfolio/fund with SA+MF breakdown and CSV export |
+| Reimbursements | `/reimbursements` | Director | PayLah checklist for selected submitted claims, grouped by claimer with phone, amount, claim IDs, paid checkboxes, and grouped Telegram completion messages. |
 | Portfolios & CCAs | `/ccas` | Director | Create, rename, and delete portfolios and CCAs. Deleting shows any linked treasurers who will be unassigned. |
+| Settings | `/settings` | Director | Configure academic year, app identity, claim email routing, and document/email Finance Director profile. |
+| System Status | `/system-status` | Director | Check backend configuration, webhook secret status, storage usage, and backfill unknown file sizes. |
 
 ---
 
@@ -276,8 +300,10 @@ Treasurers must have previously started the bot for delivery to work.
 
 - Cloud Run deploys with one worker, `512Mi` memory, `min-instances 0`, and `max-instances 1` to avoid idle or burst billing.
 - Telegram webhook registration happens in the deploy workflow, not during every Cloud Run startup, so cold `/start` requests do not wait on a webhook setup call.
+- If `TELEGRAM_WEBHOOK_SECRET_TOKEN` is unset, the app uses a deterministic fallback derived from the bot token. Set an explicit secret only if you want manual secret rotation.
 - Document generation is serialized with `DOCGEN_MAX_WORKERS=1` so PDF/image work does not run in parallel and spike RAM.
 - Uploads are capped with `MAX_UPLOAD_BYTES=8000000` / `VITE_MAX_UPLOAD_BYTES=8000000`, and PDF conversion is capped with `MAX_PDF_PAGES=20`.
+- System Status shows tracked R2/Drive storage usage. Older files with unknown sizes can be backfilled from metadata without re-uploading files.
 - The expected usage pattern is low concurrency: 60-70 CCA treasurers, about 8 finance team members, and 1 director. Bulk finance operations are supported, but heavy document generation is intentionally queued.
 
 ---

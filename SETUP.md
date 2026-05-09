@@ -63,8 +63,8 @@ Go to **APIs & Services** → **Library** and enable each:
    - **Client ID** → save as `GMAIL_CLIENT_ID`
    - **Client Secret** → save as `GMAIL_CLIENT_SECRET`
 
-### Generate the Gmail refresh token (send emails as Finance Director)
-This authorises the backend to send emails from the FD's Gmail account.
+### Generate the Gmail refresh token (confirmation email sender)
+This authorises the backend to send confirmation emails from the Gmail account you sign in with. This sender account is separate from the claim submission `To` email, the shared finance `CC` email, and the document Finance Director personal email, which are configured later in the app Settings page.
 
 1. In a terminal in the project folder:
    ```
@@ -167,10 +167,11 @@ Go to your GitHub repo → **Settings** → **Secrets and variables** → **Acti
 | `R2_SECRET_ACCESS_KEY` | From Step 3 |
 | `R2_BUCKET_NAME` | From Step 3 |
 | `ALLOWED_ORIGINS` | Leave unset until Step 8, then set to your Vercel URL |
+| `TELEGRAM_WEBHOOK_SECRET_TOKEN` | Optional. Leave unset to use the app's fallback webhook secret; set a random string only if you want an explicit secret |
 
 > `APP_URL` and `MINI_APP_URL` cannot be set yet — you'll add them in Steps 6–8.
 
-> **FD details and academic year** (name, matric number, phone, email, academic year) are configured in-app by the Finance Director via the Settings page after first login — they are not set as environment variables.
+> **Academic year, app identity, claim email routing, and document Finance Director details** are configured in-app by the Finance Director via the Settings page after first login — they are not set as environment variables.
 
 ### Trigger the first deploy
 1. Push to `main`:
@@ -221,6 +222,8 @@ Now that you have both URLs, add them as GitHub secrets:
 
 Then push a trivial change to `main` (or trigger the workflow manually via **Actions** → **Deploy to Google Cloud Run** → **Run workflow**) so the backend redeploys with `APP_URL` and `MINI_APP_URL` set. The deploy workflow registers the Telegram webhook after Cloud Run finishes deploying.
 
+`TELEGRAM_WEBHOOK_SECRET_TOKEN` is optional. If it is unset, the app uses a fallback secret derived from the bot token and System Status will show `Fallback`. Do not use the bot token itself as the webhook secret.
+
 The deploy workflow is tuned for free-tier usage by default: 512 MiB memory, one Cloud Run instance maximum, zero minimum instances, one backend worker, and one document-generation worker. This favors low cost over burst throughput, which fits occasional use by CCA treasurers and a small finance team.
 
 ---
@@ -244,6 +247,22 @@ It uses the `APP_URL` secret you added in Step 8 — no further action needed. Y
    Example: `/register_director Jane Doe jane@u.nus.edu`
 4. The bot confirms and shows an **Open Claims App** button
 5. Tap the button — the Mini App opens
+
+---
+
+## Step 11 — Configure In-App Settings
+
+Open **Settings** in the Mini App as Finance Director and configure:
+
+| Area | What to enter | Used for |
+|---|---|---|
+| **Academic Year** | Current AY, e.g. `2526` | Claim reference codes and document counters |
+| **Your App Identity** | Your own name and personal/account email | Drawer/account identity and audit timeline actor names |
+| **Claim Submission To Email** | Finance office submission address, e.g. `rh.finance@u.nus.edu` | The `To` line inside the claim email copy-paste block |
+| **Shared Finance Gmail / CC Email** | Shared finance mailbox, e.g. `68findirector.rh@gmail.com` | The default `CC` line inside the claim email copy-paste block |
+| **Document & Email Finance Director** | Name, salutation, phone, matric number, and personal email of the FD who should appear on documents | Generated documents, email salutation, and transport form FD personal email |
+
+These settings are stored in `app_settings` except your app identity, which updates your `finance_team` row. They are safe to change from the app and do not require redeploying.
 
 ---
 
@@ -357,6 +376,23 @@ ALTER TABLE claim_documents
 
 ALTER TABLE claim_attachment_files
   ADD COLUMN IF NOT EXISTS file_size_bytes integer;
+```
+
+After deploying this change, open **System Status** -> **Storage Usage** and click **Backfill sizes** to populate older files that show as unknown. The backfill reads Drive/R2 metadata only; it does not re-upload files.
+
+### Seed split email settings
+
+These settings are optional for new installs because the app has defaults, but running this keeps the Settings page explicit.
+
+```sql
+INSERT INTO app_settings (key, value)
+VALUES
+  ('claim_submission_to_email', 'rh.finance@u.nus.edu'),
+  ('claim_submission_cc_email', '68findirector.rh@gmail.com'),
+  ('document_fd_name', ''),
+  ('document_fd_salutation', ''),
+  ('document_fd_email', '')
+ON CONFLICT (key) DO NOTHING;
 ```
 
 ---
