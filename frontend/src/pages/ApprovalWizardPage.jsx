@@ -25,6 +25,14 @@ function formatDate(s) {
   const d = new Date(s)
   return isNaN(d) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+function getFxImageIds(receipt) {
+  const ids = Array.isArray(receipt?.exchange_rate_screenshot_drive_ids)
+    ? receipt.exchange_rate_screenshot_drive_ids.filter(Boolean)
+    : []
+  const legacyId = receipt?.exchange_rate_screenshot_drive_id
+  if (legacyId && !ids.includes(legacyId)) return [legacyId, ...ids]
+  return ids
+}
 
 function InfoRow({ label, value, bold = false }) {
   return (
@@ -238,6 +246,7 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
   }
 
   const canNext = (selection?.category ?? '').trim() !== ''
+  const fxImageIds = getFxImageIds(receipt)
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -276,6 +285,13 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
           <InfoRow label="Receipt No." value={receipt.receipt_no} />
           <InfoRow label="Date" value={formatDate(receipt.date)} />
           <InfoRow label="Amount" value={formatAmount(receipt.amount)} bold />
+          {receipt.is_foreign_currency && (
+            <InfoRow
+              label="Foreign Exchange"
+              value={fxImageIds.length > 0 ? `${fxImageIds.length} screenshot${fxImageIds.length === 1 ? '' : 's'} attached` : 'Screenshot missing'}
+              bold
+            />
+          )}
           {receipt.claimed_amount != null && (
             <InfoRow
               label="Claimed Amount"
@@ -284,6 +300,32 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
             />
           )}
         </div>
+
+        {receipt.is_foreign_currency && (
+          <div className={`rounded-xl border p-4 flex flex-col gap-3 ${fxImageIds.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+            <div>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${fxImageIds.length > 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                Foreign Exchange Evidence
+              </p>
+              <p className={`text-xs mt-0.5 ${fxImageIds.length > 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                This receipt was marked as charged in foreign currency.
+              </p>
+            </div>
+            {fxImageIds.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {fxImageIds.map((driveFileId, i) => (
+                  <FullWidthImage
+                    key={`${driveFileId}-${i}`}
+                    src={imageUrl(driveFileId)}
+                    label={`Exchange rate screenshot ${i + 1}`}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-red-700">Exchange-rate screenshot is missing.</p>
+            )}
+          </div>
+        )}
 
         {/* Bank transactions — all BTs, linked one highlighted */}
         {bankTransactions.length > 0 && (
@@ -435,6 +477,10 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
     .map((r, i) => ({ i, remark: selections[r.id]?.remark?.trim() }))
     .filter(({ remark }) => remark)
 
+  const fxReceipts = receipts
+    .map((r, i) => ({ receipt: r, i, fxImageIds: getFxImageIds(r) }))
+    .filter(({ receipt }) => receipt.is_foreign_currency)
+
   const uncategorised = receipts
     .map((r, i) => ({ i, description: r.description || `Receipt ${i + 1}` }))
     .filter(({ i }) => !selections[receipts[i].id]?.category)
@@ -475,6 +521,17 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
           </div>
         )}
 
+        {fxReceipts.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-amber-800 mb-1">Foreign Exchange Receipts</p>
+            {fxReceipts.map(({ receipt, i, fxImageIds }) => (
+              <p key={receipt.id} className={`text-xs ${fxImageIds.length > 0 ? 'text-amber-700' : 'text-red-700 font-semibold'}`}>
+                Receipt {i + 1} — {receipt.description || 'Receipt'} — {fxImageIds.length > 0 ? `${fxImageIds.length} screenshot${fxImageIds.length === 1 ? '' : 's'}` : 'exchange-rate screenshot missing'}
+              </p>
+            ))}
+          </div>
+        )}
+
         {/* Receipts grouped by category */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-3 pb-1">Receipts by Category</p>
@@ -492,7 +549,14 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
               </div>
               {group.receipts.map((r) => (
                 <div key={r.id} className="flex justify-between items-center px-4 py-1.5 text-sm border-t border-gray-50">
-                  <span className="text-gray-700 truncate">{r.description || '—'}</span>
+                  <div className="min-w-0">
+                    <span className="text-gray-700 truncate block">{r.description || '—'}</span>
+                    {r.is_foreign_currency && (
+                      <span className="text-[10px] font-semibold text-amber-700">
+                        FX · {getFxImageIds(r).length || 'no'} screenshot{getFxImageIds(r).length === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-right shrink-0 ml-2">
                     <span className="text-gray-900 font-medium">{formatAmount(r.claimed_amount ?? r.amount)}</span>
                     {r.claimed_amount != null && (
