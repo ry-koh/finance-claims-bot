@@ -101,7 +101,21 @@ This is a separate token that authorises document generation and storage in Driv
 3. Your browser opens — sign in as the account that owns the Drive folder and click Allow
 4. The terminal prints a refresh token → save as `DRIVE_REFRESH_TOKEN`
 
-If document generation fails with `invalid_grant: Token has been expired or revoked`, rerun this script, update the `DRIVE_REFRESH_TOKEN` GitHub Actions secret, then redeploy Cloud Run. If this happens every 7 days, check whether the Google OAuth app is still in Testing mode and publish it if appropriate.
+If document generation fails with `invalid_grant: Token has been expired or revoked`, or **System Status** shows Google Drive as `Check`, refresh the token:
+
+1. Rerun:
+   ```
+   python backend/scripts/get_drive_token.py
+   ```
+2. Sign in as the account that owns or can edit the Drive folder and templates
+3. Copy the newly printed `DRIVE_REFRESH_TOKEN`
+4. Update the GitHub Actions secret named `DRIVE_REFRESH_TOKEN`
+5. Trigger **Actions** → **Deploy to Google Cloud Run** → **Run workflow**
+6. After deploy, open **System Status** and confirm Google Drive is `OK`
+
+Do not only update the Cloud Run environment variable manually. The next GitHub Actions deploy will overwrite Cloud Run from GitHub secrets.
+
+If this happens every 7 days, check whether the Google OAuth app is still in Testing mode and publish it if appropriate.
 
 ---
 
@@ -320,6 +334,29 @@ Use these checks if Telegram alerts are not delivered:
 - The backend webhook is healthy in **System Status**
 
 Current bot notifications include pending registrations to directors, Help Inbox questions to finance team/directors, claim approval/email reminders to treasurers, Help replies, and reimbursement completion messages.
+
+---
+
+## Google Drive Token Recovery
+
+Use this when document generation, screenshot upload, or PDF compile fails with a Google Drive authorization error.
+
+Symptoms:
+- Cloud Run logs show `invalid_grant: Token has been expired or revoked`
+- The app shows `Google Drive authorization failed`
+- **System Status** shows Google Drive as `Check`
+
+Fix:
+1. Run `python backend/scripts/get_drive_token.py`
+2. Sign in as the Google account that owns or can edit the Drive parent folder and document templates
+3. Update the GitHub Actions secret `DRIVE_REFRESH_TOKEN` with the new value
+4. Redeploy through **Actions** → **Deploy to Google Cloud Run**
+5. Retry document generation from the claim page
+
+Notes:
+- `DRIVE_REFRESH_TOKEN` is for Drive, Docs, and Sheets document generation.
+- `GMAIL_REFRESH_TOKEN` is only for sending emails.
+- If the token expires every 7 days, review the Google OAuth app publishing status. External apps in Testing mode commonly cause short-lived refresh tokens.
 
 ---
 

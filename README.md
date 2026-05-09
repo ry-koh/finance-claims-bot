@@ -104,6 +104,8 @@ For each claim the system generates:
 
 All files are saved to a Google Drive subfolder named after the claim reference code. Re-generating documents marks existing generated docs stale but preserves the email screenshot.
 
+Document generation depends on the deployed `DRIVE_REFRESH_TOKEN`, which is separate from `GMAIL_REFRESH_TOKEN`. If Google revokes or expires the Drive refresh token, generation/upload actions return a clear Drive authorization error, and **System Status** marks Google Drive as `Check`. Regenerate the token with `backend/scripts/get_drive_token.py`, update the GitHub Actions `DRIVE_REFRESH_TOKEN` secret, then redeploy Cloud Run. Updating Cloud Run directly is temporary because the next GitHub Actions deploy writes environment variables from GitHub secrets.
+
 ---
 
 ## Receipt Approval Wizard
@@ -273,7 +275,7 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 | Help Inbox | `/help-inbox` | Director, Member | Review and reply to treasurer questions; new questions notify finance via the bot |
 | SOP | `/sop` | All | In-app finance SOP and claims reference |
 | Settings | `/settings` | Director | Configure academic year, app identity, claim email routing, and document/email Finance Director profile. |
-| System Status | `/system-status` | Director | Check backend configuration, webhook secret status, storage usage, and backfill unknown file sizes. |
+| System Status | `/system-status` | Director | Check backend configuration, webhook secret status, Google Drive token health, storage usage, and backfill unknown file sizes. |
 
 ---
 
@@ -334,6 +336,7 @@ The bot sends operational notifications when the recipient has started the bot a
 - Telegram webhook registration happens in the deploy workflow, not during every Cloud Run startup, so cold `/start` requests do not wait on a webhook setup call.
 - If `TELEGRAM_WEBHOOK_SECRET_TOKEN` is unset, the app uses a deterministic fallback derived from the bot token. Set an explicit secret only if you want manual secret rotation.
 - Document generation is serialized with `DOCGEN_MAX_WORKERS=1` so PDF/image work does not run in parallel and spike RAM.
+- System Status verifies whether the Google Drive OAuth token can refresh, not only whether `DRIVE_REFRESH_TOKEN` is set.
 - Uploads are capped with `MAX_UPLOAD_BYTES=8000000` / `VITE_MAX_UPLOAD_BYTES=8000000`, and PDF conversion is capped with `MAX_PDF_PAGES=20`.
 - System Status shows tracked R2/Drive storage usage. Older files with unknown sizes can be backfilled from metadata without re-uploading files.
 - The expected usage pattern is low concurrency: 60-70 CCA treasurers, about 8 finance team members, and 1 director. Bulk finance operations are supported, but heavy document generation is intentionally queued.
