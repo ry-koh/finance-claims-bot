@@ -4,7 +4,6 @@ const keyRules = [
   'All future claims should be submitted through the RH Finance Claims App.',
   "Claims should be submitted within 3 working days once all receipts and bank transactions for the event are ready.",
   'Physical receipts must be submitted to Ryan after uploading the claim. Exact handover timing and location will be advised by Finance when confirmed.',
-  'Finance team support is handled centrally by the team, not through fixed portfolio allocations.',
   'Receipt-specific instructions may change. Check Help > Common Questions before submitting.',
 ]
 
@@ -47,7 +46,7 @@ const quotationNotes = [
 
 const otherProcesses = [
   {
-    title: 'FastPay / official payment collection',
+    title: 'NUSync / official payment collection',
     body: 'Used when there is official student co-payment or payment collection. Inform the Finance Director early so the correct process and timeline can be confirmed.',
   },
   {

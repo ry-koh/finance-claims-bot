@@ -248,6 +248,8 @@ It uses the `APP_URL` secret you added in Step 8 — no further action needed. Y
 4. The bot confirms and shows an **Open Claims App** button
 5. Tap the button — the Mini App opens
 
+Keep this Telegram account active with the bot. Directors receive pending-registration alerts through Telegram after treasurers or finance members register.
+
 ---
 
 ## Step 11 — Configure In-App Settings
@@ -266,7 +268,9 @@ These settings are stored in `app_settings` except your app identity, which upda
 
 ---
 
-## Adding Team Members
+## Adding Team Members and Treasurers
+
+### Finance team members
 
 1. Have the new member open your bot and send `/start` — the bot replies with their Telegram ID
 2. From your account, send:
@@ -274,6 +278,43 @@ These settings are stored in `app_settings` except your app identity, which upda
    /confirm_member <their_telegram_id> Their Name their@email.com member
    ```
    Example: `/confirm_member 123456789 John Lim john@u.nus.edu member`
+
+### CCA treasurers
+
+1. Ask the treasurer to open the bot, send `/start`, and tap **Open Claims App**
+2. They register as a CCA Treasurer with their name, email, matric number, phone number, Telegram username, and CCA(s)
+3. Directors receive a Telegram alert for the pending registration
+4. Open **Pending Registrations** in the app to approve or reject the request
+5. Once approved, the treasurer receives a bot message and can submit claims
+
+For bot delivery to work reliably, each user must have started the bot at least once and must have a `telegram_id` stored on their `finance_team` row.
+
+---
+
+## Maintaining SOP and Help Content
+
+The in-app references are stored in frontend files:
+
+- SOP page: `frontend/src/pages/SopPage.jsx`
+- Help Common Questions: `frontend/src/pages/HelpPage.jsx`
+
+Update those files when operational instructions change, then deploy the frontend through Vercel. Receipt-specific rules that may change often should usually go into Help Common Questions instead of the SOP.
+
+Generated Word SOP drafts should stay under `outputs/`, which is ignored by git.
+
+---
+
+## Notification Checks
+
+Use these checks if Telegram alerts are not delivered:
+
+- The user has sent `/start` to the bot before
+- The user is active in `finance_team`
+- The user has a populated `telegram_id`
+- `MINI_APP_URL` is set so bot messages can include the **Open Claims App** button
+- The backend webhook is healthy in **System Status**
+
+Current bot notifications include pending registrations to directors, Help Inbox questions to finance team/directors, claim approval/email reminders to treasurers, Help replies, and reimbursement completion messages.
 
 ---
 

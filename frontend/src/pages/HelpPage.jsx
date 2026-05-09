@@ -33,12 +33,6 @@ export default function HelpPage() {
   return (
     <div className="p-4 space-y-4 max-w-lg mx-auto">
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-        <p className="text-sm text-gray-700">
-          Contact <span className="font-medium">@ry_koh</span> if you have any questions
-        </p>
-      </div>
-
-      <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
         <p className="text-sm font-semibold text-gray-700 mb-1">Common Questions</p>
         <p className="text-xs text-gray-500 mb-3">
           Receipt and bank transaction requirements may vary by platform. Check here for the latest instructions before submitting.

@@ -86,7 +86,7 @@ Treasurers see simplified status labels only: `Draft`, `Needs Action`, `In Revie
 
 ### Integrations
 - **Gmail API** (OAuth2 refresh token): sends confirmation emails from the configured Gmail account
-- **python-telegram-bot**: webhook handler for bot commands; sends compiled PDF to FD's Telegram chat; delivers finance-team messages to treasurer chats
+- **python-telegram-bot**: webhook handler for bot commands; sends compiled PDF to FD's Telegram chat; delivers finance-team messages, registration alerts, help-inbox alerts, claim reminders, and reimbursement notifications
 
 ---
 
@@ -114,6 +114,7 @@ When a claim is ready for approval, the finance team uses a step-by-step wizard 
    - Full-size receipt images (tap to fullscreen)
    - Receipt info (description, company, date, amount)
    - All bank transactions for the claim, with the linked one highlighted; refund amounts and screenshots viewable inline
+   - Foreign exchange evidence for foreign-currency receipts, with screenshots shown inline when uploaded
    - Finance fields: Category (dropdown of all categories), GST Code (`IE`/`I9`/`L9`), DR/CR
    - Optional flag note (pre-fills the rejection remarks textarea)
    - Next is disabled until category is selected
@@ -122,6 +123,18 @@ When a claim is ready for approval, the finance team uses a step-by-step wizard 
 4. **Reject** — available from any screen; textarea pre-filled with per-receipt flag notes
 
 Wizard progress is saved to `sessionStorage` so accidental back-navigation doesn't lose work.
+
+---
+
+## SOP and Help References
+
+The app includes operational reference material so treasurers do not need to rely only on separate documents.
+
+- **SOP page (`/sop`)**: available to all roles. It covers setup, claim submission rules, evidence requirements, claim statuses, direct vendor payment, NUSync/payment collection, and what to do when unsure.
+- **Help > Common Questions**: the place for receipt/platform-specific instructions that may change often, such as Shopee invoices, bank transaction screenshot rules, card payments for physical purchases, and disallowed payment methods.
+- **Help Inbox (`/help-inbox`)**: treasurers can submit questions from the Help tab; finance team/directors review and reply from the inbox.
+- **Submission timing**: claims should be submitted within 3 working days once all event receipts and bank transactions are ready.
+- **Physical receipts**: physical receipts are still submitted to Ryan after upload; exact handover timing/location can be updated operationally without changing the app.
 
 ---
 
@@ -135,6 +148,7 @@ Wizard progress is saved to `sessionStorage` so accidental back-navigation doesn
    - **Copy-paste To**: configured `claim_submission_to_email` (for example `rh.finance@u.nus.edu`)
    - **Copy-paste CC**: configured `claim_submission_cc_email` plus any extra recipients on the claim
    - **Salutation**: configured document/email Finance Director salutation
+   - **Greeting**: uses the claimer's full name
    - **Auto-remarks**: Master's Fund flag, partial claim indicator, refund breakdowns, foreign currency notes
    - **Attachments**: receipt images and bank transaction screenshots
 3. Email is sent via Gmail API from the configured OAuth Gmail account
@@ -253,6 +267,9 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 | Analytics | `/analytics` | Director | Claims volume by CCA/portfolio/fund with SA+MF breakdown and CSV export |
 | Reimbursements | `/reimbursements` | Director | PayLah checklist for selected submitted claims, grouped by claimer with phone, amount, claim IDs, paid checkboxes, and grouped Telegram completion messages. |
 | Portfolios & CCAs | `/ccas` | Director | Create, rename, and delete portfolios and CCAs. Deleting shows any linked treasurers who will be unassigned. |
+| Help | `/help` | Treasurer | Common Questions and the treasurer's own Help questions |
+| Help Inbox | `/help-inbox` | Director, Member | Review and reply to treasurer questions; new questions notify finance via the bot |
+| SOP | `/sop` | All | In-app finance SOP and claims reference |
 | Settings | `/settings` | Director | Configure academic year, app identity, claim email routing, and document/email Finance Director profile. |
 | System Status | `/system-status` | Director | Check backend configuration, webhook secret status, storage usage, and backfill unknown file sizes. |
 
@@ -268,8 +285,9 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 1. User opens the mini app for the first time → sees registration form
 2. Selects role (Finance Member or CCA Treasurer), enters name, email, `@telegram_username`, and (for treasurers) their CCA(s)
 3. Registration is created in `pending` state
-4. Director approves via the Pending Registrations page
-5. User is notified via bot and gains access
+4. Active directors with Telegram IDs receive a bot alert for the pending registration
+5. Director approves via the Pending Registrations page
+6. User is notified via bot and gains access
 
 ---
 
@@ -281,6 +299,16 @@ Finance team members can send direct messages to CCA treasurers via the **Contac
 3. Click **Send via Bot** — the message is delivered to the treasurer's Telegram chat from the bot, attributed with the sender's name
 
 Treasurers must have previously started the bot for delivery to work.
+
+---
+
+## Bot Notifications
+
+The bot sends operational notifications when the recipient has started the bot and has an active `finance_team.telegram_id`.
+
+- Directors receive pending-registration alerts.
+- Finance team/directors receive new Help Inbox question alerts.
+- Treasurers receive approval/email-sent reminders, rejection messages, submitted-to-school updates, Help replies, and reimbursement completion messages.
 
 ---
 
