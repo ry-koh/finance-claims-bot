@@ -1770,6 +1770,7 @@ function AttachmentRequestPanel({ claim }) {
 const EVENT_LABELS = {
   claim_created: 'Claim created',
   claim_updated: 'Claim updated',
+  internal_notes_updated: 'Internal notes updated',
   submitted_for_review: 'Submitted for review',
   review_rejected: 'Review rejected',
   email_sent: 'Email sent',

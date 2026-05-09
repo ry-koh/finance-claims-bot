@@ -1086,13 +1086,23 @@ async def update_claim(
     if stale_ids:
         db.table("claim_documents").update({"is_current": False}).in_("id", stale_ids).execute()
 
+    updated_fields = sorted(update_data.keys())
+    internal_notes_only = updated_fields == ["internal_notes"]
+    event_type = "internal_notes_updated" if internal_notes_only else "claim_updated"
+    event_message = (
+        "Internal notes cleared"
+        if internal_notes_only and not update_data.get("internal_notes")
+        else "Internal notes updated"
+        if internal_notes_only
+        else "Claim details updated"
+    )
     log_claim_event(
         db,
         claim_id,
         _member.get("id"),
-        "claim_updated",
-        "Claim details updated",
-        {"fields": sorted(update_data.keys()), "stale_documents": stale_document_types},
+        event_type,
+        event_message,
+        {"fields": updated_fields, "stale_documents": stale_document_types},
     )
 
     return {

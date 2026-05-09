@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
 import { getClaimReadiness } from '../utils/claimReadiness'
+import { IconPencil } from '../components/Icons'
 
 // Status definitions: [tabLabel, backendValue, tailwind colour classes for badge]
 const STATUSES = [
@@ -119,8 +120,9 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
         <p className="text-xs text-gray-400 truncate">{claim.claim_description}</p>
       )}
       {claim.internal_notes && (
-        <p className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 truncate">
-          📝 {claim.internal_notes}
+        <p className="mt-1 flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">
+          <IconPencil className="h-3 w-3 shrink-0" />
+          <span className="truncate">{claim.internal_notes}</span>
         </p>
       )}
       {readiness.firstIssue && ['draft', 'pending_review', 'email_sent', 'screenshot_pending'].includes(claim.status) && (
