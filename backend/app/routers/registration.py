@@ -1,9 +1,12 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from supabase import Client
 
 from app.auth import require_telegram_user
 from app.database import get_supabase
+from app.routers.bot import send_bot_notification
 
 router = APIRouter(tags=["registration"])
 
@@ -16,6 +19,55 @@ class RegisterRequest(BaseModel):
     telegram_username: str = ''
     matric_number: str = ''
     phone_number: str = ''
+
+
+def _role_label(role: str) -> str:
+    if role == "treasurer":
+        return "CCA Treasurer"
+    if role == "member":
+        return "Finance Team Member"
+    return role.title()
+
+
+def _notify_directors_pending_registration(db: Client, member: dict, cca_names: list[str]) -> None:
+    try:
+        directors_resp = (
+            db.table("finance_team")
+            .select("telegram_id, status")
+            .eq("role", "director")
+            .execute()
+        )
+    except Exception:
+        return
+
+    telegram_ids = {
+        director.get("telegram_id")
+        for director in (directors_resp.data or [])
+        if director.get("telegram_id") and director.get("status") != "pending"
+    }
+    if not telegram_ids:
+        return
+
+    lines = [
+        "New registration pending approval.",
+        "",
+        f"Name: {member.get('name') or '-'}",
+        f"Role: {_role_label(member.get('role') or '')}",
+        f"Email: {member.get('email') or '-'}",
+    ]
+    if member.get("telegram_username"):
+        lines.append(f"Telegram: @{member['telegram_username']}")
+    if member.get("matric_number"):
+        lines.append(f"Matric: {member['matric_number']}")
+    if member.get("phone_number"):
+        lines.append(f"Phone: {member['phone_number']}")
+    if cca_names:
+        lines.append(f"CCA: {', '.join(cca_names)}")
+    lines.extend(["", "Open the Claims App > Approvals to review."])
+
+    message = "\n".join(lines)
+    for telegram_id in telegram_ids:
+        asyncio.create_task(send_bot_notification(telegram_id, message))
 
 
 @router.get("/me")
@@ -106,11 +158,19 @@ async def register(
     result = db.table("finance_team").insert(insert_data).execute()
     member = result.data[0]
 
+    cca_names: list[str] = []
     if payload.role == "treasurer":
         db.table("treasurer_ccas").insert([
             {"finance_team_id": member["id"], "cca_id": cca_id}
             for cca_id in payload.cca_ids
         ]).execute()
+        try:
+            cca_resp = db.table("ccas").select("name").in_("id", payload.cca_ids).execute()
+            cca_names = [row["name"] for row in (cca_resp.data or []) if row.get("name")]
+        except Exception:
+            cca_names = []
+
+    _notify_directors_pending_registration(db, member, cca_names)
 
     return member
 

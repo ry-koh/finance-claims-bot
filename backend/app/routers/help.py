@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.auth import require_auth, require_finance_team
 from app.config import settings
 from app.database import get_supabase
+from app.routers.bot import send_bot_notification
 from app.services import r2 as r2_service
 
 router = APIRouter(prefix="/help", tags=["help"])
@@ -31,6 +32,47 @@ class QuestionUpdate(BaseModel):
 
 class AnswerUpdate(BaseModel):
     answer_text: str
+
+
+def _preview_text(text: str, limit: int = 180) -> str:
+    clean = " ".join((text or "").split())
+    if len(clean) <= limit:
+        return clean
+    return clean[:limit].rstrip() + "..."
+
+
+def _notify_finance_team_new_question(db, current_user: dict, question: dict) -> None:
+    try:
+        members_resp = (
+            db.table("finance_team")
+            .select("id, telegram_id, role, status")
+            .in_("role", ["director", "member"])
+            .execute()
+        )
+    except Exception:
+        return
+
+    telegram_ids = {
+        member.get("telegram_id")
+        for member in (members_resp.data or [])
+        if member.get("telegram_id")
+        and member.get("status") != "pending"
+        and str(member.get("id")) != str(current_user.get("id"))
+    }
+    if not telegram_ids:
+        return
+
+    image_count = len(question.get("image_urls") or [])
+    image_line = f"\nImages attached: {image_count}" if image_count else ""
+    message = (
+        "New Help Inbox question posted.\n\n"
+        f"From: {current_user.get('name') or 'Unknown user'}\n"
+        f"Question: {_preview_text(question.get('question_text') or '')}"
+        f"{image_line}\n\n"
+        "Open the Claims App > Help Inbox to reply."
+    )
+    for telegram_id in telegram_ids:
+        asyncio.create_task(send_bot_notification(telegram_id, message))
 
 
 @router.post("/upload")
@@ -83,7 +125,7 @@ def get_my_questions(
 
 
 @router.post("/questions", status_code=201)
-def create_question(
+async def create_question(
     payload: QuestionCreate,
     current_user: dict = Depends(require_auth),
     db=Depends(get_supabase),
@@ -95,7 +137,9 @@ def create_question(
     }).execute()
     if not resp.data:
         raise HTTPException(status_code=500, detail="Failed to create question")
-    return resp.data[0]
+    question = resp.data[0]
+    _notify_finance_team_new_question(db, current_user, question)
+    return question
 
 
 # NOTE: /questions/all MUST be defined before /questions/{question_id}
@@ -233,7 +277,6 @@ async def post_answer(
             f"Your question: {q_preview}\n\n"
             f"{current_user['name']} replied:\n{payload.answer_text}"
         )
-        from app.routers.bot import send_bot_notification
         asyncio.create_task(send_bot_notification(telegram_id, message))
 
     return {
