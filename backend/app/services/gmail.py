@@ -73,7 +73,7 @@ def build_claim_email(
     claim_cc_email = email_settings.get("cc_email") or "68findirector.rh@gmail.com"
 
     # --- Name / identity fields ---
-    first_name = (claimer.get("name") or "").split()[0] if claimer.get("name") else ""
+    claimer_name = claimer.get("name") or ""
     claimer_name_upper = (claimer.get("name") or "").upper()
     claimer_matric_upper = (claimer.get("matric_no") or "").upper()
     claimer_phone = claimer.get("phone") or ""
@@ -169,7 +169,7 @@ def build_claim_email(
 
     # --- HTML body ---
     html_body = f"""<div style="font-family: Arial, sans-serif; color: #222; font-size: 14px; line-height: 1.6;">
-  <p>Hi {first_name},</p>
+  <p>Hi {claimer_name},</p>
   <p>We have received your claim and after sending the following email, this is a confirmation that your claim is being processed. We have also attached the attachments that you have sent for your convenience.</p>
   <p>Please copy and paste everything below the line into a new email. You do not need to reattach the attachments.</p>
   <p>
