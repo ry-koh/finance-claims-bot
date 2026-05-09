@@ -134,6 +134,26 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
               <AccountDetail label="CCA" value={ccaNames} />
             </div>
           </div>
+          <p className="px-1 text-[10px] leading-snug text-gray-400">
+            Created by Ryan Koh Jun Hao, 68th Fin D /{' '}
+            <a
+              href="https://github.com/ry-koh/finance-claims-bot"
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-gray-500 underline decoration-gray-300 underline-offset-2"
+            >
+              GitHub
+            </a>
+            {' / '}
+            <a
+              href="https://t.me/ry_koh"
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-gray-500 underline decoration-gray-300 underline-offset-2"
+            >
+              Telegram
+            </a>
+          </p>
         </div>
       </div>
     </>
