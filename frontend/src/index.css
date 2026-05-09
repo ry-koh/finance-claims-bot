@@ -234,6 +234,41 @@ table {
   color: var(--color-danger);
 }
 
+.treasurer-status-step-active {
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+
+.treasurer-status-step-done {
+  background: color-mix(in srgb, var(--color-surface) 76%, transparent);
+  color: var(--color-muted);
+}
+
+.treasurer-status-step-upcoming {
+  background: color-mix(in srgb, var(--color-surface) 52%, transparent);
+  color: var(--color-faint);
+}
+
+.treasurer-status-step-dot-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.treasurer-status-step-dot-done {
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--color-success);
+}
+
+.treasurer-status-step-dot-upcoming {
+  background: var(--color-surface-muted);
+  color: var(--color-faint);
+}
+
+.treasurer-status-warning {
+  background: rgba(217, 119, 6, 0.13);
+  color: var(--color-warning);
+}
+
 .ui-section-header {
   display: flex;
   align-items: center;
@@ -469,6 +504,42 @@ textarea:focus-visible {
   background-color: rgba(17, 24, 39, 0.72) !important;
   border-color: var(--color-border) !important;
   color: var(--color-text-soft) !important;
+}
+
+[data-theme='dark'] .treasurer-status-step-active {
+  background-color: rgba(56, 189, 248, 0.14) !important;
+  color: #e0f2fe !important;
+  border: 1px solid rgba(56, 189, 248, 0.24);
+}
+
+[data-theme='dark'] .treasurer-status-step-done {
+  background-color: rgba(15, 23, 42, 0.58) !important;
+  color: var(--color-text-soft) !important;
+}
+
+[data-theme='dark'] .treasurer-status-step-upcoming {
+  background-color: rgba(15, 23, 42, 0.36) !important;
+  color: var(--color-muted) !important;
+}
+
+[data-theme='dark'] .treasurer-status-step-dot-active {
+  background-color: rgba(56, 189, 248, 0.22) !important;
+  color: #e0f2fe !important;
+}
+
+[data-theme='dark'] .treasurer-status-step-dot-done {
+  background-color: rgba(52, 211, 153, 0.18) !important;
+  color: var(--color-success) !important;
+}
+
+[data-theme='dark'] .treasurer-status-step-dot-upcoming {
+  background-color: rgba(30, 41, 59, 0.88) !important;
+  color: var(--color-muted) !important;
+}
+
+[data-theme='dark'] .treasurer-status-warning {
+  background-color: rgba(251, 191, 36, 0.13) !important;
+  color: #fde68a !important;
 }
 
 [data-theme='dark'] .text-gray-900 { color: var(--color-text) !important; }

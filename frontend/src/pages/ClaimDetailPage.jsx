@@ -360,16 +360,16 @@ function TreasurerProgressPanel({ claim, onAction }) {
           return (
             <div
               key={key}
-              className={`flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-bold leading-tight ${
+              className={`treasurer-status-step flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-bold leading-tight ${
                 active
-                  ? 'bg-white text-blue-700 shadow-sm'
+                  ? 'treasurer-status-step-active shadow-sm'
                   : done
-                  ? 'bg-white/70 text-gray-500'
-                  : 'bg-white/40 text-gray-400'
+                  ? 'treasurer-status-step-done'
+                  : 'treasurer-status-step-upcoming'
               }`}
             >
-              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                active ? 'bg-blue-100 text-blue-700' : done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+              <span className={`treasurer-status-step-dot flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                active ? 'treasurer-status-step-dot-active' : done ? 'treasurer-status-step-dot-done' : 'treasurer-status-step-dot-upcoming'
               }`}>
                 {done ? 'OK' : idx + 1}
               </span>
@@ -382,7 +382,7 @@ function TreasurerProgressPanel({ claim, onAction }) {
       {claim.status === 'draft' && (
         <div className="space-y-2">
           {blockingIssue && (
-            <p className="rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-amber-800">
+            <p className="treasurer-status-warning rounded-lg px-2 py-1.5 text-xs font-medium">
               {blockingIssue.issue}
             </p>
           )}
