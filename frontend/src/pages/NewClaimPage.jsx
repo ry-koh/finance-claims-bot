@@ -1049,6 +1049,13 @@ function BtDraftCard({
                 {' '}· {bt.files.length} img
               </span>
             )}
+            {isTreasurer && (
+              <span className="mt-1 block text-[11px] font-medium text-gray-500">
+                {expanded
+                  ? `Receipts added below will be attached to Bank Tx ${btIndex}.`
+                  : 'Tap to open this bank transaction and attach its receipts.'}
+              </span>
+            )}
           </span>
         </button>
         <button
@@ -1070,6 +1077,11 @@ function BtDraftCard({
 
       {expanded && (
         <div className="px-3 py-2.5 space-y-2">
+          {isTreasurer && (
+            <p className="rounded-lg bg-blue-50 px-2 py-1.5 text-xs font-medium text-blue-700">
+              Add the receipts paid by this bank transaction here. Use the unlinked section only if there is no matching bank transaction.
+            </p>
+          )}
           {linkedReceipts.length > 0 && (
             <div className="space-y-1">
               {linkedReceipts.map((r) => (
@@ -1098,7 +1110,7 @@ function BtDraftCard({
               onClick={() => setShowReceiptForm(true)}
               className="w-full border border-dashed border-blue-200 text-blue-600 text-xs font-medium py-2 rounded-lg"
             >
-              + Add Receipt
+              {isTreasurer ? `+ Add receipt for Bank Tx ${btIndex}` : '+ Add Receipt'}
             </button>
           ) : (
             <div>
@@ -1416,9 +1428,18 @@ function TreasurerReceiptsStep({
       <div className="ui-card p-4">
         <p className="text-sm font-bold text-gray-900">Receipt details and payers</p>
         <p className="mt-1 text-xs text-gray-500">
-          Add receipts under the matching bank transaction, then select who paid for each receipt.
+          Tap a bank transaction below, then add the receipts paid by that transaction. Select who paid for each receipt.
         </p>
       </div>
+
+      {bankTransactions.length > 0 && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
+          <p className="text-xs font-semibold text-blue-800">Attach receipts to bank transactions</p>
+          <p className="mt-0.5 text-xs text-blue-700">
+            Open the matching Bank Tx card and use its add receipt button. Receipts in the unlinked section are not attached to any bank transaction.
+          </p>
+        </div>
+      )}
 
       {bankTransactions.length > 0 && (
         <div className="space-y-2">
@@ -1455,7 +1476,7 @@ function TreasurerReceiptsStep({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            Receipts not linked to a bank transaction{unlinkedReceipts.length ? ` (${unlinkedReceipts.length})` : ''}
+            Other receipts not attached to a bank transaction{unlinkedReceipts.length ? ` (${unlinkedReceipts.length})` : ''}
           </p>
           {!showUnlinkedForm && (
             <button
@@ -1463,7 +1484,7 @@ function TreasurerReceiptsStep({
               onClick={() => setShowUnlinkedForm(true)}
               className="text-xs font-semibold text-blue-600"
             >
-              + Add
+              + Add unlinked receipt
             </button>
           )}
         </div>
