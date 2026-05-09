@@ -65,6 +65,31 @@ function useDebounce(value, delay) {
   return debounced
 }
 
+function DateRangeFilter({ dateFrom, dateTo, onDateFromChange, onDateToChange }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+      <div className="min-w-0">
+        <label className="text-xs text-gray-500">From</label>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={e => onDateFromChange(e.target.value)}
+          className="mt-0.5 block min-w-0 w-full max-w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+        />
+      </div>
+      <div className="min-w-0">
+        <label className="text-xs text-gray-500">To</label>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={e => onDateToChange(e.target.value)}
+          className="mt-0.5 block min-w-0 w-full max-w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+        />
+      </div>
+    </div>
+  )
+}
+
 // Skeleton placeholder for a single claim card
 function SkeletonCard() {
   return (
@@ -293,18 +318,12 @@ export default function HomePage() {
               </button>
             </div>
             {filterOpen && (
-              <div className="flex gap-2">
-                <div className="w-[140px] shrink-0">
-                  <label className="text-xs text-gray-500">From</label>
-                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
-                </div>
-                <div className="w-[140px] shrink-0">
-                  <label className="text-xs text-gray-500">To</label>
-                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
-                </div>
-              </div>
+              <DateRangeFilter
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDateFromChange={setDateFrom}
+                onDateToChange={setDateTo}
+              />
             )}
           </div>
         ) : (
@@ -338,20 +357,22 @@ export default function HomePage() {
                   className="text-sm text-blue-600 font-medium">Select</button>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[
-                ['Total', allCount],
-                ['Review', reviewQueue],
-                ['Docs', documentQueue],
-                ['Done', completedCount],
-                ['Errors', countsData?.error ?? 0],
-                ['Compiled', countsData?.compiled ?? 0],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-                  <p className="text-base font-bold text-gray-900 tabular-nums">{value}</p>
-                </div>
-              ))}
+            <div className="-mx-4 mb-2 overflow-x-auto px-4 pb-1 scrollbar-none">
+              <div className="flex gap-2">
+                {[
+                  ['Total', allCount],
+                  ['Review', reviewQueue],
+                  ['Docs', documentQueue],
+                  ['Done', completedCount],
+                  ['Errors', countsData?.error ?? 0],
+                  ['Compiled', countsData?.compiled ?? 0],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-[76px] rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1.5">
+                    <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+                    <p className="text-sm font-bold text-gray-900 tabular-nums">{value}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </>
         )}
@@ -377,17 +398,13 @@ export default function HomePage() {
               </button>
             </div>
             {filterOpen && (
-              <div className="flex gap-2 mt-2">
-                <div className="w-[140px] shrink-0">
-                  <label className="text-xs text-gray-500">From</label>
-                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
-                </div>
-                <div className="w-[140px] shrink-0">
-                  <label className="text-xs text-gray-500">To</label>
-                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 mt-0.5" />
-                </div>
+              <div className="mt-2">
+                <DateRangeFilter
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onDateFromChange={setDateFrom}
+                  onDateToChange={setDateTo}
+                />
               </div>
             )}
           </>

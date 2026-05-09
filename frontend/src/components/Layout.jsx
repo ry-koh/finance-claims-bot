@@ -36,22 +36,27 @@ const DIRECTOR_NAV = [
     ],
   },
   {
+    label: 'People & Support',
+    items: [
+      { to: '/cca-treasurers', label: 'CCA Treasurers', icon: <IconUsers /> },
+      { to: '/contact', label: 'Contact', icon: <IconChat /> },
+      { to: '/help-inbox', label: 'Help Inbox', icon: <IconMail /> },
+      { to: '/pending-registrations', label: 'Approvals', icon: <IconUserCheck />, badge: true },
+    ],
+  },
+  {
     label: 'Admin',
     items: [
       { to: '/analytics', label: 'Analytics', icon: <IconBarChart /> },
-      { to: '/pending-registrations', label: 'Approvals', icon: <IconUserCheck />, badge: true },
-      { to: '/help-inbox', label: 'Help Inbox', icon: <IconMail /> },
       { to: '/team', label: 'Finance Team', icon: <IconShield /> },
-      { to: '/cca-treasurers', label: 'CCA Treasurers', icon: <IconUsers /> },
       { to: '/ccas', label: 'Portfolios & CCAs', icon: <IconLayers /> },
       { to: '/settings', label: 'Settings', icon: <IconSettings /> },
       { to: '/system-status', label: 'System Status', icon: <IconAlertTriangle /> },
     ],
   },
   {
-    label: 'Other',
+    label: 'Reference',
     items: [
-      { to: '/contact', label: 'Contact', icon: <IconChat /> },
       { to: '/sop', label: 'SOP', icon: <IconBookOpen /> },
     ],
   },
@@ -66,7 +71,7 @@ const MEMBER_NAV = [
     ],
   },
   {
-    label: 'Tools',
+    label: 'People & Support',
     items: [
       { to: '/identifiers', label: 'CCA Treasurers', icon: <IconUsers /> },
       { to: '/contact', label: 'Contact', icon: <IconChat /> },
@@ -74,7 +79,7 @@ const MEMBER_NAV = [
     ],
   },
   {
-    label: 'Other',
+    label: 'Reference',
     items: [
       { to: '/sop', label: 'SOP', icon: <IconBookOpen /> },
     ],
