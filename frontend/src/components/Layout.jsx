@@ -6,7 +6,6 @@ import AppDrawer from './AppDrawer'
 import {
   IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconMenu, IconBookOpen,
   IconBarChart, IconUserCheck, IconShield, IconSettings, IconLayers, IconAlertTriangle,
-  IconCreditCard,
 } from './Icons'
 
 const PAGE_TITLES = {
@@ -40,7 +39,6 @@ const DIRECTOR_NAV = [
     label: 'Admin',
     items: [
       { to: '/analytics', label: 'Analytics', icon: <IconBarChart /> },
-      { to: '/reimbursements', label: 'Reimbursements', icon: <IconCreditCard /> },
       { to: '/pending-registrations', label: 'Approvals', icon: <IconUserCheck />, badge: true },
       { to: '/help-inbox', label: 'Help Inbox', icon: <IconMail /> },
       { to: '/team', label: 'Finance Team', icon: <IconShield /> },
