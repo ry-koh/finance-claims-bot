@@ -7,6 +7,25 @@ function formatDate(str) {
   return isNaN(d) ? str : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+const COMMON_QUESTIONS = [
+  {
+    title: 'Shopee receipts',
+    body: 'For Shopee purchases, please upload the official invoice. Screenshots of the completed order page are not accepted as receipts. The official invoice is usually generated only after the item has been delivered, so please wait for delivery before submitting the claim.',
+  },
+  {
+    title: 'Bank transaction screenshots',
+    body: 'Bank transaction screenshots must show that the transaction has been completed or posted. Pending transactions are not accepted.',
+  },
+  {
+    title: 'Physical purchase paid by card',
+    body: 'If an item was bought physically but the receipt shows Visa, Mastercard, or another card payment method, please upload the matching bank transaction screenshot as well.',
+  },
+  {
+    title: 'Payment methods not accepted',
+    body: 'Vouchers, including SG60 vouchers and CDC vouchers, are not accepted for claims. PayLater payment methods are also not accepted.',
+  },
+]
+
 export default function HelpPage() {
   const navigate = useNavigate()
   const { data: questions = [], isLoading } = useMyQuestions()
@@ -21,7 +40,20 @@ export default function HelpPage() {
 
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
         <p className="text-sm font-semibold text-gray-700 mb-1">Common Questions</p>
-        <p className="text-sm text-gray-400">Coming soon</p>
+        <p className="text-xs text-gray-500 mb-3">
+          Receipt and bank transaction requirements may vary by platform. Check here for the latest instructions before submitting.
+        </p>
+        <div className="space-y-2">
+          {COMMON_QUESTIONS.map((item) => (
+            <details key={item.title} className="group rounded-lg border border-gray-200 bg-white px-3 py-2">
+              <summary className="cursor-pointer list-none text-sm font-medium text-gray-800 flex items-center justify-between gap-3">
+                <span>{item.title}</span>
+                <span className="text-gray-400 group-open:rotate-180 transition-transform">v</span>
+              </summary>
+              <p className="mt-2 text-sm text-gray-600 leading-relaxed">{item.body}</p>
+            </details>
+          ))}
+        </div>
       </div>
 
       <div>

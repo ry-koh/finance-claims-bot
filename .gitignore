@@ -27,6 +27,9 @@ Thumbs.db
 # Claude Code
 .claude/
 
+# Generated local documents
+outputs/
+
 # Git worktrees
 .worktrees/
 worktrees/
