@@ -275,7 +275,7 @@ def delete_drive_file(file_id: str) -> None:
     """Trash a Drive file (soft delete) using user OAuth."""
     from googleapiclient.discovery import build
     drive_service = build('drive', 'v3', credentials=_get_user_drive_credentials(), cache_discovery=False)
-    drive_service.files().update(fileId=file_id, body={"trashed": True}).execute()
+    drive_service.files().update(fileId=file_id, body={"trashed": True}, supportsAllDrives=True).execute()
 
 
 def upload_to_drive(file_bytes: bytes, filename: str, folder_id: str = None) -> str:

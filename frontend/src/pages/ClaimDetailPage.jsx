@@ -1872,6 +1872,7 @@ export default function ClaimDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [editFields, setEditFields] = useState({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [errorDismissed, setErrorDismissed] = useState(false)
   const [staleDocsWarning, setStaleDocsWarning] = useState(false)
   const [actionError, setActionError] = useState(null)
@@ -2027,12 +2028,14 @@ export default function ClaimDetailPage() {
   }
 
   function handleDelete() {
+    if (deleteConfirmText !== 'DELETE') return
     deleteClaimMut.mutate(
       { id },
       {
         onSuccess: () => navigate('/'),
         onError: (err) => {
           setShowDeleteConfirm(false)
+          setDeleteConfirmText('')
           setActionError(extractError(err, 'Failed to delete claim.'))
         },
       }
@@ -2173,7 +2176,10 @@ export default function ClaimDetailPage() {
                 </button>
               )}
               <button
-                onClick={() => setShowDeleteConfirm(true)}
+                onClick={() => {
+                  setDeleteConfirmText('')
+                  setShowDeleteConfirm(true)
+                }}
                 disabled={editMode}
                 className="text-xs font-medium text-red-600 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100 disabled:opacity-40"
               >
@@ -2644,9 +2650,24 @@ export default function ClaimDetailPage() {
             <p className="text-sm text-gray-500 mb-5">
               This will permanently delete the claim and all associated files. This cannot be undone.
             </p>
+            <label className="mb-5 block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Type DELETE to confirm
+              </span>
+              <input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                autoFocus
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                placeholder="DELETE"
+              />
+            </label>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowDeleteConfirm(false)}
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setDeleteConfirmText('')
+                }}
                 disabled={deleteClaimMut.isPending}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-700 active:bg-gray-200 disabled:opacity-50"
               >
@@ -2654,7 +2675,7 @@ export default function ClaimDetailPage() {
               </button>
               <button
                 onClick={handleDelete}
-                disabled={deleteClaimMut.isPending}
+                disabled={deleteClaimMut.isPending || deleteConfirmText !== 'DELETE'}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white active:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {deleteClaimMut.isPending && <Spinner small />}

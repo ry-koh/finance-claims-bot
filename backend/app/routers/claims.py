@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import io
+import logging
 import uuid as uuid_lib
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -39,6 +40,7 @@ class ReimbursementClaimsRequest(PydanticBaseModel):
     claim_ids: list[str]
 
 router = APIRouter(prefix="/claims", tags=["claims"])
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -70,6 +72,22 @@ def _get_claim_or_404(db: Client, claim_id: str) -> dict:
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
     return resp.data[0]
+
+
+def _add_file_ref(r2_paths: set[str], drive_file_ids: set[str], file_id: str | None) -> None:
+    """Split stored file IDs into R2 object names and Google Drive IDs."""
+    if not file_id:
+        return
+    value = str(file_id)
+    if "/" in value:
+        r2_paths.add(value)
+    else:
+        drive_file_ids.add(value)
+
+
+def _add_file_refs(r2_paths: set[str], drive_file_ids: set[str], file_ids: list[str] | None) -> None:
+    for file_id in file_ids or []:
+        _add_file_ref(r2_paths, drive_file_ids, file_id)
 
 
 def _normalise_claim_ids(claim_ids: list[str]) -> list[str]:
@@ -1092,8 +1110,13 @@ async def delete_claim(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    """Permanently delete a claim and all associated R2 files."""
-    resp = db.table("claims").select("id, status, filled_by").eq("id", claim_id).execute()
+    """Permanently delete a claim and all associated R2/Drive files."""
+    resp = (
+        db.table("claims")
+        .select("id, status, filled_by, mf_approval_drive_id, mf_approval_drive_ids")
+        .eq("id", claim_id)
+        .execute()
+    )
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
     claim = resp.data[0]
@@ -1102,34 +1125,72 @@ async def delete_claim(
     if _member.get("role") == "treasurer" and claim.get("status") != "draft":
         raise HTTPException(status_code=403, detail="This claim can no longer be deleted")
 
-    # Collect all R2 object names across image and document tables
-    r2_paths = []
+    # Collect every file reference before the DB cascade removes child rows.
+    r2_paths: set[str] = set()
+    drive_file_ids: set[str] = set()
 
-    ri = db.table("receipt_images").select("drive_file_id").eq(
-        "receipt_id",
-        db.table("receipts").select("id").eq("claim_id", claim_id)
+    _add_file_ref(r2_paths, drive_file_ids, claim.get("mf_approval_drive_id"))
+    _add_file_refs(r2_paths, drive_file_ids, claim.get("mf_approval_drive_ids"))
+
+    receipts_resp = (
+        db.table("receipts")
+        .select(
+            "id, receipt_image_drive_id, bank_screenshot_drive_id, "
+            "exchange_rate_screenshot_drive_id, exchange_rate_screenshot_drive_ids"
+        )
+        .eq("claim_id", claim_id)
+        .execute()
     )
-    # Gather via joined queries
-    receipts_resp = db.table("receipts").select("id").eq("claim_id", claim_id).execute()
     receipt_ids = [r["id"] for r in (receipts_resp.data or [])]
+    for receipt in receipts_resp.data or []:
+        _add_file_ref(r2_paths, drive_file_ids, receipt.get("receipt_image_drive_id"))
+        _add_file_ref(r2_paths, drive_file_ids, receipt.get("bank_screenshot_drive_id"))
+        _add_file_ref(r2_paths, drive_file_ids, receipt.get("exchange_rate_screenshot_drive_id"))
+        _add_file_refs(r2_paths, drive_file_ids, receipt.get("exchange_rate_screenshot_drive_ids"))
+
     if receipt_ids:
         ri_resp = db.table("receipt_images").select("drive_file_id").in_("receipt_id", receipt_ids).execute()
-        r2_paths += [r["drive_file_id"] for r in (ri_resp.data or []) if r.get("drive_file_id")]
+        for row in ri_resp.data or []:
+            _add_file_ref(r2_paths, drive_file_ids, row.get("drive_file_id"))
 
     bt_resp = db.table("bank_transactions").select("id").eq("claim_id", claim_id).execute()
     bt_ids = [b["id"] for b in (bt_resp.data or [])]
     if bt_ids:
         bti_resp = db.table("bank_transaction_images").select("drive_file_id").in_("bank_transaction_id", bt_ids).execute()
-        r2_paths += [r["drive_file_id"] for r in (bti_resp.data or []) if r.get("drive_file_id")]
-        btr_resp = db.table("bank_transaction_refunds").select("drive_file_id").in_("bank_transaction_id", bt_ids).execute()
-        r2_paths += [r["drive_file_id"] for r in (btr_resp.data or []) if r.get("drive_file_id")]
+        for row in bti_resp.data or []:
+            _add_file_ref(r2_paths, drive_file_ids, row.get("drive_file_id"))
+        btr_resp = (
+            db.table("bank_transaction_refunds")
+            .select("drive_file_id, extra_drive_file_ids")
+            .in_("bank_transaction_id", bt_ids)
+            .execute()
+        )
+        for row in btr_resp.data or []:
+            _add_file_ref(r2_paths, drive_file_ids, row.get("drive_file_id"))
+            _add_file_refs(r2_paths, drive_file_ids, row.get("extra_drive_file_ids"))
 
     docs_resp = db.table("claim_documents").select("drive_file_id").eq("claim_id", claim_id).execute()
-    r2_paths += [d["drive_file_id"] for d in (docs_resp.data or []) if d.get("drive_file_id")]
+    for doc in docs_resp.data or []:
+        _add_file_ref(r2_paths, drive_file_ids, doc.get("drive_file_id"))
 
-    # Delete R2 files (best-effort)
+    request_resp = db.table("claim_attachment_requests").select("id").eq("claim_id", claim_id).execute()
+    request_ids = [r["id"] for r in (request_resp.data or [])]
+    if request_ids:
+        attachment_resp = db.table("claim_attachment_files").select("file_url").in_("request_id", request_ids).execute()
+        for row in attachment_resp.data or []:
+            _add_file_ref(r2_paths, drive_file_ids, row.get("file_url"))
+
+    # Delete uploaded files best-effort; DB cleanup should still proceed if storage cleanup has a transient failure.
     for path in r2_paths:
         r2_service.delete_file(path)
+
+    if drive_file_ids:
+        from app.services import pdf as pdf_service
+        for file_id in drive_file_ids:
+            try:
+                pdf_service.delete_drive_file(file_id)
+            except Exception as exc:
+                logger.warning("Drive delete failed for claim %s file %s: %s", claim_id, file_id, exc)
 
     # Hard delete the claim (cascades to all child rows via DB FK constraints)
     db.table("claims").delete().eq("id", claim_id).execute()
