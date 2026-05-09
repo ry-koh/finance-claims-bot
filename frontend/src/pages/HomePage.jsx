@@ -114,7 +114,7 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
       </div>
 
       <p className="text-xs text-gray-500 mt-0.5 truncate">
-        {claim.claimer?.name ?? 'Unknown claimer'}
+        {claim.claimer?.name || claim.one_off_name || 'Unknown claimer'}
       </p>
       {claim.claim_description && (
         <p className="text-xs text-gray-400 truncate">{claim.claim_description}</p>
