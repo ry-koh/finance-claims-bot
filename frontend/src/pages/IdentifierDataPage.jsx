@@ -3,13 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../api/client'
 
 function fetchTreasurers() {
-  return api.get('/admin/team', {}).then((r) =>
-    r.data.filter((m) => m.role === 'treasurer')
-  )
+  return api.get('/admin/treasurers').then((r) => r.data)
 }
 
 function updateTreasurer({ id, matric_number, phone_number }) {
-  return api.patch(`/admin/team/${id}`, { matric_number, phone_number }).then((r) => r.data)
+  return api.patch(`/admin/treasurers/${id}/identifiers`, { matric_number, phone_number }).then((r) => r.data)
 }
 
 function TreasurerRow({ member, updateMutation }) {
