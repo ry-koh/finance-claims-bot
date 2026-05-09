@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -6,6 +6,7 @@ import { useClaim, useClaimEvents, useUpdateClaim, useDeleteClaim, useSubmitForR
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval, submitTransportData } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
+import { useCreatePayer, useDeletePayer, usePayers, useUpdatePayer } from '../api/payers'
 import {
   useAttachmentRequests,
   useRequestAttachment,
@@ -26,6 +27,7 @@ import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+import PayerSelect from '../components/PayerSelect'
 import { IconChevronLeft, IconFileText } from '../components/Icons'
 import { getClaimReadiness } from '../utils/claimReadiness'
 import {
@@ -170,6 +172,49 @@ const STATUS_ORDER = [
 function formatAmount(amount) {
   if (amount == null) return '—'
   return `$${Number(amount).toFixed(2)}`
+}
+
+function cleanEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function normalizePayer(option) {
+  if (!option?.name || !option?.email) return null
+  return {
+    id: option.id,
+    owner_treasurer_id: option.owner_treasurer_id,
+    name: option.name,
+    email: cleanEmail(option.email),
+    is_self: Boolean(option.is_self),
+    is_saved: Boolean(option.is_saved),
+  }
+}
+
+function claimDefaultPayer(claim) {
+  if (!claim) return null
+  const name = claim.one_off_name || claim.claimer?.name
+  const email = cleanEmail(claim.one_off_email || claim.claimer?.email)
+  if (!name || !email) return null
+  return {
+    id: claim.claimer_id ? `self:${claim.claimer_id}` : `one-off:${email}`,
+    name,
+    email,
+    is_self: true,
+    is_saved: false,
+  }
+}
+
+function uniquePayers(payers) {
+  const seen = new Set()
+  return payers
+    .map(normalizePayer)
+    .filter((payer) => {
+      if (!payer) return false
+      const key = `${cleanEmail(payer.email)}:${payer.name}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 function formatDate(dateStr) {
@@ -648,8 +693,7 @@ function MfApprovalUpload({ claim, onUploaded }) {
   )
 }
 
-// Tag input for other_emails
-function TagInput({ value = [], onChange }) {
+function LegacyEmailPillInput({ value = [], onChange }) {
   const [input, setInput] = useState('')
 
   function addTag(raw) {
@@ -1039,6 +1083,7 @@ function BtCard({
   bt, btIndex, claimId, linkedReceipts, expanded, onToggle, onEdit, onDelete, onAddReceipt,
   saving, addingReceipt, onReceiptSaved, onReceiptCancelled, onEditReceipt, onDeleteReceipt, receiptSaving,
   isTreasurer, canEdit = true, isPartial,
+  payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -1188,6 +1233,12 @@ function BtCard({
                 isTreasurer={isTreasurer}
                 canEdit={canEdit}
                 isPartial={isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={onCreatePayer}
+                onUpdatePayer={onUpdatePayer}
+                onDeletePayer={onDeletePayer}
+                canManagePayers={canManagePayers}
+                payersLoading={payersLoading}
               />
             ))}
             {!linkedReceipts.length && !addingReceipt && (
@@ -1205,6 +1256,12 @@ function BtCard({
               claimId={claimId}
               isTreasurer={isTreasurer}
               isPartial={isPartial}
+              payerOptions={payerOptions}
+              onCreatePayer={onCreatePayer}
+              onUpdatePayer={onUpdatePayer}
+              onDeletePayer={onDeletePayer}
+              canManagePayers={canManagePayers}
+              payersLoading={payersLoading}
             />
           )}
 
@@ -1867,6 +1924,8 @@ export default function ClaimDetailPage() {
   const createReceiptMut = useCreateReceipt()
   const updateReceiptMut = useUpdateReceipt()
   const deleteReceiptMut = useDeleteReceipt()
+  const createPayerMut = useCreatePayer()
+  const updatePayerMut = useUpdatePayer()
   const deleteBtMut = useDeleteBankTransaction(id)
 
   // UI state
@@ -1884,6 +1943,55 @@ export default function ClaimDetailPage() {
   const [editingBt, setEditingBt] = useState(null)
   const [addingReceiptForBtId, setAddingReceiptForBtId] = useState(null)
   const [showAddUnlinked, setShowAddUnlinked] = useState(false)
+  const [claimOnlyPayers, setClaimOnlyPayers] = useState([])
+
+  const payerOwnerId = claim?.claimer_id || ''
+  const { data: savedPayers = [], isLoading: payersLoading } = usePayers(payerOwnerId, Boolean(payerOwnerId))
+  const deletePayerMut = useDeletePayer(payerOwnerId)
+  const defaultPayer = useMemo(() => claimDefaultPayer(claim), [claim])
+  const receiptPayers = useMemo(
+    () =>
+      (claim?.receipts ?? [])
+        .filter((receipt) => receipt.payer_name && receipt.payer_email)
+        .map((receipt) => ({
+          id: `receipt:${receipt.id}`,
+          name: receipt.payer_name,
+          email: receipt.payer_email,
+          is_self: false,
+          is_saved: false,
+        })),
+    [claim?.receipts]
+  )
+  const payerOptions = useMemo(() => {
+    if (payerOwnerId) return savedPayers.map(normalizePayer).filter(Boolean)
+    return uniquePayers([defaultPayer, ...receiptPayers, ...claimOnlyPayers])
+  }, [payerOwnerId, savedPayers, defaultPayer, receiptPayers, claimOnlyPayers])
+
+  async function createCurrentPayer({ name, email }) {
+    if (payerOwnerId) {
+      return createPayerMut.mutateAsync({ owner_treasurer_id: payerOwnerId, name, email })
+    }
+    const payer = {
+      id: `claim:${cleanEmail(email)}`,
+      name: name.trim(),
+      email: cleanEmail(email),
+      is_self: false,
+      is_saved: false,
+    }
+    setClaimOnlyPayers((prev) => {
+      const withoutDuplicate = prev.filter((item) => cleanEmail(item.email) !== payer.email)
+      return [...withoutDuplicate, payer]
+    })
+    return payer
+  }
+
+  async function updateCurrentPayer(payerId, fields) {
+    return updatePayerMut.mutateAsync({ id: payerId, ...fields })
+  }
+
+  async function deleteCurrentPayer(payerId) {
+    return deletePayerMut.mutateAsync(payerId)
+  }
 
   // Loading map passed to pipeline
   const loadingMap = {
@@ -1971,7 +2079,6 @@ export default function ClaimDetailPage() {
       transport_form_needed: claim.transport_form_needed ?? false,
       transport_trips: existingTrips,
       is_partial: claim.is_partial ?? false,
-      other_emails: claim.other_emails ?? [],
     })
     setEditMode(true)
   }
@@ -2080,7 +2187,12 @@ export default function ClaimDetailPage() {
       { claim_id: id, ...fields },
       {
         onSuccess: (created) => {
-          const updated = [...(claim.receipts ?? []), created]
+          const savedReceipt = created?.receipt ?? created
+          if (created?.split_needed || !savedReceipt?.id) {
+            setActionError(created?.reason || 'Receipt could not be saved.')
+            return
+          }
+          const updated = [...(claim.receipts ?? []), savedReceipt]
           recalcAndUpdateTotal(updated)
           if (fields.is_foreign_currency && fields.exchange_rate_screenshot_drive_id) appendFxRemark()
         },
@@ -2411,19 +2523,6 @@ export default function ClaimDetailPage() {
                 </label>
               </div>
 
-              {/* Additional claimer emails */}
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Additional Claimer Emails</label>
-                <p className="mb-2 text-xs text-gray-500">
-                  Add the email of anyone else whose receipt is included, especially if they paid for the item and you are submitting on their behalf.
-                </p>
-                <TagInput
-                  value={editFields.other_emails}
-                  onChange={(val) =>
-                    setEditFields((f) => ({ ...f, other_emails: val }))
-                  }
-                />
-              </div>
             </div>
           ) : (
             <div className="flex flex-col gap-2 text-sm">
@@ -2442,12 +2541,6 @@ export default function ClaimDetailPage() {
               <InfoRow label="WBS No." value={claim.wbs_no ?? '—'} />
               <InfoRow label="Description" value={claim.claim_description ?? '—'} />
               {claim.remarks && <InfoRow label="Remarks" value={claim.remarks} />}
-              {claim.other_emails?.length > 0 && (
-                <InfoRow
-                  label="Additional Claimer Emails"
-                  value={claim.other_emails.join(', ')}
-                />
-              )}
               <InfoRow
                 label="Transport Form"
                 value={claim.transport_form_needed ? 'Yes' : 'No'}
@@ -2482,6 +2575,8 @@ export default function ClaimDetailPage() {
         {isFinanceTeam && (
           <InternalNotesCard claim={claim} claimId={id} />
         )}
+
+        <PayerBreakdownCard claim={claim} />
 
         {/* ── Finance Review Panel — shown when claim is pending_review ── */}
         {isFinanceTeam && claim.status === 'pending_review' && (
@@ -2550,6 +2645,12 @@ export default function ClaimDetailPage() {
                   isTreasurer={isTreasurer}
                   canEdit={canEdit}
                   isPartial={claim.is_partial}
+                  payerOptions={payerOptions}
+                  onCreatePayer={createCurrentPayer}
+                  onUpdatePayer={updateCurrentPayer}
+                  onDeletePayer={deleteCurrentPayer}
+                  canManagePayers={Boolean(payerOwnerId)}
+                  payersLoading={Boolean(payerOwnerId) && payersLoading}
                 />
               )
             })}
@@ -2586,6 +2687,12 @@ export default function ClaimDetailPage() {
                 isTreasurer={isTreasurer}
                 canEdit={canEdit}
                 isPartial={claim.is_partial}
+                payerOptions={payerOptions}
+                onCreatePayer={createCurrentPayer}
+                onUpdatePayer={updateCurrentPayer}
+                onDeletePayer={deleteCurrentPayer}
+                canManagePayers={Boolean(payerOwnerId)}
+                payersLoading={Boolean(payerOwnerId) && payersLoading}
               />
             ))}
             {!unlinked.length && !showAddUnlinked && (
@@ -2601,6 +2708,12 @@ export default function ClaimDetailPage() {
               claimId={id}
               isTreasurer={isTreasurer}
               isPartial={claim.is_partial}
+              payerOptions={payerOptions}
+              onCreatePayer={createCurrentPayer}
+              onUpdatePayer={updateCurrentPayer}
+              onDeletePayer={deleteCurrentPayer}
+              canManagePayers={Boolean(payerOwnerId)}
+              payersLoading={Boolean(payerOwnerId) && payersLoading}
             />
           )}
         </div>
@@ -2695,13 +2808,79 @@ function InfoRow({ label, value, bold }) {
   )
 }
 
+function payerBreakdown(claim) {
+  const fallback = claimDefaultPayer(claim)
+  const groups = new Map()
+  for (const receipt of claim?.receipts ?? []) {
+    const name = receipt.payer_name || fallback?.name || 'Unknown payer'
+    const email = cleanEmail(receipt.payer_email || fallback?.email)
+    const key = `${email}:${name}`
+    const current = groups.get(key) || { name, email, total: 0, receipts: [] }
+    current.total += Number(receipt.claimed_amount ?? receipt.amount ?? 0)
+    current.receipts.push(receipt)
+    groups.set(key, current)
+  }
+  return Array.from(groups.values()).sort((a, b) => b.total - a.total)
+}
+
+function PayerBreakdownCard({ claim }) {
+  const groups = payerBreakdown(claim)
+  if (!groups.length) return null
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">Reimbursement Split</h2>
+          <p className="mt-0.5 text-xs text-gray-400">Based on who paid for each receipt.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">
+          {groups.length} payer{groups.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {groups.map((group) => (
+          <div key={`${group.email}:${group.name}`} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-800">{group.name}</p>
+                {group.email && <p className="truncate text-xs text-gray-500">{group.email}</p>}
+              </div>
+              <p className="shrink-0 text-sm font-bold text-gray-900">{formatAmount(group.total)}</p>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              {group.receipts.length} receipt{group.receipts.length === 1 ? '' : 's'}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const EMPTY_RECEIPT_FIELDS = {
   description: '', amount: '', claimed_amount: '', category: '', gst_code: 'IE',
   dr_cr: 'DR', receipt_no: '', company: '', date: '',
+  payer_id: null, payer_name: '', payer_email: '',
   is_foreign_currency: false, exchange_rate_screenshot_drive_id: null,
 }
 
-function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, saving, claimId, isTreasurer, isPartial }) {
+function ReceiptInlineForm({
+  initial,
+  bankTransactionId,
+  onSave,
+  onCancel,
+  saving,
+  claimId,
+  isTreasurer,
+  isPartial,
+  payerOptions,
+  onCreatePayer,
+  onUpdatePayer,
+  onDeletePayer,
+  canManagePayers,
+  payersLoading,
+}) {
   const [f, setF] = useState({ ...EMPTY_RECEIPT_FIELDS, ...initial })
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
   const [err, setErr] = useState({})
@@ -2775,6 +2954,7 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
     if (!f.description.trim()) e.description = 'Required'
     if (!f.amount || isNaN(Number(f.amount)) || Number(f.amount) <= 0) e.amount = 'Enter valid amount'
     if (!isTreasurer && !f.category) e.category = 'Required'
+    if (!f.payer_name?.trim() || !f.payer_email?.trim()) e.payer = 'Select who paid for this receipt'
     if (Object.keys(e).length) { setErr(e); return }
     onSave({
       ...f,
@@ -2847,6 +3027,24 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
           />
         </div>
       )}
+      <PayerSelect
+        payer={{
+          payer_id: f.payer_id,
+          payer_name: f.payer_name,
+          payer_email: f.payer_email,
+        }}
+        onChange={(payer) => {
+          setF((prev) => ({ ...prev, ...payer }))
+          if (err.payer) setErr((prev) => ({ ...prev, payer: '' }))
+        }}
+        options={payerOptions}
+        onCreatePayer={onCreatePayer}
+        onUpdatePayer={onUpdatePayer}
+        onDeletePayer={onDeletePayer}
+        canManageSaved={canManagePayers}
+        loading={payersLoading}
+        error={err.payer}
+      />
       {!isTreasurer && (
         <div className="grid grid-cols-2 gap-2">
           <select className={inputCls} value={f.gst_code} onChange={set('gst_code')}>
@@ -2944,7 +3142,22 @@ function ReceiptInlineForm({ initial, bankTransactionId, onSave, onCancel, savin
   )
 }
 
-function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, canEdit = true, isPartial }) {
+function ReceiptRow({
+  receipt,
+  onEdit,
+  onDelete,
+  saving,
+  claimId,
+  isTreasurer,
+  canEdit = true,
+  isPartial,
+  payerOptions,
+  onCreatePayer,
+  onUpdatePayer,
+  onDeletePayer,
+  canManagePayers,
+  payersLoading,
+}) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -2982,6 +3195,9 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
             category: receipt.category ?? '',
             gst_code: receipt.gst_code ?? 'IE',
             dr_cr: receipt.dr_cr ?? 'DR',
+            payer_id: receipt.payer_id ?? null,
+            payer_name: receipt.payer_name ?? '',
+            payer_email: receipt.payer_email ?? '',
             receipt_no: receipt.receipt_no ?? '',
             company: receipt.company ?? '',
             date: receipt.date ?? '',
@@ -2996,6 +3212,12 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
           claimId={claimId}
           isTreasurer={isTreasurer}
           isPartial={isPartial}
+          payerOptions={payerOptions}
+          onCreatePayer={onCreatePayer}
+          onUpdatePayer={onUpdatePayer}
+          onDeletePayer={onDeletePayer}
+          canManagePayers={canManagePayers}
+          payersLoading={payersLoading}
         />
       </div>
     )
@@ -3014,6 +3236,11 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
             {receipt.company ? ` · ${receipt.company}` : ''}
           </p>
           <p className="text-xs text-gray-400">{receipt.gst_code} · {receipt.dr_cr}</p>
+          {(receipt.payer_name || receipt.payer_email) && (
+            <p className="text-xs text-gray-500">
+              Paid by {receipt.payer_name || 'Unknown'}{receipt.payer_email ? ` (${receipt.payer_email})` : ''}
+            </p>
+          )}
           {receipt.is_foreign_currency && (
             <span className="inline-block text-xs text-orange-600 font-semibold bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded mt-0.5">FX</span>
           )}

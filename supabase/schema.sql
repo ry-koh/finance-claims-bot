@@ -42,6 +42,16 @@ CREATE TABLE treasurer_ccas (
   PRIMARY KEY (finance_team_id, cca_id)
 );
 
+CREATE TABLE treasurer_payers (
+  id                 uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  owner_treasurer_id uuid NOT NULL REFERENCES finance_team(id) ON DELETE CASCADE,
+  name               text NOT NULL,
+  email              text NOT NULL,
+  deleted_at         timestamptz,
+  created_at         timestamptz DEFAULT now(),
+  updated_at         timestamptz DEFAULT now()
+);
+
 CREATE TABLE document_counters (
   id            uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   academic_year text NOT NULL,
@@ -79,7 +89,6 @@ CREATE TABLE claims (
   mf_approval_drive_ids text[] DEFAULT '{}',
   internal_notes    text,
   remarks           text,
-  other_emails      text[] DEFAULT '{}',
   rejection_comment text,
   transport_data    jsonb,
   transport_form_needed boolean NOT NULL DEFAULT false,
@@ -135,6 +144,9 @@ CREATE TABLE receipts (
   date                            date,
   amount                          numeric(10,2) NOT NULL,
   claimed_amount                  numeric(10,2),
+  payer_id                        uuid REFERENCES treasurer_payers(id) ON DELETE SET NULL,
+  payer_name                      text,
+  payer_email                     text,
   is_foreign_currency             boolean NOT NULL DEFAULT false,
   exchange_rate_screenshot_drive_id text,
   exchange_rate_screenshot_drive_ids text[] DEFAULT '{}',
@@ -246,6 +258,9 @@ CREATE INDEX idx_claims_deleted      ON claims(deleted_at);
 CREATE INDEX idx_receipts_claim      ON receipts(claim_id);
 CREATE INDEX idx_receipts_line_item  ON receipts(line_item_id);
 CREATE INDEX idx_receipts_bt         ON receipts(bank_transaction_id);
+CREATE INDEX idx_receipts_payer      ON receipts(payer_id);
+CREATE INDEX idx_treasurer_payers_owner ON treasurer_payers(owner_treasurer_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_treasurer_payers_owner_email_active ON treasurer_payers(owner_treasurer_id, lower(email)) WHERE deleted_at IS NULL;
 CREATE INDEX idx_line_items_claim    ON claim_line_items(claim_id);
 CREATE INDEX idx_documents_claim     ON claim_documents(claim_id);
 CREATE INDEX idx_documents_current   ON claim_documents(claim_id, type) WHERE is_current = true;
@@ -279,6 +294,10 @@ CREATE TRIGGER trg_claims_updated_at
 
 CREATE TRIGGER trg_line_items_updated_at
   BEFORE UPDATE ON claim_line_items
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_treasurer_payers_updated_at
+  BEFORE UPDATE ON treasurer_payers
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER trg_receipts_updated_at

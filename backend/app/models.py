@@ -171,6 +171,9 @@ class Receipt(BaseModel):
 
 class ReceiptCreate(BaseModel):
     claim_id: str
+    payer_id: Optional[str] = None
+    payer_name: str
+    payer_email: str
     receipt_no: Optional[str] = None
     description: str
     company: Optional[str] = None
@@ -191,6 +194,9 @@ class ReceiptCreate(BaseModel):
 
 
 class ReceiptUpdate(BaseModel):
+    payer_id: Optional[str] = None
+    payer_name: Optional[str] = None
+    payer_email: Optional[str] = None
     receipt_no: Optional[str] = None
     description: Optional[str] = None
     company: Optional[str] = None
@@ -238,7 +244,6 @@ class Claim(BaseModel):
     wbs_account: WBSAccount
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
-    other_emails: List[str] = []
     status: ClaimStatus
     error_message: Optional[str] = None
     transport_form_needed: bool
@@ -261,7 +266,6 @@ class ClaimCreate(BaseModel):
     wbs_account: WBSAccount
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
-    other_emails: List[str] = []
     transport_form_needed: bool = False
     is_partial: bool = False
 
@@ -281,7 +285,6 @@ class ClaimUpdate(BaseModel):
     wbs_account: Optional[WBSAccount] = None
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
-    other_emails: Optional[List[str]] = None
     status: Optional[ClaimStatus] = None
     error_message: Optional[str] = None
     transport_form_needed: Optional[bool] = None

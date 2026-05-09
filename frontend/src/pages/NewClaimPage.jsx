@@ -5,11 +5,13 @@ import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useTreasurerOptions } from '../api/admin'
 import { useCreateClaim } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImageById, uploadReceiptFxImageById } from '../api/receipts'
+import { useCreatePayer, useDeletePayer, usePayers, useUpdatePayer } from '../api/payers'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
 import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
+import PayerSelect from '../components/PayerSelect'
 import { IconChevronLeft } from '../components/Icons'
 import { getClaimReadiness } from '../utils/claimReadiness'
 
@@ -23,6 +25,35 @@ function today() {
 
 function generateId() {
   return `${Date.now()}-${Math.floor(Math.random() * 1e9)}`
+}
+
+function cleanEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function normalizePayer(option) {
+  if (!option?.name || !option?.email) return null
+  return {
+    id: option.id,
+    owner_treasurer_id: option.owner_treasurer_id,
+    name: option.name,
+    email: cleanEmail(option.email),
+    is_self: Boolean(option.is_self),
+    is_saved: Boolean(option.is_saved),
+  }
+}
+
+function oneOffSelfPayer(step1) {
+  const name = step1.oneOffName?.trim()
+  const email = cleanEmail(step1.oneOffEmail)
+  if (!name || !email) return null
+  return {
+    id: `one-off:${email}`,
+    name,
+    email,
+    is_self: true,
+    is_saved: false,
+  }
 }
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
@@ -230,7 +261,7 @@ function Step1({ data, onChange }) {
                 </div>
               </div>
               <div>
-                <Label>School Email</Label>
+                <Label required>School Email</Label>
                 <Input
                   type="email"
                   value={data.oneOffEmail}
@@ -334,29 +365,6 @@ function TransportTripsInput({ trips, onChange }) {
 // ─── Step 2: What ─────────────────────────────────────────────────────────────
 
 function Step2({ data, onChange, isTreasurer }) {
-  const [emailInput, setEmailInput] = useState('')
-  const [emailError, setEmailError] = useState('')
-
-  function addEmail() {
-    const val = emailInput.trim()
-    if (!val) return
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
-      setEmailError('Enter a valid email address')
-      return
-    }
-    if (data.otherEmails.includes(val)) {
-      setEmailError('Email already added')
-      return
-    }
-    onChange({ otherEmails: [...data.otherEmails, val] })
-    setEmailInput('')
-    setEmailError('')
-  }
-
-  function removeEmail(index) {
-    onChange({ otherEmails: data.otherEmails.filter((_, i) => i !== index) })
-  }
-
   return (
     <div className="space-y-4">
       {/* Claim Description */}
@@ -484,52 +492,6 @@ function Step2({ data, onChange, isTreasurer }) {
         )}
       </div>
 
-      {/* Additional Claimer Emails */}
-      <div>
-        <Label>Additional Claimer Emails</Label>
-        <p className="mb-2 text-xs text-gray-500">
-          Add the email of anyone else whose receipt is included, especially if they paid for the item and you are submitting on their behalf.
-        </p>
-        <div className="flex gap-2">
-          <Input
-            type="email"
-            value={emailInput}
-            onChange={(v) => {
-              setEmailInput(v)
-              if (emailError) setEmailError('')
-            }}
-            placeholder="Add email address…"
-            className="flex-1"
-          />
-          <button
-            type="button"
-            onClick={addEmail}
-            className="shrink-0 bg-blue-600 text-white text-sm font-medium px-3 py-2 rounded-lg"
-          >
-            Add
-          </button>
-        </div>
-        {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
-        {data.otherEmails.length > 0 && (
-          <div className="mt-2 space-y-1">
-            {data.otherEmails.map((email, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5"
-              >
-                <span className="text-sm text-gray-700 truncate">{email}</span>
-                <button
-                  type="button"
-                  onClick={() => removeEmail(i)}
-                  className="ml-2 shrink-0 text-gray-400 hover:text-red-500 text-base leading-none"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -546,16 +508,32 @@ const EMPTY_RECEIPT = {
   receipt_no: '',
   company: '',
   date: '',
+  payer_id: null,
+  payer_name: '',
+  payer_email: '',
   files: [],
   is_foreign_currency: false,
   fx_screenshot_files: [],
 }
 
-function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer, isPartial }) {
+function ReceiptForm({
+  onAdd,
+  onEdit,
+  existingCategories,
+  initial,
+  isTreasurer,
+  isPartial,
+  payerOptions,
+  onCreatePayer,
+  onUpdatePayer,
+  onDeletePayer,
+  canManagePayers,
+  payersLoading,
+}) {
   const [form, setForm] = useState(
     initial
       ? { ...initial, amount: String(initial.amount), claimed_amount: String(initial.claimed_amount ?? '') }
-      : EMPTY_RECEIPT
+      : { ...EMPTY_RECEIPT }
   )
   const [errors, setErrors] = useState({})
 
@@ -571,6 +549,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer, 
       e.amount = 'Enter a valid amount > 0'
     if (!isTreasurer && !form.category) e.category = 'Required'
     if (!form.date) e.date = 'Required'
+    if (!form.payer_name?.trim() || !form.payer_email?.trim()) e.payer = 'Select who paid for this receipt'
     return e
   }
 
@@ -599,7 +578,7 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer, 
       onEdit(result)
     } else {
       onAdd(result)
-      setForm(EMPTY_RECEIPT)
+      setForm({ ...EMPTY_RECEIPT })
     }
     setErrors({})
   }
@@ -683,6 +662,25 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer, 
           />
         </div>
       )}
+
+      <PayerSelect
+        payer={{
+          payer_id: form.payer_id,
+          payer_name: form.payer_name,
+          payer_email: form.payer_email,
+        }}
+        onChange={(payer) => {
+          setForm((prev) => ({ ...prev, ...payer }))
+          if (errors.payer) setErrors((prev) => ({ ...prev, payer: '' }))
+        }}
+        options={payerOptions}
+        onCreatePayer={onCreatePayer}
+        onUpdatePayer={onUpdatePayer}
+        onDeletePayer={onDeletePayer}
+        canManageSaved={canManagePayers}
+        loading={payersLoading}
+        error={errors.payer}
+      />
 
       {!isTreasurer && (
         <div className="grid grid-cols-2 gap-2">
@@ -792,7 +790,20 @@ function ReceiptForm({ onAdd, onEdit, existingCategories, initial, isTreasurer, 
 
 // ─── DraftReceiptRow ──────────────────────────────────────────────────────────
 
-function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTreasurer, isPartial }) {
+function DraftReceiptRow({
+  receipt,
+  onEdit,
+  onRemove,
+  existingCategories,
+  isTreasurer,
+  isPartial,
+  payerOptions,
+  onCreatePayer,
+  onUpdatePayer,
+  onDeletePayer,
+  canManagePayers,
+  payersLoading,
+}) {
   const [editing, setEditing] = useState(false)
 
   if (editing) {
@@ -804,6 +815,12 @@ function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTrea
           existingCategories={existingCategories.filter((c) => c !== receipt.category)}
           isTreasurer={isTreasurer}
           isPartial={isPartial}
+          payerOptions={payerOptions}
+          onCreatePayer={onCreatePayer}
+          onUpdatePayer={onUpdatePayer}
+          onDeletePayer={onDeletePayer}
+          canManagePayers={canManagePayers}
+          payersLoading={payersLoading}
         />
         <button
           type="button"
@@ -822,6 +839,7 @@ function DraftReceiptRow({ receipt, onEdit, onRemove, existingCategories, isTrea
         <p className="text-xs font-medium text-gray-800 truncate">{receipt.description}</p>
         <p className="text-xs text-gray-500">
           {receipt.category}{receipt.company ? ` · ${receipt.company}` : ''}
+          {receipt.payer_name ? ` · paid by ${receipt.payer_name}` : ''}
           {receipt.files?.length > 0 && ` · ${receipt.files.length} photo${receipt.files.length !== 1 ? 's' : ''}`}
           {receipt.is_foreign_currency && <span className="ml-1 text-orange-600 font-semibold">FX</span>}
         </p>
@@ -1008,6 +1026,7 @@ function BtDraftCard({
   bt, btIndex, linkedReceipts, expanded, onToggle, onRemove, onEdit,
   onAddReceipt, onRemoveReceipt, onEditReceipt, existingCategories,
   onAddBtFiles, onRemoveBtFile, isTreasurer, isPartial,
+  payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const [showReceiptForm, setShowReceiptForm] = useState(false)
   const receiptSum = linkedReceipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
@@ -1067,6 +1086,12 @@ function BtDraftCard({
                   existingCategories={existingCategories}
                   isTreasurer={isTreasurer}
                   isPartial={isPartial}
+                  payerOptions={payerOptions}
+                  onCreatePayer={onCreatePayer}
+                  onUpdatePayer={onUpdatePayer}
+                  onDeletePayer={onDeletePayer}
+                  canManagePayers={canManagePayers}
+                  payersLoading={payersLoading}
                 />
               ))}
             </div>
@@ -1087,6 +1112,12 @@ function BtDraftCard({
                 existingCategories={existingCategories}
                 isTreasurer={isTreasurer}
                 isPartial={isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={onCreatePayer}
+                onUpdatePayer={onUpdatePayer}
+                onDeletePayer={onDeletePayer}
+                canManagePayers={canManagePayers}
+                payersLoading={payersLoading}
               />
               <button
                 type="button"
@@ -1179,6 +1210,7 @@ function Step3({
   bankTransactions, onAddBt, onRemoveBt, onEditBt,
   receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
   expandedBtId, onSetExpandedBtId, isTreasurer, isPartial, claimMeta,
+  payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const [showBtModal, setShowBtModal] = useState(false)
   const [editingBt, setEditingBt] = useState(null)
@@ -1229,6 +1261,12 @@ function Step3({
                 onRemoveBtFile={() => {}}
                 isTreasurer={isTreasurer}
                 isPartial={isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={onCreatePayer}
+                onUpdatePayer={onUpdatePayer}
+                onDeletePayer={onDeletePayer}
+                canManagePayers={canManagePayers}
+                payersLoading={payersLoading}
               />
             )
           })}
@@ -1267,6 +1305,12 @@ function Step3({
                 existingCategories={allCategories}
                 isTreasurer={isTreasurer}
                 isPartial={isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={onCreatePayer}
+                onUpdatePayer={onUpdatePayer}
+                onDeletePayer={onDeletePayer}
+                canManagePayers={canManagePayers}
+                payersLoading={payersLoading}
               />
             ))}
           </div>
@@ -1279,6 +1323,12 @@ function Step3({
               existingCategories={allCategories}
               isTreasurer={isTreasurer}
               isPartial={isPartial}
+              payerOptions={payerOptions}
+              onCreatePayer={onCreatePayer}
+              onUpdatePayer={onUpdatePayer}
+              onDeletePayer={onDeletePayer}
+              canManagePayers={canManagePayers}
+              payersLoading={payersLoading}
             />
             <button type="button" onClick={() => setShowUnlinkedForm(false)} className="w-full mt-2 text-xs text-gray-500 py-1">
               Cancel
@@ -1396,13 +1446,14 @@ const DEFAULT_STEP2 = {
   transportTrips: [],
   mfApprovalFiles: [],
   isPartial: false,
-  otherEmails: [],
 }
 
 export default function NewClaimPage() {
   const navigate = useNavigate()
   const createClaim = useCreateClaim()
   const createReceipt = useCreateReceipt()
+  const createPayerMut = useCreatePayer()
+  const updatePayerMut = useUpdatePayer()
   const savedSuccessfully = useRef(false)
 
   const { user } = useAuth()
@@ -1425,13 +1476,49 @@ export default function NewClaimPage() {
   const [bankTransactions, setBankTransactions] = useState([])  // [{localId, amount, files, refunds}]
   const [receipts, setReceipts] = useState([])
   const [expandedBtId, setExpandedBtId] = useState(null)
+  const [claimOnlyPayers, setClaimOnlyPayers] = useState([])
+
+  const payerOwnerId = isTreasurer ? user?.id : (!step1.isOneOff ? step1.claimerId : '')
+  const { data: savedPayers = [], isLoading: payersLoading } = usePayers(payerOwnerId, Boolean(payerOwnerId))
+  const deletePayerMut = useDeletePayer(payerOwnerId)
+  const oneOffPayer = useMemo(() => oneOffSelfPayer(step1), [step1.oneOffName, step1.oneOffEmail])
+  const payerOptions = useMemo(() => {
+    if (payerOwnerId) return savedPayers.map(normalizePayer).filter(Boolean)
+    return [oneOffPayer, ...claimOnlyPayers.map(normalizePayer)].filter(Boolean)
+  }, [payerOwnerId, savedPayers, oneOffPayer, claimOnlyPayers])
+
+  async function createCurrentPayer({ name, email }) {
+    if (payerOwnerId) {
+      return createPayerMut.mutateAsync({ owner_treasurer_id: payerOwnerId, name, email })
+    }
+    const payer = {
+      id: `claim:${cleanEmail(email)}`,
+      name: name.trim(),
+      email: cleanEmail(email),
+      is_self: false,
+      is_saved: false,
+    }
+    setClaimOnlyPayers((prev) => {
+      const withoutDuplicate = prev.filter((item) => cleanEmail(item.email) !== payer.email)
+      return [...withoutDuplicate, payer]
+    })
+    return payer
+  }
+
+  async function updateCurrentPayer(payerId, fields) {
+    return updatePayerMut.mutateAsync({ id: payerId, ...fields })
+  }
+
+  async function deleteCurrentPayer(payerId) {
+    return deletePayerMut.mutateAsync(payerId)
+  }
 
   // Restore draft from sessionStorage on mount
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(DRAFT_KEY)
       if (saved) {
-        const { step: s, step1: s1, step2: s2, receipts: r, bankTransactions: bt, expandedBtId: eid } = JSON.parse(saved)
+        const { step: s, step1: s1, step2: s2, receipts: r, bankTransactions: bt, expandedBtId: eid, claimOnlyPayers: savedPayersForClaim } = JSON.parse(saved)
         const restoredReceipts = r ? r.map((rec) => ({ ...rec, files: [], fx_screenshot_files: [] })) : []
         const restoredBts = bt
           ? bt.map((b) => ({
@@ -1445,6 +1532,7 @@ export default function NewClaimPage() {
         if (r) setReceipts(restoredReceipts)
         if (bt) setBankTransactions(restoredBts)
         if (eid) setExpandedBtId(eid)
+        if (savedPayersForClaim) setClaimOnlyPayers(savedPayersForClaim)
         if (s) setStep(s)
         setDraftRestored(true)
         setRestoredFilesMissing(Boolean(s2?.mf_approval_file_count) || hadStoredFileCounts(restoredReceipts, restoredBts))
@@ -1474,9 +1562,9 @@ export default function NewClaimPage() {
         mfApprovalFiles: [],
         mf_approval_file_count: _mf?.length || step2.mf_approval_file_count || 0,
       }
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2: step2ForDraft, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId }))
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, step1, step2: step2ForDraft, receipts: receiptsForDraft, bankTransactions: btsForDraft, expandedBtId, claimOnlyPayers }))
     } catch {}
-  }, [step, step1, step2, receipts, bankTransactions, expandedBtId])
+  }, [step, step1, step2, receipts, bankTransactions, expandedBtId, claimOnlyPayers])
 
   // Clear draft on unmount only if save succeeded
   useEffect(() => {
@@ -1485,11 +1573,30 @@ export default function NewClaimPage() {
     }
   }, [])
 
+  useEffect(() => {
+    const defaultPayer = payerOptions[0]
+    if (!defaultPayer) return
+    setReceipts((prev) =>
+      prev.every((receipt) => receipt.payer_name && receipt.payer_email)
+        ? prev
+        : prev.map((receipt) =>
+            receipt.payer_name && receipt.payer_email
+              ? receipt
+              : {
+                  ...receipt,
+                  payer_id: defaultPayer.is_saved ? defaultPayer.id : null,
+                  payer_name: defaultPayer.name,
+                  payer_email: defaultPayer.email,
+                }
+          )
+      )
+  }, [payerOptions])
+
   // ── Step validation ──────────────────────────────────────────────────────
 
   const step1Valid = isTreasurer
     ? !!step1.ccaId
-    : step1.portfolioId && step1.ccaId && (step1.claimerId || (step1.isOneOff && step1.oneOffName.trim()))
+    : step1.portfolioId && step1.ccaId && (step1.claimerId || (step1.isOneOff && step1.oneOffName.trim() && step1.oneOffEmail.trim()))
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
   const hasUnsavedAttachedFiles = hasDraftFiles(step2, receipts, bankTransactions)
 
@@ -1561,6 +1668,10 @@ export default function NewClaimPage() {
 
     try {
       const totalAmount = receipts.reduce((s, r) => s + r.amount, 0)
+      const missingPayer = receipts.find((r) => !r.payer_name?.trim() || !r.payer_email?.trim())
+      if (missingPayer) {
+        throw new Error('Every receipt must have a payer selected.')
+      }
 
       // Auto-append remarks for FX receipts and MF approval
       let autoRemarks = step2.remarks.trim()
@@ -1580,7 +1691,6 @@ export default function NewClaimPage() {
         date: step2.date,
         wbs_account: step2.wbsAccount,
         remarks: autoRemarks || undefined,
-        other_emails: step2.otherEmails,
         transport_form_needed: step2.transportFormNeeded,
         is_partial: step2.isPartial,
       }
@@ -1657,6 +1767,9 @@ export default function NewClaimPage() {
           date: r.date || undefined,
           amount: r.amount,
           claimed_amount: r.claimed_amount ?? undefined,
+          payer_id: r.payer_id || undefined,
+          payer_name: r.payer_name,
+          payer_email: r.payer_email,
           category: r.category,
           gst_code: r.gst_code,
           dr_cr: r.dr_cr,
@@ -1779,6 +1892,12 @@ export default function NewClaimPage() {
             isTreasurer={isTreasurer}
             isPartial={step2.isPartial}
             claimMeta={step2}
+            payerOptions={payerOptions}
+            onCreatePayer={createCurrentPayer}
+            onUpdatePayer={updateCurrentPayer}
+            onDeletePayer={deleteCurrentPayer}
+            canManagePayers={Boolean(payerOwnerId)}
+            payersLoading={Boolean(payerOwnerId) && payersLoading}
           />
         )}
 

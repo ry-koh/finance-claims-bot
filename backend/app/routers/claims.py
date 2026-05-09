@@ -827,7 +827,6 @@ async def create_claim(
         "transport_form_needed": payload.transport_form_needed,
         "is_partial": payload.is_partial,
         "status": ClaimStatus.DRAFT.value,
-        "other_emails": payload.other_emails,
     }
     if effective_claimer_id is not None:
         claim_data["claimer_id"] = str(effective_claimer_id)

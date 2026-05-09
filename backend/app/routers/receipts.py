@@ -147,6 +147,57 @@ def _assert_claim_editable(db: Client, claim_id: str, member: dict) -> None:
     get_claim_for_member(db, claim_id, member, require_treasurer_draft=True)
 
 
+def _clean_email(email: Optional[str]) -> str:
+    return (email or "").strip().lower()
+
+
+def _require_payer_snapshot(name: Optional[str], email: Optional[str]) -> tuple[str, str]:
+    clean_name = (name or "").strip()
+    clean_email = _clean_email(email)
+    if not clean_name:
+        raise HTTPException(status_code=422, detail="Receipt payer name is required")
+    if "@" not in clean_email or "." not in clean_email.rsplit("@", 1)[-1]:
+        raise HTTPException(status_code=422, detail="Valid receipt payer email is required")
+    return clean_name, clean_email
+
+
+def _resolve_payer_snapshot(
+    db: Client,
+    claim: dict,
+    payer_id: Optional[str],
+    payer_name: Optional[str],
+    payer_email: Optional[str],
+) -> dict:
+    """Return the receipt payer snapshot to store on the receipt row."""
+    if payer_id:
+        if not claim.get("claimer_id"):
+            raise HTTPException(status_code=422, detail="One-off claims cannot use saved payers")
+        resp = (
+            db.table("treasurer_payers")
+            .select("*")
+            .eq("id", payer_id)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Payer not found")
+        payer = resp.data[0]
+        if str(payer.get("owner_treasurer_id")) != str(claim.get("claimer_id")):
+            raise HTTPException(status_code=403, detail="Payer does not belong to this claimer")
+        return {
+            "payer_id": payer["id"],
+            "payer_name": payer["name"],
+            "payer_email": _clean_email(payer["email"]),
+        }
+
+    clean_name, clean_email = _require_payer_snapshot(payer_name, payer_email)
+    return {
+        "payer_id": None,
+        "payer_name": clean_name,
+        "payer_email": clean_email,
+    }
+
+
 # ---------------------------------------------------------------------------
 # POST /receipts/process-image
 # ---------------------------------------------------------------------------
@@ -420,7 +471,7 @@ async def create_receipt(
     Returns split_needed=True if this would create a 6th category.
     """
     # 1. Fetch the claim (404 if not found or soft-deleted)
-    _get_claim_or_404(db, payload.claim_id)
+    claim = _get_claim_or_404(db, payload.claim_id)
     _assert_claim_editable(db, payload.claim_id, _member)
     if len(payload.receipt_image_drive_ids or []) > settings.MAX_RECEIPT_IMAGES_PER_RECEIPT:
         raise HTTPException(
@@ -466,6 +517,13 @@ async def create_receipt(
         "line_item_id": line_item["id"],
         "description": payload.description,
         "amount": payload.amount,
+        **_resolve_payer_snapshot(
+            db,
+            claim,
+            payload.payer_id,
+            payload.payer_name,
+            payload.payer_email,
+        ),
     }
     if payload.claimed_amount is not None:
         receipt_data["claimed_amount"] = payload.claimed_amount
@@ -622,6 +680,7 @@ async def update_receipt(
     """
     receipt = _get_receipt_or_404(db, receipt_id)
     _assert_claim_editable(db, receipt["claim_id"], _member)
+    claim = _get_claim_or_404(db, receipt["claim_id"])
     old_line_item_id: Optional[str] = receipt.get("line_item_id")
 
     # Determine if category is changing
@@ -672,6 +731,16 @@ async def update_receipt(
         update_data["exchange_rate_screenshot_drive_id"] = payload.exchange_rate_screenshot_drive_id
     if payload.exchange_rate_screenshot_drive_ids is not None:
         update_data["exchange_rate_screenshot_drive_ids"] = payload.exchange_rate_screenshot_drive_ids
+    if {"payer_id", "payer_name", "payer_email"} & payload.model_fields_set:
+        update_data.update(
+            _resolve_payer_snapshot(
+                db,
+                claim,
+                payload.payer_id,
+                payload.payer_name,
+                payload.payer_email,
+            )
+        )
 
     if new_category is not None:
         claim_id: str = receipt["claim_id"]

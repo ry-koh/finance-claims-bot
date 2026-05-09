@@ -146,7 +146,7 @@ The app includes operational reference material so treasurers do not need to rel
    - **Actual subject**: claim reference code
    - **Body**: instructions plus a copy-paste claim submission block
    - **Copy-paste To**: configured `claim_submission_to_email` (for example `rh.finance@u.nus.edu`)
-   - **Copy-paste CC**: configured `claim_submission_cc_email` plus any extra recipients on the claim
+   - **Copy-paste CC**: configured `claim_submission_cc_email` plus receipt payer emails when someone other than the treasurer paid
    - **Salutation**: configured document/email Finance Director salutation
    - **Greeting**: uses the claimer's full name
    - **Auto-remarks**: Master's Fund flag, partial claim indicator, refund breakdowns, foreign currency notes
@@ -229,7 +229,8 @@ One-off claimers: no separate row — name/matric/phone/email stored directly on
 | **CCA** | Individual club/activity |
 | **Claim** | Core object: description, WBS account, total amount (auto-computed by DB trigger), date, remarks, transport flag, partial claim flag; links to either a registered treasurer (`claimer_id`) or stores one-off details inline. `submitted_at` and `reimbursed_at` are auto-stamped by a DB trigger on the first transition to those statuses. |
 | **ClaimLineItem** | Category grouping of receipts — category, GST code, DR/CR, combined description |
-| **Receipt** | Individual expense — `amount` (what was paid; used for bank transaction reconciliation), optional `claimed_amount` (what is being claimed; blank = full amount), description, company, date, receipt images, bank transaction link. DB trigger sums `COALESCE(claimed_amount, amount)` into the claim total. BT reconciliation always compares `receipt.amount` vs BT net (not `claimed_amount`) since bank debits reflect actual spend. |
+| **Receipt** | Individual expense — `amount` (what was paid; used for bank transaction reconciliation), optional `claimed_amount` (what is being claimed; blank = full amount), required payer snapshot (`payer_name`, `payer_email`, optional saved `payer_id`), description, company, date, receipt images, bank transaction link. DB trigger sums `COALESCE(claimed_amount, amount)` into the claim total. BT reconciliation always compares `receipt.amount` vs BT net (not `claimed_amount`) since bank debits reflect actual spend. |
+| **TreasurerPayer** | Saved payer list per registered treasurer. New receipts default to the treasurer themself; treasurers, finance members, and directors can manage saved payers. One-off claims use receipt-only payer snapshots instead. |
 | **BankTransaction** | A bank debit linked to receipts; can have multiple images and refunds |
 | **BankTransactionRefund** | A refund against a BT — amount and screenshot |
 | **ClaimDocument** | A generated file — versioned; only `is_current=true` is used per type; email screenshot is never marked stale |
@@ -258,7 +259,7 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 | Home | `/` | Director, Member | Claims list with scrollable status pills, search, date filters, bulk actions, and CSV export. Cards show submitted/reimbursed dates when available. |
 | Treasurer Home | `/` | Treasurer | Own claims grouped by simplified statuses: Needs Action, Draft, In Review, Awaiting Submission, Submitted, Reimbursed. |
 | New Claim | `/claims/new` | All | Multi-step form: claimer, receipts, bank transactions, transport; includes claim health checks and draft recovery notices |
-| Claim Detail | `/claims/:id` | All | Full claim view: edit fields, manage receipts/BTs, run pipeline, handle attachment requests, and view claim health |
+| Claim Detail | `/claims/:id` | All | Full claim view: edit fields, manage receipts/BTs, review reimbursement split by payer, run pipeline, handle attachment requests, and view claim health |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
 | CCA Treasurer Lookup | `/identifiers` | Director, Member | Read-only lookup of active CCA treasurer contact details and CCA assignments |
 | Contact | `/contact` | Director, Member | Send a message to a CCA treasurer via the Telegram bot |

@@ -439,6 +439,40 @@ VALUES
 ON CONFLICT (key) DO NOTHING;
 ```
 
+### Add receipt-level payers
+
+This replaces the old claim-level "other emails" workflow. Existing claims are treated as paid by the claimer until a receipt is edited in the app.
+
+```sql
+CREATE TABLE IF NOT EXISTS treasurer_payers (
+  id                 uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  owner_treasurer_id uuid NOT NULL REFERENCES finance_team(id) ON DELETE CASCADE,
+  name               text NOT NULL,
+  email              text NOT NULL,
+  deleted_at         timestamptz,
+  created_at         timestamptz DEFAULT now(),
+  updated_at         timestamptz DEFAULT now()
+);
+
+ALTER TABLE receipts
+  ADD COLUMN IF NOT EXISTS payer_id uuid REFERENCES treasurer_payers(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS payer_name text,
+  ADD COLUMN IF NOT EXISTS payer_email text;
+
+CREATE INDEX IF NOT EXISTS idx_receipts_payer ON receipts(payer_id);
+CREATE INDEX IF NOT EXISTS idx_treasurer_payers_owner
+  ON treasurer_payers(owner_treasurer_id)
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_treasurer_payers_owner_email_active
+  ON treasurer_payers(owner_treasurer_id, lower(email))
+  WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS trg_treasurer_payers_updated_at ON treasurer_payers;
+CREATE TRIGGER trg_treasurer_payers_updated_at
+  BEFORE UPDATE ON treasurer_payers
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+```
+
 ---
 
 ## If the Bot Stops Responding

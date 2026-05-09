@@ -86,8 +86,15 @@ def build_claim_email(
     total_amount = float(claim.get("total_amount") or 0)
 
     # --- Other emails (for reminder only — not used as actual CC headers) ---
-    other_emails = claim.get("other_emails") or []
-    cc_reminder_emails = list(other_emails)
+    cc_reminder_emails: list[str] = []
+    seen_cc = set()
+    claimer_email_key = str(claimer.get("email") or "").strip().lower()
+    for receipt in receipts:
+        payer_email = str(receipt.get("payer_email") or "").strip().lower()
+        if not payer_email or payer_email == claimer_email_key or payer_email in seen_cc:
+            continue
+        seen_cc.add(payer_email)
+        cc_reminder_emails.append(payer_email)
 
     # --- Receipt list HTML ---
     receipt_lines = []
@@ -163,7 +170,7 @@ def build_claim_email(
     else:
         remarks_section = ""
 
-    # --- CC line for copy-paste block (shared finance mailbox plus any other_emails) ---
+    # --- CC line for copy-paste block (shared finance mailbox plus receipt payer emails) ---
     cc_all = [claim_cc_email] + list(cc_reminder_emails)
     cc_line_html = f"<br><strong>CC:</strong> {', '.join(cc_all)}"
 
