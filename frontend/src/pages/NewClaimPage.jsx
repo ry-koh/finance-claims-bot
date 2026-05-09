@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useTreasurerOptions } from '../api/admin'
 import { useCreateClaim } from '../api/claims'
-import { useCreateReceipt, uploadReceiptImage } from '../api/receipts'
+import { useCreateReceipt, uploadReceiptImageById, uploadReceiptFxImageById } from '../api/receipts'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
 import { submitTransportData, uploadMfApproval } from '../api/documents'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
@@ -1643,33 +1643,9 @@ export default function NewClaimPage() {
         }
       }
 
-      // 3. Create receipts — pre-upload any attached photos first
+      // 3. Create receipt rows first, then attach files to saved receipts.
       for (const r of receipts) {
-        const driveIds = []
-        for (const file of (r.files ?? [])) {
-          try {
-            const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'receipt' })
-            driveIds.push(data.drive_file_id)
-          } catch (e) {
-            const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
-            imageWarnings.push(`Receipt image: ${msg}`)
-            console.error('Receipt image upload failed:', e)
-          }
-        }
-        const fxDriveIds = []
-        if (r.is_foreign_currency && r.fx_screenshot_files?.length) {
-          for (const file of r.fx_screenshot_files) {
-            try {
-              const data = await uploadReceiptImage({ file, claim_id: claimId, image_type: 'exchange_rate' })
-              fxDriveIds.push(data.drive_file_id)
-            } catch (e) {
-              const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
-              imageWarnings.push(`FX rate image: ${msg}`)
-              console.error('FX image upload failed:', e)
-            }
-          }
-        }
-        await createReceipt.mutateAsync({
+        const createdReceipt = await createReceipt.mutateAsync({
           claim_id: claimId,
           bank_transaction_id: r.btLocalId ? btIdMap[r.btLocalId] : undefined,
           receipt_no: r.receipt_no || undefined,
@@ -1681,11 +1657,33 @@ export default function NewClaimPage() {
           category: r.category,
           gst_code: r.gst_code,
           dr_cr: r.dr_cr,
-          receipt_image_drive_ids: driveIds.length > 0 ? driveIds : undefined,
           is_foreign_currency: r.is_foreign_currency,
-          exchange_rate_screenshot_drive_id: fxDriveIds[0] || undefined,
-          exchange_rate_screenshot_drive_ids: fxDriveIds.length > 1 ? fxDriveIds : undefined,
         })
+        if (createdReceipt?.split_needed) {
+          throw new Error(createdReceipt.reason || 'Receipt could not be saved.')
+        }
+        const receiptId = createdReceipt?.receipt?.id
+        if (!receiptId) throw new Error('Receipt could not be saved.')
+        for (const file of (r.files ?? [])) {
+          try {
+            await uploadReceiptImageById({ receiptId, file })
+          } catch (e) {
+            const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
+            imageWarnings.push(`Receipt image: ${msg}`)
+            console.error('Receipt image upload failed:', e)
+          }
+        }
+        if (r.is_foreign_currency && r.fx_screenshot_files?.length) {
+          for (const file of r.fx_screenshot_files) {
+            try {
+              await uploadReceiptFxImageById({ receiptId, file })
+            } catch (e) {
+              const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
+              imageWarnings.push(`FX rate image: ${msg}`)
+              console.error('FX image upload failed:', e)
+            }
+          }
+        }
       }
 
       savedSuccessfully.current = true

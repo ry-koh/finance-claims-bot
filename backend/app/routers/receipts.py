@@ -311,14 +311,81 @@ async def upload_receipt_image(
     object_name = r2.make_object_name(reference_code, "receipt", timestamp)
     drive_file_id = r2.upload_file(processed, object_name)
 
-    img_resp = insert_file_row(db, "receipt_images", {
-        "receipt_id": receipt_id,
-        "drive_file_id": drive_file_id,
-        "file_size_bytes": len(processed),
-    })
-    if not img_resp.data:
+    try:
+        img_resp = insert_file_row(db, "receipt_images", {
+            "receipt_id": receipt_id,
+            "drive_file_id": drive_file_id,
+            "file_size_bytes": len(processed),
+        })
+        if not img_resp.data:
+            raise RuntimeError("No receipt image row returned")
+    except Exception as exc:
+        r2.delete_file(drive_file_id)
+        logger.exception("Failed to save receipt image row for receipt %s: %s", receipt_id, exc)
         raise HTTPException(500, "Failed to save receipt image")
     return img_resp.data[0]
+
+
+@router.post("/{receipt_id}/fx-images", status_code=201)
+async def upload_receipt_fx_image(
+    receipt_id: str,
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Upload an exchange-rate screenshot and persist it on the receipt."""
+    receipt_resp = db.table("receipts").select("*, claim:claims(reference_code, status, filled_by)").eq("id", receipt_id).execute()
+    if not receipt_resp.data:
+        raise HTTPException(404, "Receipt not found")
+    receipt = receipt_resp.data[0]
+    _assert_claim_editable(db, receipt["claim_id"], _auth)
+    reference_code = receipt.get("claim", {}).get("reference_code", receipt["claim_id"])
+
+    existing_ids = [fid for fid in (receipt.get("exchange_rate_screenshot_drive_ids") or []) if fid]
+    legacy_id = receipt.get("exchange_rate_screenshot_drive_id")
+    if legacy_id and legacy_id not in existing_ids:
+        existing_ids.insert(0, legacy_id)
+    if len(existing_ids) >= settings.MAX_RECEIPT_IMAGES_PER_RECEIPT:
+        raise HTTPException(
+            413,
+            f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} exchange-rate screenshots per receipt.",
+        )
+
+    raw_bytes = await file.read()
+    try:
+        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    from datetime import datetime as _datetime
+    timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
+    object_name = r2.make_object_name(reference_code, "exchange_rate", timestamp)
+    drive_file_id = r2.upload_file(processed, object_name)
+    next_ids = existing_ids + [drive_file_id]
+
+    try:
+        update_resp = (
+            db.table("receipts")
+            .update({
+                "exchange_rate_screenshot_drive_id": next_ids[0],
+                "exchange_rate_screenshot_drive_ids": next_ids,
+                "is_foreign_currency": True,
+            })
+            .eq("id", receipt_id)
+            .execute()
+        )
+        if not update_resp.data:
+            raise RuntimeError("No receipt row returned")
+    except Exception as exc:
+        r2.delete_file(drive_file_id)
+        logger.exception("Failed to save FX screenshot for receipt %s: %s", receipt_id, exc)
+        raise HTTPException(500, "Failed to save exchange-rate screenshot")
+
+    return {
+        "drive_file_id": drive_file_id,
+        "exchange_rate_screenshot_drive_ids": next_ids,
+        "file_size_bytes": len(processed),
+    }
 
 
 @router.delete("/{receipt_id}/images/{image_id}")

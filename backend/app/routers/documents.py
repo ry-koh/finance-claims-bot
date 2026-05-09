@@ -640,10 +640,17 @@ async def upload_mf_approval(
     # Append to the array column; also keep legacy single-ID column as first entry
     existing = claim.get("mf_approval_drive_ids") or []
     new_ids = existing + [drive_file_id]
-    db.table("claims").update({
-        "mf_approval_drive_id": new_ids[0],
-        "mf_approval_drive_ids": new_ids,
-    }).eq("id", claim_id).execute()
+    try:
+        update_resp = db.table("claims").update({
+            "mf_approval_drive_id": new_ids[0],
+            "mf_approval_drive_ids": new_ids,
+        }).eq("id", claim_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No claim row returned")
+    except Exception as exc:
+        r2_service.delete_file(drive_file_id)
+        logger.exception("Failed to save MF approval file for claim %s: %s", claim_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to save MF approval file")
     log_claim_event(db, claim_id, _auth.get("id"), "mf_approval_uploaded", "Master Fund approval uploaded")
     return {"success": True, "drive_file_id": drive_file_id}
 

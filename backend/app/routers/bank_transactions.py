@@ -90,12 +90,17 @@ async def upload_bank_transaction_image(
 
     _bt, drive_file_id, file_size = await _get_bt_and_upload_file(bt_id, file, db, "bank", _auth)
 
-    img_resp = insert_file_row(db, "bank_transaction_images", {
-        "bank_transaction_id": bt_id,
-        "drive_file_id": drive_file_id,
-        "file_size_bytes": file_size,
-    })
-    if not img_resp.data:
+    try:
+        img_resp = insert_file_row(db, "bank_transaction_images", {
+            "bank_transaction_id": bt_id,
+            "drive_file_id": drive_file_id,
+            "file_size_bytes": file_size,
+        })
+        if not img_resp.data:
+            raise RuntimeError("No bank transaction image row returned")
+    except Exception as exc:
+        r2.delete_file(drive_file_id)
+        logger.exception("Failed to save bank transaction image row for BT %s: %s", bt_id, exc)
         raise HTTPException(status_code=500, detail="Failed to save bank transaction image")
     return img_resp.data[0]
 
@@ -140,19 +145,29 @@ async def create_bt_refund(
 
     drive_file_ids = []
     file_sizes = []
-    for f in files:
-        _, fid, size = await _get_bt_and_upload_file(bt_id, f, db, "refund", _auth)
-        drive_file_ids.append(fid)
-        file_sizes.append(size)
+    try:
+        for f in files:
+            _, fid, size = await _get_bt_and_upload_file(bt_id, f, db, "refund", _auth)
+            drive_file_ids.append(fid)
+            file_sizes.append(size)
 
-    refund_resp = insert_file_row(db, "bank_transaction_refunds", {
-        "bank_transaction_id": bt_id,
-        "amount": amount,
-        "drive_file_id": drive_file_ids[0],
-        "extra_drive_file_ids": drive_file_ids[1:] if len(drive_file_ids) > 1 else [],
-        "file_size_bytes": sum(file_sizes),
-    })
-    if not refund_resp.data:
+        refund_resp = insert_file_row(db, "bank_transaction_refunds", {
+            "bank_transaction_id": bt_id,
+            "amount": amount,
+            "drive_file_id": drive_file_ids[0],
+            "extra_drive_file_ids": drive_file_ids[1:] if len(drive_file_ids) > 1 else [],
+            "file_size_bytes": sum(file_sizes),
+        })
+        if not refund_resp.data:
+            raise RuntimeError("No refund row returned")
+    except HTTPException:
+        for file_id in drive_file_ids:
+            r2.delete_file(file_id)
+        raise
+    except Exception as exc:
+        for file_id in drive_file_ids:
+            r2.delete_file(file_id)
+        logger.exception("Failed to create refund row for BT %s: %s", bt_id, exc)
         raise HTTPException(status_code=500, detail="Failed to create refund")
     return refund_resp.data[0]
 
@@ -176,12 +191,19 @@ async def update_bt_refund_file(
     _bt, new_drive_file_id, file_size = await _get_bt_and_upload_file(bt_id, file, db, "refund", _auth)
 
     try:
-        db.table("bank_transaction_refunds").update({
-            "drive_file_id": new_drive_file_id,
-            "file_size_bytes": file_size,
-        }).eq("id", refund_id).execute()
-    except Exception:
-        db.table("bank_transaction_refunds").update({"drive_file_id": new_drive_file_id}).eq("id", refund_id).execute()
+        try:
+            update_resp = db.table("bank_transaction_refunds").update({
+                "drive_file_id": new_drive_file_id,
+                "file_size_bytes": file_size,
+            }).eq("id", refund_id).execute()
+        except Exception:
+            update_resp = db.table("bank_transaction_refunds").update({"drive_file_id": new_drive_file_id}).eq("id", refund_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No refund row returned")
+    except Exception as exc:
+        r2.delete_file(new_drive_file_id)
+        logger.exception("Failed to update refund file for refund %s: %s", refund_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to save refund file")
 
     if old_file_id:
         try:

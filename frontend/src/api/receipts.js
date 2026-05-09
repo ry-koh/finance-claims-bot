@@ -141,6 +141,12 @@ export const uploadReceiptImageById = ({ receiptId, file }) => {
   return api.post(`/receipts/${receiptId}/images`, form).then((r) => r.data)
 }
 
+export const uploadReceiptFxImageById = ({ receiptId, file }) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/receipts/${receiptId}/fx-images`, form).then((r) => r.data)
+}
+
 export const deleteReceiptImage = ({ receiptId, imageId }) =>
   api.delete(`/receipts/${receiptId}/images/${imageId}`).then((r) => r.data)
 

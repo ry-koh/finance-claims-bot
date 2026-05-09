@@ -1430,14 +1430,18 @@ async def upload_attachment_file(
     object_name = f"attachments/{claim_id}/{uuid_lib.uuid4()}.{ext}"
     r2_service.upload_file(file_bytes, object_name, file.content_type or "application/octet-stream")
 
-    file_resp = insert_file_row(db, "claim_attachment_files", {
-        "request_id": current_req["id"],
-        "file_url": object_name,
-        "original_filename": filename,
-        "file_size_bytes": len(file_bytes),
-    })
-    if not file_resp.data:
+    try:
+        file_resp = insert_file_row(db, "claim_attachment_files", {
+            "request_id": current_req["id"],
+            "file_url": object_name,
+            "original_filename": filename,
+            "file_size_bytes": len(file_bytes),
+        })
+        if not file_resp.data:
+            raise RuntimeError("No attachment file row returned")
+    except Exception as exc:
         r2_service.delete_file(object_name)
+        logger.exception("Failed to save attachment file row for claim %s: %s", claim_id, exc)
         raise HTTPException(500, "Failed to save file record")
 
     uploaded = file_resp.data[0]
