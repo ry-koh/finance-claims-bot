@@ -26,7 +26,7 @@ import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
-import { IconChevronLeft } from '../components/Icons'
+import { IconChevronLeft, IconFileText } from '../components/Icons'
 import { getClaimReadiness } from '../utils/claimReadiness'
 import {
   getTreasurerProgressMessage,
@@ -2604,30 +2604,7 @@ export default function ClaimDetailPage() {
 
         {/* ── Documents ── */}
         {!isTreasurer && claim.documents?.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              Documents ({claim.documents.length})
-            </h2>
-            {(() => {
-              const compiled = (claim.documents ?? []).find(d => d.type === 'compiled')
-              if (!compiled) return null
-              return (
-                <a
-                  href={docUrl(compiled.drive_file_id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 w-full justify-center px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl mb-3"
-                >
-                  Download Compiled PDF
-                </a>
-              )
-            })()}
-            <div className="flex flex-col gap-2">
-              {claim.documents.map((doc, idx) => (
-                <DocumentRow key={doc.id ?? idx} doc={doc} />
-              ))}
-            </div>
-          </div>
+          <DocumentsCard documents={claim.documents} />
         )}
 
         <ClaimTimeline events={claimEvents} />
@@ -3091,23 +3068,106 @@ function ReceiptRow({ receipt, onEdit, onDelete, saving, claimId, isTreasurer, c
   )
 }
 
-function DocumentRow({ doc }) {
-  const typeLabel = (doc.document_type ?? doc.type ?? 'Document')
+function documentType(doc) {
+  return doc.document_type ?? doc.type ?? 'document'
+}
+
+function formatDocumentType(type) {
+  const raw = String(type || 'document')
+  const parts = raw.split('_')
+  const [first, ...rest] = parts
+  const acronym = first.toLowerCase()
+
+  if (acronym === 'loa' || acronym === 'rfp') {
+    return [acronym.toUpperCase(), ...rest.map((part) => part.toUpperCase())].join(' ')
+  }
+  if (raw === 'email_screenshot') return 'Email screenshot'
+  if (raw === 'compiled') return 'Compiled PDF'
+
+  return raw
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function DocumentsCard({ documents = [] }) {
+  const compiled = documents.find((doc) => documentType(doc) === 'compiled')
+  const sourceDocs = documents.filter((doc) => documentType(doc) !== 'compiled')
 
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-      <span className="text-sm text-gray-700">{typeLabel}</span>
-      {doc.drive_file_id && (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+            <IconFileText className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-gray-800">Documents</h2>
+            <p className="text-xs text-gray-400">
+              {documents.length} file{documents.length === 1 ? '' : 's'}
+            </p>
+          </div>
+        </div>
+        {compiled && (
+          <span className="shrink-0 rounded-full bg-green-100 px-2 py-1 text-[11px] font-semibold text-green-700">
+            Compiled
+          </span>
+        )}
+      </div>
+
+      {compiled?.drive_file_id && (
+        <a
+          href={docUrl(compiled.drive_file_id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-indigo-600 px-3 py-3 text-white shadow-sm active:bg-indigo-700"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <IconFileText className="h-4 w-4 shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">Compiled PDF</span>
+              <span className="block text-[11px] text-indigo-100">Ready to submit</span>
+            </span>
+          </span>
+          <span className="shrink-0 rounded-lg bg-white/15 px-2 py-1 text-xs font-semibold">Open</span>
+        </a>
+      )}
+
+      {sourceDocs.length > 0 && (
+        <div className="grid gap-2">
+          {sourceDocs.map((doc, idx) => (
+            <DocumentRow key={doc.id ?? `${documentType(doc)}-${idx}`} doc={doc} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DocumentRow({ doc }) {
+  const typeLabel = formatDocumentType(documentType(doc))
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-400">
+        <IconFileText className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-gray-700">{typeLabel}</span>
+        <span className="block text-[11px] text-gray-400">PDF</span>
+      </span>
+      {doc.drive_file_id ? (
         <a
           href={docUrl(doc.drive_file_id)}
           target="_blank"
           rel="noreferrer"
-          className="text-xs text-blue-600 underline"
+          className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-blue-600"
         >
-          View
+          Open
         </a>
+      ) : (
+        <span className="shrink-0 rounded-lg bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-400">
+          Missing
+        </span>
       )}
     </div>
   )
