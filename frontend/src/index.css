@@ -452,6 +452,7 @@ textarea:focus-visible {
 [data-theme='dark'] .bg-green-50 { background-color: rgba(52, 211, 153, 0.12) !important; }
 [data-theme='dark'] .bg-green-100 { background-color: rgba(52, 211, 153, 0.18) !important; }
 [data-theme='dark'] .bg-green-600 { background-color: #059669 !important; }
+[data-theme='dark'] .bg-teal-50 { background-color: rgba(45, 212, 191, 0.12) !important; }
 [data-theme='dark'] .bg-teal-100 { background-color: rgba(45, 212, 191, 0.16) !important; }
 [data-theme='dark'] .bg-teal-600 { background-color: #0f766e !important; }
 [data-theme='dark'] .bg-red-50 { background-color: rgba(127, 29, 29, 0.30) !important; }
@@ -508,6 +509,7 @@ textarea:focus-visible {
 [data-theme='dark'] .border-orange-200,
 [data-theme='dark'] .border-orange-300 { border-color: rgba(251, 191, 36, 0.34) !important; }
 [data-theme='dark'] .border-green-200 { border-color: rgba(52, 211, 153, 0.34) !important; }
+[data-theme='dark'] .border-teal-200 { border-color: rgba(45, 212, 191, 0.38) !important; }
 [data-theme='dark'] .border-red-200 { border-color: rgba(248, 113, 113, 0.50) !important; }
 
 [data-theme='dark'] .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
