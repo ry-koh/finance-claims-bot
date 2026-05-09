@@ -115,10 +115,11 @@ export default function DragDropZone({
         <p className="text-[10px] text-gray-400 mt-1 leading-tight">
           Max {formatBytes(maxTotalBytes ?? maxBytes)}{maxTotalBytes ? ' total' : ' per file'}
         </p>
-        <p className="text-[10px] text-gray-400 mt-1 leading-tight">
-          Crop the photo so only the important parts are in it, crop out all whitespace.{' '}
-          (If you are on phone, it might be easier to crop it before uploading, or use Telegram Desktop)
-        </p>
+        {withCrop && (
+          <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+            Crop to content only. Remove blank margins.
+          </p>
+        )}
       </div>
       {uploadError && (
         <p className="mt-1 text-xs text-red-500">{uploadError}</p>
