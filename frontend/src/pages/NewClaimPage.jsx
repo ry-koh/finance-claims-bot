@@ -13,7 +13,6 @@ import DragDropZone from '../components/DragDropZone'
 import CroppableThumb from '../components/CroppableThumb'
 import PayerSelect from '../components/PayerSelect'
 import { IconChevronLeft } from '../components/Icons'
-import { getClaimReadiness } from '../utils/claimReadiness'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1178,7 +1177,7 @@ function payerSplitRows(receipts) {
   return Array.from(rows.values()).sort((a, b) => b.amount - a.amount)
 }
 
-function buildTreasurerReview({ step1, step2, receipts, bankTransactions }) {
+function buildClaimReview({ step1, step2, receipts, bankTransactions }) {
   const blockers = []
   const warnings = []
   const total = claimDraftTotal(receipts, bankTransactions)
@@ -1270,62 +1269,7 @@ function hadStoredFileCounts(receipts, bankTransactions) {
     )
 }
 
-function buildDraftClaimForReadiness(claimMeta, receipts, bankTransactions) {
-  return {
-    wbs_account: claimMeta.wbsAccount,
-    mf_approval_drive_ids: claimMeta.mfApprovalFiles?.length ? ['draft-mf-approval'] : [],
-    receipts: receipts.map((receipt) => ({
-      ...receipt,
-      bank_transaction_id: receipt.btLocalId || null,
-      images: receipt.files ?? [],
-      exchange_rate_screenshot_drive_ids: receipt.fx_screenshot_files ?? [],
-    })),
-    bank_transactions: bankTransactions.map((bt) => ({
-      ...bt,
-      id: bt.localId,
-      images: bt.files ?? [],
-      refunds: bt.refunds ?? [],
-    })),
-  }
-}
-
-function DraftClaimHealthPanel({ claimMeta, receipts, bankTransactions }) {
-  const draftClaim = buildDraftClaimForReadiness(claimMeta, receipts, bankTransactions)
-  const readiness = getClaimReadiness(draftClaim)
-
-  return (
-    <div className="ui-card p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold text-gray-800">Pre-Review Checks</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Fix these before submitting for finance review.</p>
-        </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
-          readiness.isReady ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-        }`}>
-          {readiness.isReady ? 'Ready' : `${readiness.missing.length} missing`}
-        </span>
-      </div>
-
-      <div className="space-y-1.5">
-        {readiness.checks.map((check) => (
-          <div key={check.id} className="flex items-start gap-2 text-xs">
-            <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-              check.ok ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-            }`}>
-              {check.ok ? 'OK' : '!'}
-            </span>
-            <p className={check.ok ? 'text-gray-600' : 'font-medium text-amber-800'}>
-              {check.ok ? check.label : check.issue}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TreasurerBankTransactionsStep({ bankTransactions, onAddBt, onEditBt, onRemoveBt }) {
+function BankTransactionsStep({ bankTransactions, onAddBt, onEditBt, onRemoveBt, isTreasurer }) {
   const [showBtModal, setShowBtModal] = useState(false)
   const [editingBt, setEditingBt] = useState(null)
 
@@ -1414,9 +1358,9 @@ function TreasurerBankTransactionsStep({ bankTransactions, onAddBt, onEditBt, on
   )
 }
 
-function TreasurerReceiptsStep({
+function ReceiptsStep({
   bankTransactions, receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
-  expandedBtId, onSetExpandedBtId, isPartial,
+  expandedBtId, onSetExpandedBtId, isTreasurer, isPartial,
   payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
@@ -1541,16 +1485,18 @@ function TreasurerReceiptsStep({
   )
 }
 
-function TreasurerSplitStep({ receipts, bankTransactions }) {
+function SplitStep({ receipts, bankTransactions, isTreasurer }) {
   const splits = payerSplitRows(receipts)
   const total = claimDraftTotal(receipts, bankTransactions)
 
   return (
     <div className="space-y-4">
       <div className="ui-card p-4">
-        <p className="text-sm font-bold text-gray-900">Reimbursement split</p>
+        <p className="text-sm font-bold text-gray-900">{isTreasurer ? 'Reimbursement split' : 'Payer split'}</p>
         <p className="mt-1 text-xs text-gray-500">
-          Use this to check how much each payer should receive from your CCA.
+          {isTreasurer
+            ? 'Use this to check how much each payer should receive from your CCA.'
+            : 'Review the receipt-level payer totals before saving this claim.'}
         </p>
       </div>
 
@@ -1603,10 +1549,10 @@ function ChecklistItem({ tone, children }) {
   )
 }
 
-function TreasurerReviewStep({ user, step1, step2, receipts, bankTransactions, review }) {
-  const selectedCca = user?.ccas?.find((cca) => cca.id === step1.ccaId)
+function ReviewStep({ user, step1, step2, receipts, bankTransactions, review, isTreasurer }) {
+  const selectedCca = isTreasurer ? user?.ccas?.find((cca) => cca.id === step1.ccaId) : null
   const summaryRows = [
-    ['CCA', selectedCca?.name || 'Not selected'],
+    ['CCA', selectedCca?.name || (step1.ccaId ? 'Selected' : 'Not selected')],
     ['Description', step2.claimDescription || 'Not filled'],
     ['Date', step2.date || 'Not selected'],
     ['Fund', step2.wbsAccount === 'MF' ? 'Master Fund' : step2.wbsAccount === 'SA' ? 'Society Account' : 'Others'],
@@ -1619,7 +1565,9 @@ function TreasurerReviewStep({ user, step1, step2, receipts, bankTransactions, r
       <div className="ui-card p-4">
         <p className="text-sm font-bold text-gray-900">Review before submitting</p>
         <p className="mt-1 text-xs text-gray-500">
-          Once submitted, finance will be able to review this claim.
+          {isTreasurer
+            ? 'Once submitted, finance will be able to review this claim.'
+            : 'Review the claim before saving it.'}
         </p>
       </div>
 
@@ -1658,7 +1606,9 @@ function TreasurerReviewStep({ user, step1, step2, receipts, bankTransactions, r
       )}
 
       <div className="space-y-2">
-        <p className="px-1 text-xs font-bold uppercase tracking-wide text-gray-500">Submission Checklist</p>
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-gray-500">
+          {isTreasurer ? 'Submission Checklist' : 'Save Checklist'}
+        </p>
         {review.blockers.length === 0 && <ChecklistItem tone="ok">Required items are complete.</ChecklistItem>}
         {review.blockers.map((item) => <ChecklistItem key={item} tone="danger">{item}</ChecklistItem>)}
         {review.warnings.map((item) => <ChecklistItem key={item} tone="warning">{item}</ChecklistItem>)}
@@ -2068,17 +2018,13 @@ export default function NewClaimPage() {
     : step1.portfolioId && step1.ccaId && (step1.claimerId || (step1.isOneOff && step1.oneOffName.trim() && step1.oneOffEmail.trim()))
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
   const hasUnsavedAttachedFiles = hasDraftFiles(step2, receipts, bankTransactions)
-  const treasurerReview = useMemo(
-    () => buildTreasurerReview({ step1, step2, receipts, bankTransactions }),
+  const formReview = useMemo(
+    () => buildClaimReview({ step1, step2, receipts, bankTransactions }),
     [step1, step2, receipts, bankTransactions]
   )
-  const stepLabels = isTreasurer
-    ? ['Details', 'Bank', 'Receipts', 'Split', 'Submit']
-    : ['Who', 'What', 'Transactions']
+  const stepLabels = ['Details', 'Bank', 'Receipts', 'Split', isTreasurer ? 'Submit' : 'Save']
   const maxStep = stepLabels.length
-  const canGoNext = isTreasurer
-    ? (step === 1 ? step1Valid && step2Valid : true)
-    : (step === 1 ? step1Valid : step === 2 ? step2Valid : true)
+  const canGoNext = step === 1 ? step1Valid && step2Valid : true
 
   useEffect(() => {
     setStep((current) => Math.min(current, maxStep))
@@ -2144,9 +2090,9 @@ export default function NewClaimPage() {
   }
 
   async function handleSave({ submit = false } = {}) {
-    const currentReview = buildTreasurerReview({ step1, step2, receipts, bankTransactions })
-    if (submit && isTreasurer && currentReview.isBlocked) {
-      setSaveError('Fix the required items in the checklist before submitting for review.')
+    const currentReview = buildClaimReview({ step1, step2, receipts, bankTransactions })
+    if ((submit || isTreasurer) && currentReview.isBlocked) {
+      setSaveError(`Fix the required items in the checklist before ${submit ? 'submitting for review' : 'saving'}.`)
       setStep(maxStep)
       return
     }
@@ -2375,89 +2321,65 @@ export default function NewClaimPage() {
           </div>
         )}
 
-        {isTreasurer ? (
-          <>
-            {step === 1 && (
-              <div className="space-y-4">
-                <TreasurerClaimerPicker
-                  user={user}
-                  value={step1.ccaId}
-                  onChange={(ccaId) => updateStep1({ ccaId })}
-                />
-                <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />
-              </div>
-            )}
-            {step === 2 && (
-              <TreasurerBankTransactionsStep
-                bankTransactions={bankTransactions}
-                onAddBt={addBt}
-                onEditBt={editBt}
-                onRemoveBt={removeBt}
-              />
-            )}
-            {step === 3 && (
-              <TreasurerReceiptsStep
-                bankTransactions={bankTransactions}
-                receipts={receipts}
-                onAddReceipt={addReceipt}
-                onRemoveReceipt={removeReceipt}
-                onEditReceipt={editReceipt}
-                expandedBtId={expandedBtId}
-                onSetExpandedBtId={setExpandedBtId}
-                isPartial={step2.isPartial}
-                payerOptions={payerOptions}
-                onCreatePayer={createCurrentPayer}
-                onUpdatePayer={updateCurrentPayer}
-                onDeletePayer={deleteCurrentPayer}
-                canManagePayers={Boolean(payerOwnerId)}
-                payersLoading={Boolean(payerOwnerId) && payersLoading}
-              />
-            )}
-            {step === 4 && (
-              <TreasurerSplitStep
-                receipts={receipts}
-                bankTransactions={bankTransactions}
-              />
-            )}
-            {step === 5 && (
-              <TreasurerReviewStep
+        {step === 1 && (
+          <div className="space-y-4">
+            {isTreasurer ? (
+              <TreasurerClaimerPicker
                 user={user}
-                step1={step1}
-                step2={step2}
-                receipts={receipts}
-                bankTransactions={bankTransactions}
-                review={treasurerReview}
+                value={step1.ccaId}
+                onChange={(ccaId) => updateStep1({ ccaId })}
               />
+            ) : (
+              <Step1 data={step1} onChange={updateStep1} />
             )}
-          </>
-        ) : (
-          <>
-            {step === 1 && <Step1 data={step1} onChange={updateStep1} />}
-            {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />}
-            {step === 3 && (
-              <Step3
-                bankTransactions={bankTransactions}
-                onAddBt={addBt}
-                onRemoveBt={removeBt}
-                onEditBt={editBt}
-                receipts={receipts}
-                onAddReceipt={addReceipt}
-                onRemoveReceipt={removeReceipt}
-                onEditReceipt={editReceipt}
-                expandedBtId={expandedBtId}
-                onSetExpandedBtId={setExpandedBtId}
-                isTreasurer={isTreasurer}
-                isPartial={step2.isPartial}
-                claimMeta={step2}
-                payerOptions={payerOptions}
-                onCreatePayer={createCurrentPayer}
-                onUpdatePayer={updateCurrentPayer}
-                onDeletePayer={deleteCurrentPayer}
-                canManagePayers={Boolean(payerOwnerId)}
-                payersLoading={Boolean(payerOwnerId) && payersLoading}
-              />
-            )}
-          </>
+            <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />
+          </div>
+        )}
+        {step === 2 && (
+          <BankTransactionsStep
+            bankTransactions={bankTransactions}
+            onAddBt={addBt}
+            onEditBt={editBt}
+            onRemoveBt={removeBt}
+            isTreasurer={isTreasurer}
+          />
+        )}
+        {step === 3 && (
+          <ReceiptsStep
+            bankTransactions={bankTransactions}
+            receipts={receipts}
+            onAddReceipt={addReceipt}
+            onRemoveReceipt={removeReceipt}
+            onEditReceipt={editReceipt}
+            expandedBtId={expandedBtId}
+            onSetExpandedBtId={setExpandedBtId}
+            isTreasurer={isTreasurer}
+            isPartial={step2.isPartial}
+            payerOptions={payerOptions}
+            onCreatePayer={createCurrentPayer}
+            onUpdatePayer={updateCurrentPayer}
+            onDeletePayer={deleteCurrentPayer}
+            canManagePayers={Boolean(payerOwnerId)}
+            payersLoading={Boolean(payerOwnerId) && payersLoading}
+          />
+        )}
+        {step === 4 && (
+          <SplitStep
+            receipts={receipts}
+            bankTransactions={bankTransactions}
+            isTreasurer={isTreasurer}
+          />
+        )}
+        {step === 5 && (
+          <ReviewStep
+            user={user}
+            step1={step1}
+            step2={step2}
+            receipts={receipts}
+            bankTransactions={bankTransactions}
+            review={formReview}
+            isTreasurer={isTreasurer}
+          />
         )}
 
         {saveError && (
@@ -2498,7 +2420,7 @@ export default function NewClaimPage() {
             <button
               type="button"
               onClick={() => handleSave({ submit: isTreasurer })}
-              disabled={saving || (isTreasurer && treasurerReview.isBlocked)}
+              disabled={saving || formReview.isBlocked}
               className="ui-button ui-button-primary w-full disabled:opacity-50"
             >
               {saving ? (
@@ -2510,9 +2432,9 @@ export default function NewClaimPage() {
                 isTreasurer ? 'Submit for Review' : 'Save Claim'
               )}
             </button>
-            {!saving && isTreasurer && treasurerReview.isBlocked && (
+            {!saving && formReview.isBlocked && (
               <p className="text-center text-xs font-medium text-gray-500">
-                Complete the required checklist items before submitting.
+                Complete the required checklist items before {isTreasurer ? 'submitting' : 'saving'}.
               </p>
             )}
             {saving && (
