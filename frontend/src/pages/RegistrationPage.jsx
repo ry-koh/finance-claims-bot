@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { register } from '../api/auth'
 import { usePublicCcas } from '../api/portfolios'
@@ -14,6 +14,7 @@ export default function RegistrationPage() {
   const [selectedCcaIds, setSelectedCcaIds] = useState([])
   const [matricNumber, setMatricNumber] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
+  const [detailsConfirmed, setDetailsConfirmed] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -24,6 +25,10 @@ export default function RegistrationPage() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     )
   }
+
+  useEffect(() => {
+    setDetailsConfirmed(false)
+  }, [role, email, matricNumber, phoneNumber])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -54,7 +59,7 @@ export default function RegistrationPage() {
     name.trim() &&
     email.trim() &&
     telegramUsername.trim() &&
-    (role !== 'treasurer' || (selectedCcaIds.length > 0 && matricNumber.trim() && phoneNumber.trim()))
+    (role !== 'treasurer' || (selectedCcaIds.length > 0 && matricNumber.trim() && phoneNumber.trim() && detailsConfirmed))
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -153,7 +158,7 @@ export default function RegistrationPage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Phone Number (PayNow) <span className="text-red-500">*</span>
+                    Contact Number (PayLah/PayNow) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="tel"
@@ -190,6 +195,20 @@ export default function RegistrationPage() {
                     ))}
                   </div>
                 </div>
+              )}
+
+              {role === 'treasurer' && (
+                <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <input
+                    type="checkbox"
+                    checked={detailsConfirmed}
+                    onChange={(e) => setDetailsConfirmed(e.target.checked)}
+                    className="mt-0.5 rounded border-amber-300"
+                  />
+                  <span>
+                    I confirm that my contact number is correct for PayLah/PayNow reimbursement, my email is correct for confirmation emails, and my matric number is accurate.
+                  </span>
+                </label>
               )}
 
               {error && <p className="text-sm text-red-600">{error}</p>}

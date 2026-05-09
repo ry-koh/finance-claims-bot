@@ -421,53 +421,6 @@ class UpdateMemberRequest(BaseModel):
     phone_number: Optional[str] = None
 
 
-class UpdateTreasurerIdentifiersRequest(BaseModel):
-    matric_number: Optional[str] = None
-    phone_number: Optional[str] = None
-
-
-def _clean_optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = value.strip()
-    return cleaned or None
-
-
-@router.patch("/treasurers/{member_id}/identifiers")
-async def update_treasurer_identifiers(
-    member_id: str,
-    payload: UpdateTreasurerIdentifiersRequest,
-    _member: dict = Depends(require_finance_team),
-    db: Client = Depends(get_supabase),
-):
-    """Allow finance team to update only CCA treasurer document identifiers."""
-    resp = (
-        db.table("finance_team")
-        .select("*")
-        .eq("id", member_id)
-        .eq("status", "active")
-        .eq("role", "treasurer")
-        .execute()
-    )
-    if not resp.data:
-        raise HTTPException(404, "Active treasurer not found")
-
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
-    update_fields: dict = {}
-    if "matric_number" in fields_set:
-        update_fields["matric_number"] = _clean_optional_text(payload.matric_number)
-    if "phone_number" in fields_set:
-        update_fields["phone_number"] = _clean_optional_text(payload.phone_number)
-
-    if update_fields:
-        db.table("finance_team").update(update_fields).eq("id", member_id).execute()
-
-    updated = db.table("finance_team").select("*").eq("id", member_id).single().execute()
-    result = updated.data
-    _attach_ccas(db, [result])
-    return result
-
-
 @router.patch("/team/{member_id}")
 async def update_team_member(
     member_id: str,
