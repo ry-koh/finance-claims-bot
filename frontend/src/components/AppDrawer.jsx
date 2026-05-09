@@ -135,7 +135,8 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
             </div>
           </div>
           <p className="px-1 text-[10px] leading-snug text-gray-400">
-            <span className="block">Created by Ryan Koh Jun Hao, 68th Finance Director</span>
+            <span className="block">Created by Ryan Koh Jun Hao</span>
+            <span className="block">68th Finance Director</span>
             <span className="block">
               <a
                 href="https://github.com/ry-koh/finance-claims-bot"
