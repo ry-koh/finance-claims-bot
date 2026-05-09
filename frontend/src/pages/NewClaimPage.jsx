@@ -484,9 +484,12 @@ function Step2({ data, onChange, isTreasurer }) {
         )}
       </div>
 
-      {/* Other Emails */}
+      {/* Additional Claimer Emails */}
       <div>
-        <Label>Other Emails</Label>
+        <Label>Additional Claimer Emails</Label>
+        <p className="mb-2 text-xs text-gray-500">
+          Add the email of anyone else whose receipt is included, especially if they paid for the item and you are submitting on their behalf.
+        </p>
         <div className="flex gap-2">
           <Input
             type="email"

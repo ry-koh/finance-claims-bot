@@ -2411,9 +2411,12 @@ export default function ClaimDetailPage() {
                 </label>
               </div>
 
-              {/* Other emails */}
+              {/* Additional claimer emails */}
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Other Emails</label>
+                <label className="block text-xs text-gray-500 mb-1">Additional Claimer Emails</label>
+                <p className="mb-2 text-xs text-gray-500">
+                  Add the email of anyone else whose receipt is included, especially if they paid for the item and you are submitting on their behalf.
+                </p>
                 <TagInput
                   value={editFields.other_emails}
                   onChange={(val) =>
@@ -2441,7 +2444,7 @@ export default function ClaimDetailPage() {
               {claim.remarks && <InfoRow label="Remarks" value={claim.remarks} />}
               {claim.other_emails?.length > 0 && (
                 <InfoRow
-                  label="Other Emails"
+                  label="Additional Claimer Emails"
                   value={claim.other_emails.join(', ')}
                 />
               )}
