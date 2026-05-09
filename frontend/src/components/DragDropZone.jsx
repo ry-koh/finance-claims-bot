@@ -8,6 +8,8 @@ export default function DragDropZone({
   onFile,
   onFiles,
   accept = 'image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf',
+  imageAccept = 'image/*',
+  fileAccept = 'application/pdf',
   multiple = false,
   loading = false,
   compact = false,
@@ -24,6 +26,11 @@ export default function DragDropZone({
   const cropResultsRef = useRef([])
   const cropTotalRef = useRef(0)
   const fileRef = useRef(null)
+  const attachmentRef = useRef(null)
+
+  const hasImagePicker = accept.includes('image')
+  const hasSeparateFilePicker = accept.includes('application/pdf')
+  const primaryAccept = hasImagePicker ? imageAccept : accept
 
   async function dispatch(files) {
     if (!files?.length) return
@@ -111,27 +118,52 @@ export default function DragDropZone({
         <p className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-gray-700`}>
           {converting ? 'Converting…' : busy ? 'Uploading…' : isDragging ? 'Drop to upload' : label}
         </p>
-        <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {hasSeparateFilePicker ? 'Drag & drop or tap to choose photos' : 'Drag & drop or tap to browse'}
+        </p>
         <p className="text-[10px] text-gray-400 mt-1 leading-tight">
           Max {formatBytes(maxTotalBytes ?? maxBytes)}{maxTotalBytes ? ' total' : ' per file'}
         </p>
         {withCrop && (
           <p className="text-[10px] text-gray-400 mt-1 leading-tight">
-            Crop to content only. Remove blank margins.
+            Crop photo/PDF pages to the receipt or transaction only.
           </p>
         )}
       </div>
+      {hasSeparateFilePicker && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(e) => {
+            e.stopPropagation()
+            attachmentRef.current?.click()
+          }}
+          className="mt-1 text-xs font-medium text-blue-600 underline-offset-2 active:underline disabled:text-gray-400"
+        >
+          Upload PDF instead
+        </button>
+      )}
       {uploadError && (
         <p className="mt-1 text-xs text-red-500">{uploadError}</p>
       )}
       <input
         ref={fileRef}
         type="file"
-        accept={accept}
+        accept={primaryAccept}
         multiple={multiple}
         className="hidden"
         onChange={(e) => { dispatch(e.target.files); e.target.value = '' }}
       />
+      {hasSeparateFilePicker && (
+        <input
+          ref={attachmentRef}
+          type="file"
+          accept={fileAccept}
+          multiple={multiple}
+          className="hidden"
+          onChange={(e) => { dispatch(e.target.files); e.target.value = '' }}
+        />
+      )}
     </>
   )
 }

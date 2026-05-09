@@ -24,6 +24,7 @@ export default function ReceiptUploader({
   const [isDragging, setIsDragging] = useState(false)
   const [cropperInstance, setCropperInstance] = useState(null)
   const fileInputRef = useRef(null)
+  const pdfInputRef = useRef(null)
 
   const processImageMutation = useProcessReceiptImage()
   const uploadImageMutation = useUploadReceiptImage()
@@ -262,9 +263,22 @@ export default function ReceiptUploader({
             <p className="text-sm font-medium text-gray-700">
               {isDragging ? 'Drop to upload' : `Upload ${label}`}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to browse</p>
+            <p className="text-xs text-gray-400 mt-0.5">Drag & drop or tap to choose photos</p>
             <p className="text-[10px] text-gray-400 mt-1">Max {formatBytes(DEFAULT_MAX_UPLOAD_BYTES)} per file</p>
+            <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+              Crop photo/PDF pages to the receipt or transaction only.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              pdfInputRef.current?.click()
+            }}
+            className="mt-1 text-xs font-medium text-blue-600 underline-offset-2 active:underline"
+          >
+            Upload PDF instead
+          </button>
           {processError && (
             <div className="flex flex-col gap-1 mt-1">
               <p className="text-xs text-red-500">{processError}</p>
@@ -283,7 +297,14 @@ export default function ReceiptUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf"
         className="hidden"
         onChange={handleFileChange}
       />
