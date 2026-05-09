@@ -62,10 +62,10 @@ export function getClaimReadiness(claim) {
   const summary = computeSummary(claim)
   const checks = [
     {
-      id: 'receipts',
-      label: 'Receipts added',
-      ok: summary.receipt_count > 0,
-      issue: 'Add at least one receipt',
+      id: 'evidence',
+      label: 'Evidence added',
+      ok: summary.receipt_count > 0 || summary.bank_transaction_count > 0,
+      issue: 'Add at least one receipt or bank transaction',
     },
     {
       id: 'receipt-images',
@@ -93,7 +93,7 @@ export function getClaimReadiness(claim) {
       label: 'Receipt totals match bank transactions',
       ok: (summary.amount_mismatch_count ?? 0) === 0,
       issue: `${plural(summary.amount_mismatch_count ?? 0, 'bank transaction')} does not match linked receipt total`,
-      hidden: summary.bank_transaction_count === 0,
+      hidden: summary.receipt_count === 0 || summary.bank_transaction_count === 0,
     },
     {
       id: 'mf-approval',

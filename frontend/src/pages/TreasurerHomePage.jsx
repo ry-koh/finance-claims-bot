@@ -66,11 +66,11 @@ function ClaimCard({ claim, onClick }) {
         </div>
       )}
 
-      <div className="mb-1 flex items-start justify-between gap-2">
+      <div className="mb-1 flex flex-col items-start gap-1.5">
         <span className="min-w-0 text-sm font-semibold leading-tight text-gray-900">
           {claim.reference_code ?? `Claim #${claim.id.slice(0, 8)}`}
         </span>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${meta.badge}`}>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold leading-tight ${meta.badge}`}>
           {meta.label}
         </span>
       </div>

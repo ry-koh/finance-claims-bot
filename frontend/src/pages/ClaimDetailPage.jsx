@@ -353,7 +353,7 @@ function TreasurerProgressPanel({ claim, onAction }) {
         </span>
       </div>
 
-      <div className="mb-3 grid grid-cols-5 gap-1.5">
+      <div className="mb-3 space-y-1.5">
         {flow.map((key, idx) => {
           const stepMeta = TREASURER_STATUS_META[key]
           const active = key === flowKey
@@ -361,7 +361,7 @@ function TreasurerProgressPanel({ claim, onAction }) {
           return (
             <div
               key={key}
-              className={`rounded-lg px-1.5 py-2 text-center text-[10px] font-bold leading-tight ${
+              className={`flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-bold leading-tight ${
                 active
                   ? 'bg-white text-blue-700 shadow-sm'
                   : done
@@ -369,7 +369,12 @@ function TreasurerProgressPanel({ claim, onAction }) {
                   : 'bg-white/40 text-gray-400'
               }`}
             >
-              {stepMeta.label}
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                active ? 'bg-blue-100 text-blue-700' : done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+              }`}>
+                {done ? 'OK' : idx + 1}
+              </span>
+              <span className="min-w-0 flex-1">{stepMeta.label}</span>
             </div>
           )
         })}

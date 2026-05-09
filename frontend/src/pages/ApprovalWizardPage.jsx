@@ -471,7 +471,8 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
     const refundTotal = (bt.refunds ?? []).reduce((rs, ref) => rs + Number(ref.amount ?? 0), 0)
     return s + Number(bt.amount ?? 0) - refundTotal
   }, 0)
-  const reconciled = Math.abs(totalReceiptSpend - totalBtNet) <= 0.01
+  const bankOnly = receipts.length === 0 && bankTransactions.length > 0
+  const reconciled = bankOnly || Math.abs(totalReceiptSpend - totalBtNet) <= 0.01
 
   const flagged = receipts
     .map((r, i) => ({ i, remark: selections[r.id]?.remark?.trim() }))
@@ -533,6 +534,7 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
         )}
 
         {/* Receipts grouped by category */}
+        {receipts.length > 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-3 pb-1">Receipts by Category</p>
           {Object.entries(groups).map(([cat, group]) => {
@@ -575,6 +577,14 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
             )
           })}
         </div>
+        ) : (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-blue-800">Bank transaction only</p>
+            <p className="mt-1 text-xs text-blue-700">
+              This claim has no receipt rows. Review the bank transaction screenshots below before approving.
+            </p>
+          </div>
+        )}
 
         {/* Bank transactions */}
         {bankTransactions.length > 0 && (
@@ -644,23 +654,29 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
 
         {/* Reconciliation */}
         <div className={`rounded-xl border p-4 ${reconciled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-          {isPartial && (
+          {isPartial && !bankOnly && (
             <div className="flex justify-between text-sm mb-1">
               <span className="text-blue-700">Total claimed</span>
               <span className="font-semibold text-blue-700">{formatAmount(totalClaimed)}</span>
             </div>
           )}
+          {!bankOnly && (
           <div className="flex justify-between text-sm mb-1">
             <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>
               Total receipt spend{isPartial ? ' (full)' : ''}
             </span>
             <span className="font-semibold">{formatAmount(totalReceiptSpend)}</span>
           </div>
+          )}
           <div className="flex justify-between text-sm mb-2">
-            <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>Total net BTs</span>
+            <span className={reconciled ? 'text-green-700' : 'text-amber-700'}>
+              {bankOnly ? 'Total bank transactions' : 'Total net BTs'}
+            </span>
             <span className="font-semibold">{formatAmount(totalBtNet)}</span>
           </div>
-          {reconciled ? (
+          {bankOnly ? (
+            <p className="text-xs text-green-700 font-semibold">Ready for bank-transaction-only approval</p>
+          ) : reconciled ? (
             <p className="text-xs text-green-700 font-semibold">✓ Amounts match</p>
           ) : (
             <p className="text-xs text-amber-700">⚠ Amounts do not match — please verify before approving</p>
@@ -895,7 +911,7 @@ export default function ApprovalWizardPage() {
         bankTransactions={bankTransactions}
         selections={selections}
         onApprove={handleApprove}
-        onBack={() => setStep(totalSteps - 1)}
+        onBack={() => totalSteps > 0 ? setStep(totalSteps - 1) : navigate(`/claims/${id}`)}
         onReject={() => setShowRejectModal(true)}
         approving={approving}
         onReplaceBtImage={handleReplaceBtImage}

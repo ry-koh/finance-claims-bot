@@ -1144,6 +1144,13 @@ function hasDraftFiles(step2, receipts, bankTransactions) {
   )
 }
 
+function bankTransactionNetTotal(bankTransactions) {
+  return bankTransactions.reduce((sum, bt) => {
+    const refundTotal = (bt.refunds ?? []).reduce((s, refund) => s + Number(refund.amount || 0), 0)
+    return sum + Number(bt.amount || 0) - refundTotal
+  }, 0)
+}
+
 function hadStoredFileCounts(receipts, bankTransactions) {
   return receipts.some((r) => r.file_count > 0 || r.fx_file_count > 0) ||
     bankTransactions.some((bt) =>
@@ -1217,7 +1224,9 @@ function Step3({
   const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
 
   const allCategories = useMemo(() => receipts.map((r) => r.category), [receipts])
-  const total = receipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
+  const receiptTotal = receipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
+  const btTotal = bankTransactionNetTotal(bankTransactions)
+  const total = receipts.length > 0 ? receiptTotal : btTotal
   const unlinkedReceipts = receipts.filter((r) => !r.btLocalId)
 
   function handleBtSave(data) {
@@ -1338,7 +1347,7 @@ function Step3({
       </div>
 
       {/* Summary */}
-      {receipts.length > 0 && (
+      {(receipts.length > 0 || bankTransactions.length > 0) && (
         <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 bg-gray-50 border-b border-gray-100">
             Summary
@@ -1347,13 +1356,18 @@ function Step3({
             {bankTransactions.map((bt, i) => {
               const linked = receipts.filter((r) => r.btLocalId === bt.localId)
               const sum = linked.reduce((s, r) => s + r.amount, 0)
+              const refundTotal = (bt.refunds ?? []).reduce((s, refund) => s + Number(refund.amount || 0), 0)
+              const net = Number(bt.amount || 0) - refundTotal
+              const displayAmount = linked.length > 0 ? sum : net
               return (
                 <div key={bt.localId} className="flex items-center justify-between px-3 py-2">
                   <div>
                     <span className="text-sm text-gray-800">Bank Tx {i + 1}</span>
-                    <span className="text-xs text-gray-400 ml-2">{linked.length} receipt{linked.length !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {linked.length > 0 ? `${linked.length} receipt${linked.length !== 1 ? 's' : ''}` : 'bank transaction only'}
+                    </span>
                   </div>
-                  <span className="text-sm font-semibold text-gray-900">${sum.toFixed(2)}</span>
+                  <span className="text-sm font-semibold text-gray-900">${displayAmount.toFixed(2)}</span>
                 </div>
               )
             })}
@@ -1667,7 +1681,12 @@ export default function NewClaimPage() {
     const imageWarnings = []
 
     try {
-      const totalAmount = receipts.reduce((s, r) => s + r.amount, 0)
+      const totalAmount = receipts.length > 0
+        ? receipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
+        : bankTransactionNetTotal(bankTransactions)
+      if (receipts.length === 0 && bankTransactions.length === 0) {
+        throw new Error('Add at least one receipt or bank transaction.')
+      }
       const missingPayer = receipts.find((r) => !r.payer_name?.trim() || !r.payer_email?.trim())
       if (missingPayer) {
         throw new Error('Every receipt must have a payer selected.')
