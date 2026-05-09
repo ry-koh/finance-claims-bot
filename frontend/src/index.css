@@ -46,7 +46,7 @@
   --color-accent-soft: rgba(56, 189, 248, 0.16);
   --color-success: #34d399;
   --color-warning: #fbbf24;
-  --color-danger: #fb7185;
+  --color-danger: #fda4af;
   --color-info: #22d3ee;
   --shadow-card: 0 1px 0 rgba(148, 163, 184, 0.08), 0 18px 42px rgba(0, 0, 0, 0.28);
   --shadow-float: 0 22px 56px rgba(0, 0, 0, 0.45);
@@ -454,8 +454,8 @@ textarea:focus-visible {
 [data-theme='dark'] .bg-green-600 { background-color: #059669 !important; }
 [data-theme='dark'] .bg-teal-100 { background-color: rgba(45, 212, 191, 0.16) !important; }
 [data-theme='dark'] .bg-teal-600 { background-color: #0f766e !important; }
-[data-theme='dark'] .bg-red-50 { background-color: rgba(251, 113, 133, 0.12) !important; }
-[data-theme='dark'] .bg-red-100 { background-color: rgba(251, 113, 133, 0.18) !important; }
+[data-theme='dark'] .bg-red-50 { background-color: rgba(127, 29, 29, 0.30) !important; }
+[data-theme='dark'] .bg-red-100 { background-color: rgba(153, 27, 27, 0.36) !important; }
 [data-theme='dark'] .bg-red-600 { background-color: #e11d48 !important; }
 
 [data-theme='dark'] .text-gray-900 { color: var(--color-text) !important; }
@@ -486,9 +486,14 @@ textarea:focus-visible {
 [data-theme='dark'] .text-teal-800 { color: #5eead4 !important; }
 [data-theme='dark'] .text-red-400,
 [data-theme='dark'] .text-red-500,
-[data-theme='dark'] .text-red-600,
+[data-theme='dark'] .text-red-600 {
+  color: #fda4af !important;
+}
+
 [data-theme='dark'] .text-red-700,
-[data-theme='dark'] .text-red-800 { color: var(--color-danger) !important; }
+[data-theme='dark'] .text-red-800 {
+  color: #fecdd3 !important;
+}
 
 [data-theme='dark'] .border-gray-50,
 [data-theme='dark'] .border-gray-100,
@@ -503,7 +508,7 @@ textarea:focus-visible {
 [data-theme='dark'] .border-orange-200,
 [data-theme='dark'] .border-orange-300 { border-color: rgba(251, 191, 36, 0.34) !important; }
 [data-theme='dark'] .border-green-200 { border-color: rgba(52, 211, 153, 0.34) !important; }
-[data-theme='dark'] .border-red-200 { border-color: rgba(251, 113, 133, 0.36) !important; }
+[data-theme='dark'] .border-red-200 { border-color: rgba(248, 113, 113, 0.50) !important; }
 
 [data-theme='dark'] .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
 [data-theme='dark'] .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {

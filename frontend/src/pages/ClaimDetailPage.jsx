@@ -1277,7 +1277,7 @@ function InternalNotesCard({ claim, claimId }) {
 
   function handleSave() {
     updateClaimMut.mutate(
-      { id: claimId, internal_notes: value.trim() || null },
+      { id: claimId, internal_notes: value.trim() },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
