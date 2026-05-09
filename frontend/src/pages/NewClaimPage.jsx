@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
 import { useTreasurerOptions } from '../api/admin'
-import { useCreateClaim } from '../api/claims'
+import { useCreateClaim, useSubmitForReview } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImageById, uploadReceiptFxImageById } from '../api/receipts'
 import { useCreatePayer, useDeletePayer, usePayers, useUpdatePayer } from '../api/payers'
 import { createBankTransaction, uploadBankTransactionImage, createBtRefund } from '../api/bankTransactions'
@@ -58,36 +58,31 @@ function oneOffSelfPayer(step1) {
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
-function StepIndicator({ current }) {
-  const steps = ['Who', 'What', 'Transactions']
+function StepIndicator({ current, steps = ['Who', 'What', 'Transactions'] }) {
   return (
-    <div className="stepper-shell mb-5 flex items-start justify-center">
+    <div
+      className="stepper-shell mb-5 grid gap-1"
+      style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+    >
       {steps.map((label, i) => {
         const step = i + 1
         const active = step === current
         const done = step < current
         return (
-          <Fragment key={step}>
-            <div className="flex w-20 flex-col items-center">
-              <div
-                className={`stepper-dot ${done ? 'stepper-dot-done' : active ? 'stepper-dot-active' : ''}`}
-              >
-                {done ? 'OK' : step}
-              </div>
-              <span
-                className={`mt-1 text-center text-[10px] font-bold uppercase tracking-wide ${
-                  active ? 'text-blue-600' : done ? 'text-blue-400' : 'text-gray-400'
-                }`}
-              >
-                {label}
-              </span>
+          <div key={step} className="flex min-w-0 flex-col items-center">
+            <div
+              className={`stepper-dot ${done ? 'stepper-dot-done' : active ? 'stepper-dot-active' : ''}`}
+            >
+              {done ? 'OK' : step}
             </div>
-            {i < steps.length - 1 && (
-              <div
-                className={`stepper-line mt-4 ${done ? 'stepper-line-done' : ''}`}
-              />
-            )}
-          </Fragment>
+            <span
+              className={`mt-1 min-w-0 text-center text-[10px] font-bold uppercase leading-tight tracking-wide ${
+                active ? 'text-blue-600' : done ? 'text-blue-400' : 'text-gray-400'
+              }`}
+            >
+              {label}
+            </span>
+          </div>
         )
       })}
     </div>
@@ -415,8 +410,8 @@ function Step2({ data, onChange, isTreasurer }) {
       {/* MF Approval upload — shown only when WBS Account is Master's Fund */}
       {data.wbsAccount === 'MF' && (
         <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
-          <p className="text-xs font-semibold text-amber-800">Master's Fund Approval <span className="text-red-500">*</span></p>
-          <p className="text-xs text-amber-700">Attach the approval document before submitting.</p>
+          <p className="text-xs font-semibold text-amber-800">Master's Fund Approval</p>
+          <p className="text-xs text-amber-700">Attach approval proof if it applies to this claim. You can still submit without it.</p>
           {data.mfApprovalFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {data.mfApprovalFiles.map((f, i) => (
@@ -749,7 +744,7 @@ function ReceiptForm({
         </div>
         {form.is_foreign_currency && (
           <div className="pl-6">
-            <Label>Exchange Rate Screenshot</Label>
+            <Label required>Exchange Rate Screenshot</Label>
             {form.fx_screenshot_files?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {form.fx_screenshot_files.map((f, i) => (
@@ -1059,7 +1054,7 @@ function BtDraftCard({
         <button
           type="button"
           onClick={onEdit}
-          className="text-xs text-blue-600 font-medium px-1.5 leading-none"
+          className={`text-xs text-blue-600 font-medium px-1.5 leading-none ${!onEdit ? 'hidden' : ''}`}
           title="Edit"
         >
           ✎
@@ -1067,7 +1062,7 @@ function BtDraftCard({
         <button
           type="button"
           onClick={onRemove}
-          className="text-gray-400 hover:text-red-500 text-sm px-1 leading-none"
+          className={`text-gray-400 hover:text-red-500 text-sm px-1 leading-none ${!onRemove ? 'hidden' : ''}`}
         >
           ✕
         </button>
@@ -1151,6 +1146,111 @@ function bankTransactionNetTotal(bankTransactions) {
   }, 0)
 }
 
+function claimDraftTotal(receipts, bankTransactions) {
+  return receipts.length > 0
+    ? receipts.reduce((sum, receipt) => sum + Number(receipt.claimed_amount ?? receipt.amount ?? 0), 0)
+    : bankTransactionNetTotal(bankTransactions)
+}
+
+function payerSplitRows(receipts) {
+  const rows = new Map()
+  receipts.forEach((receipt) => {
+    const name = receipt.payer_name?.trim() || 'Unassigned payer'
+    const email = cleanEmail(receipt.payer_email)
+    const key = email || name
+    const existing = rows.get(key) ?? { name, email, amount: 0, count: 0 }
+    existing.amount += Number(receipt.claimed_amount ?? receipt.amount ?? 0)
+    existing.count += 1
+    rows.set(key, existing)
+  })
+  return Array.from(rows.values()).sort((a, b) => b.amount - a.amount)
+}
+
+function buildTreasurerReview({ step1, step2, receipts, bankTransactions }) {
+  const blockers = []
+  const warnings = []
+  const total = claimDraftTotal(receipts, bankTransactions)
+
+  if (!step1.ccaId) blockers.push('Select the CCA for this claim.')
+  if (!step2.claimDescription.trim()) blockers.push('Enter a claim description.')
+  if (!step2.date) blockers.push('Select the claim date.')
+  if (receipts.length === 0 && bankTransactions.length === 0) {
+    blockers.push('Add at least one bank transaction or receipt.')
+  }
+  if (total <= 0) blockers.push('Claim total must be above $0.00.')
+
+  const missingBankFiles = bankTransactions.filter((bt) => !bt.files?.length).length
+  if (missingBankFiles > 0) {
+    blockers.push(`${missingBankFiles} bank transaction${missingBankFiles === 1 ? '' : 's'} missing screenshot/PDF proof.`)
+  }
+
+  const missingReceiptFiles = receipts.filter((receipt) => !receipt.files?.length).length
+  if (missingReceiptFiles > 0) {
+    blockers.push(`${missingReceiptFiles} receipt${missingReceiptFiles === 1 ? '' : 's'} missing receipt proof.`)
+  }
+
+  const missingPayers = receipts.filter((receipt) => !receipt.payer_name?.trim() || !receipt.payer_email?.trim()).length
+  if (missingPayers > 0) {
+    blockers.push(`${missingPayers} receipt${missingPayers === 1 ? '' : 's'} missing payer selection.`)
+  }
+
+  const missingFx = receipts.filter((receipt) =>
+    receipt.is_foreign_currency && !receipt.fx_screenshot_files?.length
+  ).length
+  if (missingFx > 0) {
+    blockers.push(`${missingFx} foreign-currency receipt${missingFx === 1 ? '' : 's'} missing exchange-rate proof.`)
+  }
+
+  if (step2.transportFormNeeded) {
+    if (step2.transportTrips.length === 0) {
+      blockers.push('Add at least one transport trip.')
+    }
+    const incompleteTrips = step2.transportTrips.filter((trip) =>
+      !trip.from?.trim() ||
+      !trip.to?.trim() ||
+      !trip.purpose?.trim() ||
+      !parseDMY(trip.date) ||
+      !trip.time?.trim() ||
+      !trip.amount ||
+      Number(trip.amount) <= 0 ||
+      !trip.distance_km ||
+      Number(trip.distance_km) <= 0
+    ).length
+    if (incompleteTrips > 0) {
+      blockers.push(`${incompleteTrips} transport trip${incompleteTrips === 1 ? '' : 's'} missing from, to, purpose, date, time, amount, or distance.`)
+    }
+  }
+
+  if (step2.wbsAccount === 'MF' && !step2.mfApprovalFiles?.length) {
+    warnings.push("Master Fund approval is not attached. You can still submit, but finance may request proof if required.")
+  }
+
+  const unlinkedReceipts = receipts.filter((receipt) => !receipt.btLocalId).length
+  if (unlinkedReceipts > 0) {
+    warnings.push(`${unlinkedReceipts} receipt${unlinkedReceipts === 1 ? '' : 's'} not linked to a bank transaction.`)
+  }
+
+  const mismatchedTransactions = bankTransactions.filter((bt) => {
+    const linked = receipts.filter((receipt) => receipt.btLocalId === bt.localId)
+    if (linked.length === 0) return false
+    const linkedTotal = linked.reduce((sum, receipt) => sum + Number(receipt.claimed_amount ?? receipt.amount ?? 0), 0)
+    const refundTotal = (bt.refunds ?? []).reduce((sum, refund) => sum + Number(refund.amount || 0), 0)
+    const net = Number(bt.amount || 0) - refundTotal
+    return Math.abs(linkedTotal - net) > 0.01
+  }).length
+  if (mismatchedTransactions > 0) {
+    warnings.push(`${mismatchedTransactions} bank transaction${mismatchedTransactions === 1 ? '' : 's'} do not match linked receipt totals after refunds.`)
+  }
+
+  return {
+    blockers,
+    warnings,
+    isBlocked: blockers.length > 0,
+    total,
+    payerSplits: payerSplitRows(receipts),
+  }
+}
+
 function hadStoredFileCounts(receipts, bankTransactions) {
   return receipts.some((r) => r.file_count > 0 || r.fx_file_count > 0) ||
     bankTransactions.some((bt) =>
@@ -1185,7 +1285,7 @@ function DraftClaimHealthPanel({ claimMeta, receipts, bankTransactions }) {
     <div className="ui-card p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-gray-800">Claim Health</h2>
+          <h2 className="text-sm font-bold text-gray-800">Pre-Review Checks</h2>
           <p className="mt-0.5 text-xs text-gray-500">Fix these before submitting for finance review.</p>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1208,6 +1308,339 @@ function DraftClaimHealthPanel({ claimMeta, receipts, bankTransactions }) {
             </p>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function TreasurerBankTransactionsStep({ bankTransactions, onAddBt, onEditBt, onRemoveBt }) {
+  const [showBtModal, setShowBtModal] = useState(false)
+  const [editingBt, setEditingBt] = useState(null)
+
+  function handleBtSave(data) {
+    if (editingBt) {
+      onEditBt(editingBt.localId, data)
+    } else {
+      onAddBt({ localId: generateId(), ...data })
+    }
+    setShowBtModal(false)
+    setEditingBt(null)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="ui-card p-4">
+        <p className="text-sm font-bold text-gray-900">Bank transaction proof</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Add each bank transaction screenshot/PDF here. You can attach receipts in the next step.
+        </p>
+      </div>
+
+      {bankTransactions.length > 0 ? (
+        <div className="space-y-2">
+          {bankTransactions.map((bt, index) => {
+            const refundTotal = (bt.refunds ?? []).reduce((sum, refund) => sum + Number(refund.amount || 0), 0)
+            const net = Number(bt.amount || 0) - refundTotal
+            return (
+              <div key={bt.localId} className="ui-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">Bank Transaction {index + 1}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      ${Number(bt.amount || 0).toFixed(2)}
+                      {refundTotal > 0 ? ` · net $${net.toFixed(2)} after refunds` : ''}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {bt.files?.length || 0} proof file{bt.files?.length === 1 ? '' : 's'}
+                      {(bt.refunds?.length || 0) > 0 ? ` · ${bt.refunds.length} refund${bt.refunds.length === 1 ? '' : 's'}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingBt(bt); setShowBtModal(true) }}
+                      className="text-xs font-semibold text-blue-600"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveBt(bt.localId)}
+                      className="text-xs font-semibold text-red-500"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center">
+          <p className="text-sm font-semibold text-gray-700">No bank transactions added yet</p>
+          <p className="mt-1 text-xs text-gray-500">Add bank proof here, or continue if this claim only has receipts for now.</p>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => { setEditingBt(null); setShowBtModal(true) }}
+        className="w-full rounded-xl border-2 border-dashed border-blue-300 py-3 text-sm font-semibold text-blue-600"
+      >
+        + Add Bank Transaction
+      </button>
+
+      {showBtModal && (
+        <NewBtDraftModal
+          initial={editingBt}
+          onSave={handleBtSave}
+          onClose={() => { setShowBtModal(false); setEditingBt(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+function TreasurerReceiptsStep({
+  bankTransactions, receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
+  expandedBtId, onSetExpandedBtId, isPartial,
+  payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
+}) {
+  const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
+  const allCategories = useMemo(() => receipts.map((receipt) => receipt.category), [receipts])
+  const unlinkedReceipts = receipts.filter((receipt) => !receipt.btLocalId)
+
+  return (
+    <div className="space-y-4">
+      <div className="ui-card p-4">
+        <p className="text-sm font-bold text-gray-900">Receipt details and payers</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Add receipts under the matching bank transaction, then select who paid for each receipt.
+        </p>
+      </div>
+
+      {bankTransactions.length > 0 && (
+        <div className="space-y-2">
+          {bankTransactions.map((bt, index) => {
+            const linked = receipts.filter((receipt) => receipt.btLocalId === bt.localId)
+            return (
+              <BtDraftCard
+                key={bt.localId}
+                bt={bt}
+                btIndex={index + 1}
+                linkedReceipts={linked}
+                expanded={expandedBtId === bt.localId}
+                onToggle={() => onSetExpandedBtId(expandedBtId === bt.localId ? null : bt.localId)}
+                onRemove={null}
+                onEdit={null}
+                onAddReceipt={(receipt) => onAddReceipt({ ...receipt, btLocalId: bt.localId })}
+                onRemoveReceipt={onRemoveReceipt}
+                onEditReceipt={onEditReceipt}
+                existingCategories={allCategories}
+                isTreasurer
+                isPartial={isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={onCreatePayer}
+                onUpdatePayer={onUpdatePayer}
+                onDeletePayer={onDeletePayer}
+                canManagePayers={canManagePayers}
+                payersLoading={payersLoading}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+            Receipts not linked to a bank transaction{unlinkedReceipts.length ? ` (${unlinkedReceipts.length})` : ''}
+          </p>
+          {!showUnlinkedForm && (
+            <button
+              type="button"
+              onClick={() => setShowUnlinkedForm(true)}
+              className="text-xs font-semibold text-blue-600"
+            >
+              + Add
+            </button>
+          )}
+        </div>
+
+        {unlinkedReceipts.length > 0 && (
+          <div className="space-y-1">
+            {unlinkedReceipts.map((receipt) => (
+              <DraftReceiptRow
+                key={receipt.localId}
+                receipt={receipt}
+                onEdit={onEditReceipt}
+                onRemove={onRemoveReceipt}
+                existingCategories={allCategories}
+                isTreasurer
+                isPartial={isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={onCreatePayer}
+                onUpdatePayer={onUpdatePayer}
+                onDeletePayer={onDeletePayer}
+                canManagePayers={canManagePayers}
+                payersLoading={payersLoading}
+              />
+            ))}
+          </div>
+        )}
+
+        {showUnlinkedForm && (
+          <div>
+            <ReceiptForm
+              onAdd={(receipt) => { onAddReceipt(receipt); setShowUnlinkedForm(false) }}
+              existingCategories={allCategories}
+              isTreasurer
+              isPartial={isPartial}
+              payerOptions={payerOptions}
+              onCreatePayer={onCreatePayer}
+              onUpdatePayer={onUpdatePayer}
+              onDeletePayer={onDeletePayer}
+              canManagePayers={canManagePayers}
+              payersLoading={payersLoading}
+            />
+            <button type="button" onClick={() => setShowUnlinkedForm(false)} className="mt-2 w-full py-1 text-xs text-gray-500">
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+
+      {bankTransactions.length === 0 && receipts.length === 0 && (
+        <p className="py-2 text-center text-xs text-gray-400">
+          If this is a bank-transaction-only claim, go back and add bank proof. Otherwise, add receipt details here.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TreasurerSplitStep({ receipts, bankTransactions }) {
+  const splits = payerSplitRows(receipts)
+  const total = claimDraftTotal(receipts, bankTransactions)
+
+  return (
+    <div className="space-y-4">
+      <div className="ui-card p-4">
+        <p className="text-sm font-bold text-gray-900">Reimbursement split</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Use this to check how much each payer should receive from your CCA.
+        </p>
+      </div>
+
+      {splits.length > 0 ? (
+        <div className="space-y-2">
+          {splits.map((split) => (
+            <div key={split.email || split.name} className="ui-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-gray-900">{split.name}</p>
+                  {split.email && <p className="truncate text-xs text-gray-500">{split.email}</p>}
+                  <p className="mt-1 text-xs text-gray-500">{split.count} receipt{split.count === 1 ? '' : 's'}</p>
+                </div>
+                <p className="shrink-0 text-base font-bold text-gray-900">${split.amount.toFixed(2)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="ui-card p-4">
+          <p className="text-sm font-semibold text-gray-800">No receipt-level payer split yet</p>
+          <p className="mt-1 text-xs text-gray-500">
+            For bank-transaction-only claims, finance will process the total claim amount under the claimer.
+          </p>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-bold text-gray-700">Claim Total</span>
+          <span className="text-lg font-bold text-gray-900">${total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ChecklistItem({ tone, children }) {
+  const classes = {
+    ok: 'border-green-200 bg-green-50 text-green-700',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800',
+    danger: 'border-red-200 bg-red-50 text-red-700',
+  }
+  const symbol = tone === 'ok' ? 'OK' : tone === 'warning' ? '!' : '!'
+  return (
+    <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${classes[tone]}`}>
+      <span className="shrink-0">{symbol}</span>
+      <span>{children}</span>
+    </div>
+  )
+}
+
+function TreasurerReviewStep({ user, step1, step2, receipts, bankTransactions, review }) {
+  const selectedCca = user?.ccas?.find((cca) => cca.id === step1.ccaId)
+  const summaryRows = [
+    ['CCA', selectedCca?.name || 'Not selected'],
+    ['Description', step2.claimDescription || 'Not filled'],
+    ['Date', step2.date || 'Not selected'],
+    ['Fund', step2.wbsAccount === 'MF' ? 'Master Fund' : step2.wbsAccount === 'SA' ? 'Society Account' : 'Others'],
+    ['Bank Transactions', String(bankTransactions.length)],
+    ['Receipts', String(receipts.length)],
+  ]
+
+  return (
+    <div className="space-y-4">
+      <div className="ui-card p-4">
+        <p className="text-sm font-bold text-gray-900">Review before submitting</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Once submitted, finance will be able to review this claim.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="space-y-2">
+          {summaryRows.map(([label, value]) => (
+            <div key={label} className="flex items-start justify-between gap-3 text-sm">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+              <span className="min-w-0 text-right font-medium text-gray-800">{value}</span>
+            </div>
+          ))}
+          <div className="border-t border-gray-100 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-700">Total</span>
+              <span className="text-lg font-bold text-gray-900">${review.total.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {review.payerSplits.length > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Payer Split</p>
+          <div className="space-y-2">
+            {review.payerSplits.map((split) => (
+              <div key={split.email || split.name} className="flex items-start justify-between gap-3 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-gray-800">{split.name}</span>
+                  {split.email && <span className="block truncate text-xs text-gray-400">{split.email}</span>}
+                </span>
+                <span className="shrink-0 font-bold text-gray-900">${split.amount.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-gray-500">Submission Checklist</p>
+        {review.blockers.length === 0 && <ChecklistItem tone="ok">Required items are complete.</ChecklistItem>}
+        {review.blockers.map((item) => <ChecklistItem key={item} tone="danger">{item}</ChecklistItem>)}
+        {review.warnings.map((item) => <ChecklistItem key={item} tone="warning">{item}</ChecklistItem>)}
       </div>
     </div>
   )
@@ -1465,6 +1898,7 @@ const DEFAULT_STEP2 = {
 export default function NewClaimPage() {
   const navigate = useNavigate()
   const createClaim = useCreateClaim()
+  const submitForReviewMut = useSubmitForReview()
   const createReceipt = useCreateReceipt()
   const createPayerMut = useCreatePayer()
   const updatePayerMut = useUpdatePayer()
@@ -1613,6 +2047,21 @@ export default function NewClaimPage() {
     : step1.portfolioId && step1.ccaId && (step1.claimerId || (step1.isOneOff && step1.oneOffName.trim() && step1.oneOffEmail.trim()))
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
   const hasUnsavedAttachedFiles = hasDraftFiles(step2, receipts, bankTransactions)
+  const treasurerReview = useMemo(
+    () => buildTreasurerReview({ step1, step2, receipts, bankTransactions }),
+    [step1, step2, receipts, bankTransactions]
+  )
+  const stepLabels = isTreasurer
+    ? ['Details', 'Bank', 'Receipts', 'Split', 'Submit']
+    : ['Who', 'What', 'Transactions']
+  const maxStep = stepLabels.length
+  const canGoNext = isTreasurer
+    ? (step === 1 ? step1Valid && step2Valid : true)
+    : (step === 1 ? step1Valid : step === 2 ? step2Valid : true)
+
+  useEffect(() => {
+    setStep((current) => Math.min(current, maxStep))
+  }, [maxStep])
 
   useEffect(() => {
     if (!hasUnsavedAttachedFiles || savedSuccessfully.current) return undefined
@@ -1673,7 +2122,14 @@ export default function NewClaimPage() {
     setReceipts((prev) => prev.filter((r) => r.localId !== localId))
   }
 
-  async function handleSave() {
+  async function handleSave({ submit = false } = {}) {
+    const currentReview = buildTreasurerReview({ step1, step2, receipts, bankTransactions })
+    if (submit && isTreasurer && currentReview.isBlocked) {
+      setSaveError('Fix the required items in the checklist before submitting for review.')
+      setStep(maxStep)
+      return
+    }
+
     setSaving(true)
     setSaveError('')
 
@@ -1681,9 +2137,7 @@ export default function NewClaimPage() {
     const imageWarnings = []
 
     try {
-      const totalAmount = receipts.length > 0
-        ? receipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
-        : bankTransactionNetTotal(bankTransactions)
+      const totalAmount = claimDraftTotal(receipts, bankTransactions)
       if (receipts.length === 0 && bankTransactions.length === 0) {
         throw new Error('Add at least one receipt or bank transaction.')
       }
@@ -1823,14 +2277,27 @@ export default function NewClaimPage() {
 
       savedSuccessfully.current = true
       sessionStorage.removeItem(DRAFT_KEY)
+      const nextState = {}
+      if (imageWarnings.length > 0) nextState.imageWarnings = imageWarnings
+      if (submit && isTreasurer && imageWarnings.length === 0) {
+        await submitForReviewMut.mutateAsync(claimId)
+        nextState.submittedForReview = true
+      } else if (isTreasurer) {
+        nextState.needsSubmitReview = true
+      }
       navigate(`/claims/${claimId}`, {
-        state: imageWarnings.length > 0 ? { imageWarnings } : undefined,
+        state: Object.keys(nextState).length > 0 ? nextState : undefined,
       })
     } catch (err) {
       if (claimId) {
         sessionStorage.removeItem(DRAFT_KEY)
         const detail = err?.response?.data?.detail || err?.message || 'Some items may not have saved.'
-        navigate(`/claims/${claimId}`, { state: { saveError: detail } })
+        navigate(`/claims/${claimId}`, {
+          state: {
+            saveError: detail,
+            ...(isTreasurer ? { needsSubmitReview: true } : {}),
+          },
+        })
       } else {
         setSaveError(err?.response?.data?.detail || err?.message || 'Failed to save claim.')
         setSaving(false)
@@ -1862,14 +2329,14 @@ export default function NewClaimPage() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         <div className="mobile-content">
-        <StepIndicator current={step} />
+        <StepIndicator current={step} steps={stepLabels} />
 
         {(draftRestored || restoredFilesMissing || hasUnsavedAttachedFiles) && (
           <div className="mb-4 space-y-2">
             {draftRestored && (
               <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
-                <p className="text-xs font-semibold text-blue-700">Draft restored</p>
-                <p className="mt-0.5 text-xs text-blue-600">Your saved text fields were restored on this device.</p>
+                <p className="text-xs font-semibold text-blue-700">Progress restored</p>
+                <p className="mt-0.5 text-xs text-blue-600">Your in-progress text fields were restored on this device.</p>
               </div>
             )}
             {restoredFilesMissing && (
@@ -1881,43 +2348,95 @@ export default function NewClaimPage() {
             {hasUnsavedAttachedFiles && (
               <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                 <p className="text-xs font-semibold text-slate-700">Files are held temporarily</p>
-                <p className="mt-0.5 text-xs text-slate-500">Save the claim before closing Telegram or refreshing the page.</p>
+                <p className="mt-0.5 text-xs text-slate-500">Submit the claim before closing Telegram or refreshing the page.</p>
               </div>
             )}
           </div>
         )}
 
-        {step === 1 && !isTreasurer && <Step1 data={step1} onChange={updateStep1} />}
-        {step === 1 && isTreasurer && (
-          <TreasurerClaimerPicker
-            user={user}
-            value={step1.ccaId}
-            onChange={(ccaId) => updateStep1({ ccaId })}
-          />
-        )}
-        {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />}
-        {step === 3 && (
-          <Step3
-            bankTransactions={bankTransactions}
-            onAddBt={addBt}
-            onRemoveBt={removeBt}
-            onEditBt={editBt}
-            receipts={receipts}
-            onAddReceipt={addReceipt}
-            onRemoveReceipt={removeReceipt}
-            onEditReceipt={editReceipt}
-            expandedBtId={expandedBtId}
-            onSetExpandedBtId={setExpandedBtId}
-            isTreasurer={isTreasurer}
-            isPartial={step2.isPartial}
-            claimMeta={step2}
-            payerOptions={payerOptions}
-            onCreatePayer={createCurrentPayer}
-            onUpdatePayer={updateCurrentPayer}
-            onDeletePayer={deleteCurrentPayer}
-            canManagePayers={Boolean(payerOwnerId)}
-            payersLoading={Boolean(payerOwnerId) && payersLoading}
-          />
+        {isTreasurer ? (
+          <>
+            {step === 1 && (
+              <div className="space-y-4">
+                <TreasurerClaimerPicker
+                  user={user}
+                  value={step1.ccaId}
+                  onChange={(ccaId) => updateStep1({ ccaId })}
+                />
+                <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />
+              </div>
+            )}
+            {step === 2 && (
+              <TreasurerBankTransactionsStep
+                bankTransactions={bankTransactions}
+                onAddBt={addBt}
+                onEditBt={editBt}
+                onRemoveBt={removeBt}
+              />
+            )}
+            {step === 3 && (
+              <TreasurerReceiptsStep
+                bankTransactions={bankTransactions}
+                receipts={receipts}
+                onAddReceipt={addReceipt}
+                onRemoveReceipt={removeReceipt}
+                onEditReceipt={editReceipt}
+                expandedBtId={expandedBtId}
+                onSetExpandedBtId={setExpandedBtId}
+                isPartial={step2.isPartial}
+                payerOptions={payerOptions}
+                onCreatePayer={createCurrentPayer}
+                onUpdatePayer={updateCurrentPayer}
+                onDeletePayer={deleteCurrentPayer}
+                canManagePayers={Boolean(payerOwnerId)}
+                payersLoading={Boolean(payerOwnerId) && payersLoading}
+              />
+            )}
+            {step === 4 && (
+              <TreasurerSplitStep
+                receipts={receipts}
+                bankTransactions={bankTransactions}
+              />
+            )}
+            {step === 5 && (
+              <TreasurerReviewStep
+                user={user}
+                step1={step1}
+                step2={step2}
+                receipts={receipts}
+                bankTransactions={bankTransactions}
+                review={treasurerReview}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            {step === 1 && <Step1 data={step1} onChange={updateStep1} />}
+            {step === 2 && <Step2 data={step2} onChange={updateStep2} isTreasurer={isTreasurer} />}
+            {step === 3 && (
+              <Step3
+                bankTransactions={bankTransactions}
+                onAddBt={addBt}
+                onRemoveBt={removeBt}
+                onEditBt={editBt}
+                receipts={receipts}
+                onAddReceipt={addReceipt}
+                onRemoveReceipt={removeReceipt}
+                onEditReceipt={editReceipt}
+                expandedBtId={expandedBtId}
+                onSetExpandedBtId={setExpandedBtId}
+                isTreasurer={isTreasurer}
+                isPartial={step2.isPartial}
+                claimMeta={step2}
+                payerOptions={payerOptions}
+                onCreatePayer={createCurrentPayer}
+                onUpdatePayer={updateCurrentPayer}
+                onDeletePayer={deleteCurrentPayer}
+                canManagePayers={Boolean(payerOwnerId)}
+                payersLoading={Boolean(payerOwnerId) && payersLoading}
+              />
+            )}
+          </>
         )}
 
         {saveError && (
@@ -1942,26 +2461,23 @@ export default function NewClaimPage() {
           </button>
         )}
 
-        {step < 3 && (
+        {step < maxStep && (
           <button
             type="button"
             onClick={() => setStep((s) => s + 1)}
-            disabled={
-              (step === 1 && !step1Valid) ||
-              (step === 2 && !step2Valid)
-            }
+            disabled={!canGoNext}
             className="ui-button ui-button-primary flex-1 disabled:opacity-50"
           >
             Next
           </button>
         )}
 
-        {step === 3 && (
+        {step === maxStep && (
           <div className="flex-1 flex flex-col gap-1">
             <button
               type="button"
-              onClick={handleSave}
-              disabled={saving}
+              onClick={() => handleSave({ submit: isTreasurer })}
+              disabled={saving || (isTreasurer && treasurerReview.isBlocked)}
               className="ui-button ui-button-primary w-full disabled:opacity-50"
             >
               {saving ? (
@@ -1970,9 +2486,14 @@ export default function NewClaimPage() {
                   Uploading…
                 </>
               ) : (
-                'Save Claim'
+                isTreasurer ? 'Submit for Review' : 'Save Claim'
               )}
             </button>
+            {!saving && isTreasurer && treasurerReview.isBlocked && (
+              <p className="text-center text-xs font-medium text-gray-500">
+                Complete the required checklist items before submitting.
+              </p>
+            )}
             {saving && (
               <p className="text-xs text-gray-500 text-center">Uploading images — this may take a minute</p>
             )}

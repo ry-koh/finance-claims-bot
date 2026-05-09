@@ -459,6 +459,18 @@ textarea:focus-visible {
 [data-theme='dark'] .bg-red-100 { background-color: rgba(153, 27, 27, 0.36) !important; }
 [data-theme='dark'] .bg-red-600 { background-color: #e11d48 !important; }
 
+[data-theme='dark'] .treasurer-status-badge {
+  background-color: rgba(15, 23, 42, 0.84) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: var(--color-text-soft) !important;
+}
+
+[data-theme='dark'] .treasurer-status-panel {
+  background-color: rgba(17, 24, 39, 0.72) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+}
+
 [data-theme='dark'] .text-gray-900 { color: var(--color-text) !important; }
 [data-theme='dark'] .text-gray-800 { color: var(--color-text) !important; }
 [data-theme='dark'] .text-gray-700 { color: var(--color-text-soft) !important; }

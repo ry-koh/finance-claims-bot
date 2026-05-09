@@ -284,7 +284,7 @@ function ActionButton({ onClick, disabled, loading, children, variant = 'primary
   )
 }
 
-function ReadinessPanel({ claim, isTreasurer }) {
+function ReadinessPanel({ claim }) {
   const readiness = getClaimReadiness(claim)
   if (!readiness.checks.length) return null
 
@@ -292,13 +292,9 @@ function ReadinessPanel({ claim, isTreasurer }) {
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">
-            {isTreasurer ? 'Claim Health' : 'Pre-Review Checks'}
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-700">Pre-Review Checks</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {isTreasurer
-              ? 'Use this to catch missing items before finance review.'
-              : 'Use this to catch missing files before the receipt-by-receipt review.'}
+            Use this to catch missing files before the receipt-by-receipt review.
           </p>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -320,7 +316,7 @@ function ReadinessPanel({ claim, isTreasurer }) {
               <p className={check.ok ? 'text-gray-600' : 'font-medium text-amber-800'}>
                 {check.ok ? check.label : check.issue}
               </p>
-              {!check.ok && !isTreasurer && (
+              {!check.ok && (
                 <p className="text-gray-400">Still verify the actual receipt and bank transaction in the approval wizard.</p>
               )}
             </div>
@@ -336,6 +332,9 @@ function TreasurerProgressPanel({ claim, onAction }) {
   const meta = getTreasurerStatusMeta(claim)
   const message = getTreasurerProgressMessage(claim)
   const readiness = getClaimReadiness(claim)
+  const blockingIssue = readiness.missing.find((check) =>
+    ['evidence', 'receipt-images', 'bank-images', 'fx-screenshots'].includes(check.id)
+  )
   const flow = ['draft', 'in_review', 'awaiting_submission', 'submitted', 'reimbursed']
   const flowKey = statusKey === 'needs_action' ? 'draft' : statusKey
   const currentIndex = Math.max(0, flow.indexOf(flowKey))
@@ -382,9 +381,9 @@ function TreasurerProgressPanel({ claim, onAction }) {
 
       {claim.status === 'draft' && (
         <div className="space-y-2">
-          {!readiness.isReady && (
+          {blockingIssue && (
             <p className="rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-amber-800">
-              You can still submit, but finance may return it. Fix the missing items above if possible.
+              {blockingIssue.issue}
             </p>
           )}
           <ActionButton onClick={() => onAction('submitForReview')} loading={onAction.loading?.submitForReview}>
@@ -2383,6 +2382,31 @@ export default function ClaimDetailPage() {
             <p className="text-xs text-red-600">{locationState.saveError}</p>
           </div>
         )}
+        {locationState?.submittedForReview && isTreasurer && (
+          <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+            <p className="text-xs font-semibold text-green-700">Submitted for review</p>
+            <p className="mt-0.5 text-xs text-green-700">Finance can now review this claim.</p>
+          </div>
+        )}
+        {locationState?.needsSubmitReview && isTreasurer && claim.status === 'draft' && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-blue-800">Not submitted yet</p>
+                <p className="mt-1 text-xs text-blue-700">
+                  This claim has not been sent to finance yet. Submit it for review when the details are ready.
+                </p>
+              </div>
+              <ActionButton
+                onClick={() => handleAction('submitForReview')}
+                loading={handleAction.loading?.submitForReview}
+                className="w-full justify-center sm:w-auto"
+              >
+                Submit for Review
+              </ActionButton>
+            </div>
+          </div>
+        )}
 
         {/* ── Rejection banner — shown on DRAFT claims returned with feedback ── */}
         {claim.status === 'draft' && claim.rejection_comment && (
@@ -2397,7 +2421,7 @@ export default function ClaimDetailPage() {
           <AttachmentRequestPanel claim={claim} />
         )}
 
-        <ReadinessPanel claim={claim} isTreasurer={isTreasurer} />
+        {!isTreasurer && <ReadinessPanel claim={claim} />}
 
         {/* ── Claim info card ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">

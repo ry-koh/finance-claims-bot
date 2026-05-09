@@ -12,40 +12,52 @@ export const TREASURER_STATUS_ORDER = [
 export const TREASURER_STATUS_META = {
   needs_action: {
     label: 'Needs Action',
-    badge: 'bg-amber-100 text-amber-800',
+    badge: 'treasurer-status-badge bg-amber-100 text-amber-800',
     border: 'border-l-amber-500',
-    panel: 'bg-amber-50 border-amber-200 text-amber-800',
+    panel: 'treasurer-status-panel bg-amber-50 border-amber-200 text-amber-800',
   },
   draft: {
-    label: 'Draft',
-    badge: 'bg-slate-100 text-slate-700',
+    label: 'Not Submitted',
+    badge: 'treasurer-status-badge bg-slate-100 text-slate-700',
     border: 'border-l-slate-300',
-    panel: 'bg-slate-50 border-slate-200 text-slate-700',
+    panel: 'treasurer-status-panel bg-slate-50 border-slate-200 text-slate-700',
   },
   in_review: {
     label: 'In Review',
-    badge: 'bg-blue-100 text-blue-800',
+    badge: 'treasurer-status-badge bg-blue-100 text-blue-800',
     border: 'border-l-blue-500',
-    panel: 'bg-blue-50 border-blue-200 text-blue-800',
+    panel: 'treasurer-status-panel bg-blue-50 border-blue-200 text-blue-800',
   },
   awaiting_submission: {
     label: 'Awaiting Submission',
-    badge: 'bg-indigo-100 text-indigo-800',
+    badge: 'treasurer-status-badge bg-indigo-100 text-indigo-800',
     border: 'border-l-indigo-500',
-    panel: 'bg-indigo-50 border-indigo-200 text-indigo-800',
+    panel: 'treasurer-status-panel bg-indigo-50 border-indigo-200 text-indigo-800',
   },
   submitted: {
     label: 'Submitted',
-    badge: 'bg-emerald-100 text-emerald-800',
+    badge: 'treasurer-status-badge bg-emerald-100 text-emerald-800',
     border: 'border-l-emerald-500',
-    panel: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+    panel: 'treasurer-status-panel bg-emerald-50 border-emerald-200 text-emerald-800',
   },
   reimbursed: {
     label: 'Reimbursed',
-    badge: 'bg-teal-100 text-teal-800',
+    badge: 'treasurer-status-badge bg-teal-100 text-teal-800',
     border: 'border-l-teal-500',
-    panel: 'bg-teal-50 border-teal-200 text-teal-800',
+    panel: 'treasurer-status-panel bg-teal-50 border-teal-200 text-teal-800',
   },
+}
+
+const TREASURER_BLOCKING_CHECK_IDS = new Set([
+  'evidence',
+  'receipt-images',
+  'bank-images',
+  'fx-screenshots',
+])
+
+function firstTreasurerBlockingIssue(claim) {
+  const readiness = getClaimReadiness(claim)
+  return readiness.missing.find((check) => TREASURER_BLOCKING_CHECK_IDS.has(check.id)) ?? null
 }
 
 const IN_REVIEW_STATUSES = new Set([
@@ -66,8 +78,7 @@ export function getTreasurerStatusKey(claim) {
   if (IN_REVIEW_STATUSES.has(claim.status)) return 'in_review'
 
   if (claim.status === 'draft') {
-    const readiness = getClaimReadiness(claim)
-    if (claim.rejection_comment || readiness.firstIssue) return 'needs_action'
+    if (claim.rejection_comment || firstTreasurerBlockingIssue(claim)) return 'needs_action'
     return 'draft'
   }
 
@@ -84,15 +95,14 @@ export function getTreasurerStatusLabel(claim) {
 
 export function getTreasurerProgressMessage(claim) {
   const key = getTreasurerStatusKey(claim)
-  const readiness = getClaimReadiness(claim)
 
   if (key === 'needs_action') {
     if (claim?.status === 'attachment_requested') return 'Upload the requested attachment.'
     if (claim?.status === 'error') return 'Finance needs to retry processing this claim.'
     if (claim?.rejection_comment) return 'Review finance feedback and update the claim.'
-    return readiness.firstIssue?.issue ?? 'Action required before finance can process this.'
+    return firstTreasurerBlockingIssue(claim)?.issue ?? 'This claim has not been sent to finance yet.'
   }
-  if (key === 'draft') return 'Ready to submit for finance review.'
+  if (key === 'draft') return 'This claim has not been sent to finance yet. Submit it for review when ready.'
   if (key === 'in_review') return 'Finance is checking this claim.'
   if (key === 'awaiting_submission') return 'Finance has compiled the claim and is preparing submission.'
   if (key === 'submitted') return 'Submitted for reimbursement processing.'

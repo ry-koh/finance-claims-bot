@@ -11,7 +11,7 @@ import {
 
 const SECTIONS = [
   { key: 'needs_action', title: 'Needs Action' },
-  { key: 'draft', title: 'Draft' },
+  { key: 'draft', title: 'Not Submitted' },
   { key: 'in_review', title: 'In Review' },
   { key: 'awaiting_submission', title: 'Awaiting Submission' },
   { key: 'submitted', title: 'Submitted' },
@@ -126,7 +126,7 @@ export default function TreasurerHomePage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold text-gray-900">My Claims</h1>
-            <p className="text-xs text-gray-500">Draft, review, submission, and reimbursement status.</p>
+            <p className="text-xs text-gray-500">Submission, review, and reimbursement status.</p>
           </div>
           <button
             onClick={() => navigate('/claims/new')}
