@@ -260,12 +260,13 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 | New Claim | `/claims/new` | All | Multi-step form: claimer, receipts, bank transactions, transport; includes claim health checks and draft recovery notices |
 | Claim Detail | `/claims/:id` | All | Full claim view: edit fields, manage receipts/BTs, run pipeline, handle attachment requests, and view claim health |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
-| CCA Treasurers | `/identifiers` | Director, Member | Edit treasurer matric numbers and phone numbers used in claim documents |
+| CCA Treasurer Lookup | `/identifiers` | Director, Member | Read-only lookup of active CCA treasurer contact details and CCA assignments |
 | Contact | `/contact` | Director, Member | Send a message to a CCA treasurer via the Telegram bot |
 | Pending Registrations | `/pending-registrations` | Director | Approve or reject treasurer registrations |
 | Team | `/team` | Director | View and manage active team members |
 | Analytics | `/analytics` | Director | Claims volume by CCA/portfolio/fund with SA+MF breakdown and CSV export |
-| Reimbursements | `/reimbursements` | Director | PayLah checklist for selected submitted claims, grouped by claimer with phone, amount, claim IDs, paid checkboxes, and grouped Telegram completion messages. |
+| Reimbursements | `/reimbursements` | Director | PayLah/PayNow checklist for selected submitted claims, grouped by claimer with phone, amount, claim IDs, paid checkboxes, and grouped Telegram completion messages. |
+| CCA Treasurer Management | `/cca-treasurers` | Director | Manage active CCA treasurer profiles and CCA assignments |
 | Portfolios & CCAs | `/ccas` | Director | Create, rename, and delete portfolios and CCAs. Deleting shows any linked treasurers who will be unassigned. |
 | Help | `/help` | Treasurer | Common Questions and the treasurer's own Help questions |
 | Help Inbox | `/help-inbox` | Director, Member | Review and reply to treasurer questions; new questions notify finance via the bot |
@@ -283,11 +284,13 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 
 **Registration flow:**
 1. User opens the mini app for the first time → sees registration form
-2. Selects role (Finance Member or CCA Treasurer), enters name, email, `@telegram_username`, and (for treasurers) their CCA(s)
-3. Registration is created in `pending` state
-4. Active directors with Telegram IDs receive a bot alert for the pending registration
-5. Director approves via the Pending Registrations page
-6. User is notified via bot and gains access
+2. Selects role (Finance Member or CCA Treasurer), enters name, email, and `@telegram_username`
+3. CCA treasurers also enter matric number, PayLah/PayNow contact number, and CCA(s)
+4. CCA treasurers must confirm that their contact number, email, and matric number are accurate before submitting
+5. Registration is created in `pending` state
+6. Active directors with Telegram IDs receive a bot alert for the pending registration
+7. Director approves via the Pending Registrations page
+8. User is notified via bot and gains access
 
 ---
 

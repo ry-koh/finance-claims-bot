@@ -282,12 +282,15 @@ These settings are stored in `app_settings` except your app identity, which upda
 ### CCA treasurers
 
 1. Ask the treasurer to open the bot, send `/start`, and tap **Open Claims App**
-2. They register as a CCA Treasurer with their name, email, matric number, phone number, Telegram username, and CCA(s)
-3. Directors receive a Telegram alert for the pending registration
-4. Open **Pending Registrations** in the app to approve or reject the request
-5. Once approved, the treasurer receives a bot message and can submit claims
+2. They register as a CCA Treasurer with their name, email, matric number, PayLah/PayNow contact number, Telegram username, and CCA(s)
+3. They must confirm that their contact number, email, and matric number are accurate before submitting. The contact number is used for reimbursement, the email is used for confirmation emails, and the matric number is used in claim documents.
+4. Directors receive a Telegram alert for the pending registration
+5. Open **Pending Registrations** in the app to approve or reject the request
+6. Once approved, the treasurer receives a bot message and can submit claims
 
 For bot delivery to work reliably, each user must have started the bot at least once and must have a `telegram_id` stored on their `finance_team` row.
+
+Finance members can view CCA treasurer details from **CCA Treasurers**, but the page is read-only for them. Director-only treasurer profile management is kept separate.
 
 ---
 
