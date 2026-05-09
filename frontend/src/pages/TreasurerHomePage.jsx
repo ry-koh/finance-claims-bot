@@ -117,6 +117,7 @@ export default function TreasurerHomePage() {
 
   const needsActionCount = grouped.needs_action.length
   const inReviewCount = grouped.in_review.length + grouped.awaiting_submission.length
+  const submittedCount = grouped.submitted.length
   const reimbursedCount = grouped.reimbursed.length
 
   return (
@@ -134,10 +135,11 @@ export default function TreasurerHomePage() {
             + New Claim
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           {[
             ['Needs Action', needsActionCount, TREASURER_STATUS_META.needs_action.panel],
             ['In Review', inReviewCount, TREASURER_STATUS_META.in_review.panel],
+            ['Submitted', submittedCount, TREASURER_STATUS_META.submitted.panel],
             ['Reimbursed', reimbursedCount, TREASURER_STATUS_META.reimbursed.panel],
           ].map(([label, value, panel]) => (
             <div key={label} className={`rounded-xl border px-3 py-2 ${panel}`}>
