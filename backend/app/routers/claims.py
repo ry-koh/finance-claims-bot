@@ -144,7 +144,7 @@ def _fetch_reimbursement_claims(db: Client, claim_ids: list[str]) -> list[dict]:
         db.table("claims")
         .select(
             "id, reference_code, status, total_amount, claim_description, date, "
-            "one_off_name, one_off_phone, one_off_email, claimer_id, "
+            "internal_notes, one_off_name, one_off_phone, one_off_email, claimer_id, "
             "claimer:finance_team!claims_claimer_id_fkey(id, name, email, phone_number, telegram_id)"
         )
         .in_("id", claim_ids)
@@ -190,6 +190,7 @@ def _build_reimbursement_preview(db: Client, claim_ids: list[str]) -> dict:
             "amount": amount,
             "description": claim.get("claim_description") or "",
             "date": claim.get("date"),
+            "internal_notes": claim.get("internal_notes") or "",
         })
 
     groups = sorted(groups_by_key.values(), key=lambda group: group["name"].lower())

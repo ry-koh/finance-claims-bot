@@ -107,15 +107,25 @@ function PayeeCard({ group, paid, copiedPhone, onToggle, onCopyPhone, onOpenClai
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-3 divide-y divide-gray-100 rounded-lg bg-gray-50 px-3">
         {group.claims.map((claim) => (
-          <button
-            key={claim.id}
-            onClick={() => onOpenClaim(claim.id)}
-            className="rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-700"
-          >
-            {claim.reference_code || claim.id.slice(0, 8)} - {formatAmount(claim.amount)}
-          </button>
+          <div key={claim.id} className="py-2">
+            <button
+              onClick={() => onOpenClaim(claim.id)}
+              className="flex w-full items-center justify-between gap-2 text-left text-[11px] font-semibold text-gray-700"
+            >
+              <span className="truncate">{claim.reference_code || claim.id.slice(0, 8)}</span>
+              <span className="shrink-0 tabular-nums">{formatAmount(claim.amount)}</span>
+            </button>
+            {claim.internal_notes && (
+              <div className="mt-2 border-l-2 border-amber-300 pl-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Internal note</p>
+                <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-amber-800">
+                  {claim.internal_notes}
+                </p>
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </div>
