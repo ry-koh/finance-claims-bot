@@ -101,6 +101,8 @@ This is a separate token that authorises document generation and storage in Driv
 3. Your browser opens — sign in as the account that owns the Drive folder and click Allow
 4. The terminal prints a refresh token → save as `DRIVE_REFRESH_TOKEN`
 
+If document generation fails with `invalid_grant: Token has been expired or revoked`, rerun this script, update the `DRIVE_REFRESH_TOKEN` GitHub Actions secret, then redeploy Cloud Run. If this happens every 7 days, check whether the Google OAuth app is still in Testing mode and publish it if appropriate.
+
 ---
 
 ## Step 3 — Cloudflare R2 (Image Storage)

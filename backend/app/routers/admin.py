@@ -6,6 +6,7 @@ from typing import Optional
 from app.auth import require_auth, require_director, require_finance_team
 from app.config import settings
 from app.database import get_supabase
+from app.services.pdf import DriveAuthError, check_drive_credentials
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -32,6 +33,18 @@ def _configured_cors_origins() -> list[str]:
 
 def _has_value(value: str | None) -> bool:
     return bool((value or "").strip())
+
+
+def _drive_auth_status() -> dict:
+    if not _has_value(settings.DRIVE_REFRESH_TOKEN):
+        return {"status": "missing", "error": "DRIVE_REFRESH_TOKEN is not set."}
+    try:
+        check_drive_credentials()
+        return {"status": "ok", "error": None}
+    except DriveAuthError as exc:
+        return {"status": "error", "error": str(exc)[:300]}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:300]}
 
 
 STORAGE_SOURCES = [
@@ -92,6 +105,7 @@ async def system_status(
     db: Client = Depends(get_supabase),
 ):
     """Return a director-only operational snapshot without exposing secrets."""
+    drive_auth = _drive_auth_status()
     db_status = "ok"
     db_error = None
     try:
@@ -124,7 +138,7 @@ async def system_status(
     )
 
     return {
-        "status": "ok" if db_status == "ok" else "degraded",
+        "status": "ok" if db_status == "ok" and drive_auth["status"] == "ok" else "degraded",
         "database": {"status": db_status, "error": db_error},
         "config": {
             "app_url_set": _has_value(settings.APP_URL),
@@ -136,6 +150,8 @@ async def system_status(
             "google_service_account_set": _has_value(settings.GOOGLE_SERVICE_ACCOUNT_JSON),
             "gmail_refresh_token_set": _has_value(settings.GMAIL_REFRESH_TOKEN),
             "drive_refresh_token_set": _has_value(settings.DRIVE_REFRESH_TOKEN),
+            "drive_auth_status": drive_auth["status"],
+            "drive_auth_error": drive_auth["error"],
             "google_drive_parent_folder_set": _has_value(settings.GOOGLE_DRIVE_PARENT_FOLDER_ID),
             "r2_config_set": all(
                 _has_value(v)

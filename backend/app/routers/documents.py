@@ -10,6 +10,7 @@ from app.auth import get_claim_for_member, require_auth, require_finance_team
 from app.services import r2 as r2_service
 from app.services.app_settings import get_document_finance_director
 from app.services.events import log_claim_event
+from app.services.pdf import DriveAuthError
 from app.services.storage import insert_file_row
 from app.config import settings
 from app.utils.rate_limit import guard
@@ -335,6 +336,10 @@ def _do_generate(claim_id: str, db) -> dict:
         new_remarks = (user_portion + "\n" + new_block).strip() if user_portion else new_block
         db.table("claims").update({"remarks": new_remarks}).eq("id", claim_id).execute()
 
+    except DriveAuthError as e:
+        logger.warning("Document generation blocked by Drive auth for claim %s: %s", claim_id, e)
+        db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
+        raise
     except Exception as e:
         logger.exception("Document generation failed for claim %s: %s", claim_id, e)
         db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
@@ -436,6 +441,10 @@ def _do_screenshot_and_generate(claim_id: str, files_data: list, db) -> None:
         else:
             return _do_generate(claim_id, db)
 
+    except DriveAuthError as e:
+        logger.warning("Screenshot + generation blocked by Drive auth for claim %s: %s", claim_id, e)
+        db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
+        raise
     except Exception as e:
         logger.exception("Screenshot + generation failed for claim %s: %s", claim_id, e)
         db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
@@ -452,6 +461,12 @@ def _do_generate_in_thread(claim_id: str) -> None:
     db = get_supabase()
     try:
         return _do_generate(claim_id, db)
+    except DriveAuthError as e:
+        try:
+            db.table("claims").update({"status": "error", "error_message": str(e)}).eq("id", claim_id).execute()
+        except Exception:
+            pass
+        raise
     except Exception as e:
         logger.exception("Generation thread failed for claim %s: %s", claim_id, e)
         try:
@@ -490,7 +505,10 @@ async def generate_documents(
         raise HTTPException(409, "Document generation is already in progress for this claim.")
 
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
+    try:
+        result = await loop.run_in_executor(_gen_executor, _do_generate_in_thread, claim_id)
+    except DriveAuthError as e:
+        raise HTTPException(503, detail=str(e)) from e
     log_claim_event(
         db,
         claim_id,
@@ -529,6 +547,8 @@ def compile_documents(
 
     try:
         result = _do_compile(claim_id, claim["reference_code"], db)
+    except DriveAuthError as e:
+        raise HTTPException(503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -580,7 +600,10 @@ async def upload_screenshot(
 
     # Keep this request open so Cloud Run keeps CPU allocated for the worker.
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
+    try:
+        result = await loop.run_in_executor(_gen_executor, _do_screenshot_in_thread, claim_id, files_data)
+    except DriveAuthError as e:
+        raise HTTPException(503, detail=str(e)) from e
     log_claim_event(
         db,
         claim_id,

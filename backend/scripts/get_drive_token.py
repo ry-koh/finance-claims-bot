@@ -2,10 +2,10 @@
 """
 One-time script to generate a DRIVE_REFRESH_TOKEN for Google Drive/Sheets/Docs access.
 
-Run this locally (not on Render):
+Run this locally (not on Cloud Run):
     python backend/scripts/get_drive_token.py
 
-Then add the printed DRIVE_REFRESH_TOKEN to your Render environment variables.
+Then update the printed DRIVE_REFRESH_TOKEN in GitHub Actions secrets and redeploy Cloud Run.
 """
 
 import sys
@@ -37,9 +37,9 @@ client_config = {
 }
 
 flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-creds = flow.run_local_server(port=0)
+creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
 
 print("\n" + "=" * 60)
-print("Add this environment variable to Render:")
+print("Update this GitHub Actions secret, then redeploy Cloud Run:")
 print(f"DRIVE_REFRESH_TOKEN={creds.refresh_token}")
 print("=" * 60)

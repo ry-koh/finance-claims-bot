@@ -18,6 +18,16 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+class DriveAuthError(RuntimeError):
+    """Raised when Google Drive/Docs/Sheets OAuth credentials need attention."""
+
+
+DRIVE_AUTH_ERROR_MESSAGE = (
+    "Google Drive authorization failed. Regenerate DRIVE_REFRESH_TOKEN, "
+    "update the GitHub Actions secret, and redeploy Cloud Run."
+)
+
 # A4 dimensions in mm
 A4_W = 210
 A4_H = 297
@@ -213,8 +223,13 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
 
 def _get_user_drive_credentials():
     """Return refreshed OAuth2 credentials for Drive/Sheets/Docs operations."""
+    if not (settings.DRIVE_REFRESH_TOKEN or "").strip():
+        raise DriveAuthError("Google Drive refresh token is not configured. Set DRIVE_REFRESH_TOKEN and redeploy Cloud Run.")
+
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
+    from google.auth.exceptions import RefreshError
+
     creds = Credentials(
         token=None,
         refresh_token=settings.DRIVE_REFRESH_TOKEN,
@@ -222,8 +237,16 @@ def _get_user_drive_credentials():
         client_id=settings.GMAIL_CLIENT_ID,
         client_secret=settings.GMAIL_CLIENT_SECRET,
     )
-    creds.refresh(Request())
+    try:
+        creds.refresh(Request())
+    except RefreshError as exc:
+        raise DriveAuthError(DRIVE_AUTH_ERROR_MESSAGE) from exc
     return creds
+
+
+def check_drive_credentials() -> None:
+    """Refresh Drive credentials to verify that the deployed token still works."""
+    _get_user_drive_credentials()
 
 
 def get_sheets_service():
