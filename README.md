@@ -260,7 +260,7 @@ Treasurers select their fund via the "Are you using Master Fund?" question when 
 | New Claim | `/claims/new` | All | Multi-step form: claimer, receipts, bank transactions, transport; includes claim health checks and draft recovery notices |
 | Claim Detail | `/claims/:id` | All | Full claim view: edit fields, manage receipts/BTs, run pipeline, handle attachment requests, and view claim health |
 | Approval Wizard | `/claims/:id/approve` | Director, Member | Step-by-step receipt review before approving |
-| Identifier Data | `/identifiers` | Director, Member | Edit treasurer matric numbers and phone numbers used in claim documents |
+| CCA Treasurers | `/identifiers` | Director, Member | Edit treasurer matric numbers and phone numbers used in claim documents |
 | Contact | `/contact` | Director, Member | Send a message to a CCA treasurer via the Telegram bot |
 | Pending Registrations | `/pending-registrations` | Director | Approve or reject treasurer registrations |
 | Team | `/team` | Director | View and manage active team members |

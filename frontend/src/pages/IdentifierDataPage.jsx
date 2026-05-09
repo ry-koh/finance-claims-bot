@@ -154,7 +154,7 @@ export default function IdentifierDataPage() {
   return (
     <div className="flex flex-col h-full bg-gray-50">
       <div className="bg-white px-4 py-3 border-b border-gray-100">
-        <h1 className="text-base font-bold text-gray-900">CCA Treasurer Profiles</h1>
+        <h1 className="text-base font-bold text-gray-900">CCA Treasurers</h1>
         <p className="text-xs text-gray-400 mt-0.5">Matric numbers and phone numbers used in claim documents</p>
       </div>
 

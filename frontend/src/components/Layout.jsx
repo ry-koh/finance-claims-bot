@@ -18,7 +18,7 @@ const PAGE_TITLES = {
   '/reimbursements': 'Reimbursements',
   '/settings': 'Settings',
   '/contact': 'Contact',
-  '/identifiers': 'Identifiers',
+  '/identifiers': 'CCA Treasurers',
   '/help': 'Help',
   '/help/new': 'Ask a Question',
   '/help-inbox': 'Help Inbox',
@@ -68,7 +68,7 @@ const MEMBER_NAV = [
   {
     label: 'Tools',
     items: [
-      { to: '/identifiers', label: 'Identifiers', icon: <IconUsers /> },
+      { to: '/identifiers', label: 'CCA Treasurers', icon: <IconUsers /> },
       { to: '/contact', label: 'Contact', icon: <IconChat /> },
       { to: '/help-inbox', label: 'Help Inbox', icon: <IconMail /> },
     ],
