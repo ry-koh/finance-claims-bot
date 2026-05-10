@@ -784,6 +784,119 @@ function ReceiptForm({
 
 // ─── DraftReceiptRow ──────────────────────────────────────────────────────────
 
+function BankOnlyClaimItemForm({
+  bt,
+  btIndex,
+  isTreasurer,
+  onChange,
+  payerOptions,
+  onCreatePayer,
+  onUpdatePayer,
+  onDeletePayer,
+  canManagePayers,
+  payersLoading,
+}) {
+  const item = bt.claimItem || {}
+  const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300'
+  const set = (field, value) => onChange({ ...item, [field]: value })
+  const setPayer = (payer) => onChange({ ...item, ...payer })
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+      <div className="mb-3">
+        <p className="text-xs font-bold text-amber-900">Bank transaction-only claim item</p>
+        <p className="mt-1 text-xs text-amber-800">
+          No separate receipt is attached. Fill these details so this item appears properly in the Summary and RFP.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <Label required>Receipt description</Label>
+          <input
+            className={inputCls}
+            value={item.description || ''}
+            onChange={(e) => set('description', e.target.value)}
+            placeholder={`Bank transaction ${btIndex} claim item`}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label>Company</Label>
+            <input
+              className={inputCls}
+              value={item.company || ''}
+              onChange={(e) => set('company', e.target.value)}
+              placeholder="Company / payee"
+            />
+          </div>
+          <div>
+            <Label required>Date</Label>
+            <input
+              className={inputCls}
+              type="date"
+              value={item.date || ''}
+              onChange={(e) => set('date', e.target.value)}
+            />
+          </div>
+        </div>
+
+        <PayerSelect
+          payer={{
+            payer_id: item.payer_id ?? null,
+            payer_name: item.payer_name || '',
+            payer_email: item.payer_email || '',
+          }}
+          onChange={setPayer}
+          options={payerOptions}
+          onCreatePayer={onCreatePayer}
+          onUpdatePayer={onUpdatePayer}
+          onDeletePayer={onDeletePayer}
+          canManageSaved={canManagePayers}
+          loading={payersLoading}
+        />
+
+        {isTreasurer ? (
+          <p className="rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-amber-800">
+            Finance will set the category, GST code, and DR/CR during approval.
+          </p>
+        ) : (
+          <div className="space-y-2 border-t border-amber-200 pt-3">
+            <div>
+              <Label required>Category</Label>
+              <Select
+                value={item.category || ''}
+                onChange={(value) => set('category', value)}
+                placeholder="Select category"
+                options={CATEGORIES}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>GST Code</Label>
+                <Select
+                  value={item.gst_code || 'IE'}
+                  onChange={(value) => set('gst_code', value)}
+                  options={GST_CODES}
+                />
+              </div>
+              <div>
+                <Label>DR / CR</Label>
+                <Select
+                  value={item.dr_cr || 'DR'}
+                  onChange={(value) => set('dr_cr', value)}
+                  options={DR_CR_OPTIONS}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DraftReceiptRow({
   receipt,
   onEdit,
@@ -1018,12 +1131,13 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
 
 function BtDraftCard({
   bt, btIndex, linkedReceipts, expanded, onToggle, onRemove, onEdit,
-  onAddReceipt, onRemoveReceipt, onEditReceipt, existingCategories,
+  onAddReceipt, onRemoveReceipt, onEditReceipt, onUpdateBankOnlyItem, existingCategories,
   onAddBtFiles, onRemoveBtFile, isTreasurer, isPartial,
   payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const [showReceiptForm, setShowReceiptForm] = useState(false)
   const receiptSum = linkedReceipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
+  const hasLinkedReceipts = linkedReceipts.length > 0
   const netAmount = bt.refunds?.length > 0
     ? bt.amount - bt.refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
     : null
@@ -1038,10 +1152,13 @@ function BtDraftCard({
             {netAmount !== null && (
               <span className="font-normal text-gray-500"> · net ${netAmount.toFixed(2)}</span>
             )}
-            {linkedReceipts.length > 0 && (
+            {hasLinkedReceipts && (
               <span className="font-normal text-gray-500">
                 {' '}· {linkedReceipts.length} receipt{linkedReceipts.length !== 1 ? 's' : ''} · ${receiptSum.toFixed(2)}
               </span>
+            )}
+            {!hasLinkedReceipts && bt.noReceiptAttached && (
+              <span className="font-normal text-amber-600"> Â· bank transaction-only</span>
             )}
             {bt.files?.length > 0 && (
               <span className="font-normal text-gray-400">
@@ -1081,7 +1198,7 @@ function BtDraftCard({
               Add the receipts paid by this bank transaction here. Use the unlinked section only if there is no matching bank transaction.
             </p>
           )}
-          {linkedReceipts.length > 0 && (
+          {hasLinkedReceipts && (
             <div className="space-y-1">
               {linkedReceipts.map((r) => (
                 <DraftReceiptRow
@@ -1101,6 +1218,37 @@ function BtDraftCard({
                 />
               ))}
             </div>
+          )}
+
+          {!hasLinkedReceipts && onUpdateBankOnlyItem && (
+            <>
+              <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={Boolean(bt.noReceiptAttached)}
+                  onChange={(event) => onUpdateBankOnlyItem({
+                    ...(bt.claimItem || {}),
+                    noReceiptAttached: event.target.checked,
+                  })}
+                  className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600"
+                />
+                <span>No separate receipt is attached to this bank transaction</span>
+              </label>
+              {bt.noReceiptAttached && (
+                <BankOnlyClaimItemForm
+                  bt={bt}
+                  btIndex={btIndex}
+                  isTreasurer={isTreasurer}
+                  onChange={onUpdateBankOnlyItem}
+                  payerOptions={payerOptions}
+                  onCreatePayer={onCreatePayer}
+                  onUpdatePayer={onUpdatePayer}
+                  onDeletePayer={onDeletePayer}
+                  canManagePayers={canManagePayers}
+                  payersLoading={payersLoading}
+                />
+              )}
+            </>
           )}
 
           {!showReceiptForm ? (
@@ -1150,37 +1298,110 @@ function hasDraftFiles(step2, receipts, bankTransactions) {
   )
 }
 
-function bankTransactionNetTotal(bankTransactions) {
-  return bankTransactions.reduce((sum, bt) => {
-    const refundTotal = (bt.refunds ?? []).reduce((s, refund) => s + Number(refund.amount || 0), 0)
-    return sum + Number(bt.amount || 0) - refundTotal
-  }, 0)
+function bankTransactionNetAmount(bt) {
+  const refundTotal = (bt.refunds ?? []).reduce((s, refund) => s + Number(refund.amount || 0), 0)
+  return Number(bt.amount || 0) - refundTotal
+}
+
+function bankOnlyTransactions(receipts, bankTransactions) {
+  return bankTransactions.filter((bt) =>
+    bt.noReceiptAttached && !receipts.some((receipt) => receipt.btLocalId === bt.localId)
+  )
+}
+
+function bankOnlyReceiptDrafts(receipts, bankTransactions, fallbackPayer, isTreasurer = false) {
+  return bankTransactions
+    .map((bt, index) => ({ bt, index }))
+    .filter(({ bt }) => !receipts.some((receipt) => receipt.btLocalId === bt.localId))
+    .map(({ bt, index }) => {
+      const item = bt.claimItem || {}
+      return {
+        localId: `bank-only:${bt.localId}`,
+        btLocalId: bt.localId,
+        receipt_no: `BT${index + 1}`,
+        description: item.description || '',
+        company: item.company || '',
+        date: item.date || '',
+        amount: bankTransactionNetAmount(bt),
+        payer_id: item.payer_id ?? (fallbackPayer?.is_saved ? fallbackPayer.id : null),
+        payer_name: item.payer_name || fallbackPayer?.name || '',
+        payer_email: item.payer_email || fallbackPayer?.email || '',
+        category: item.category || '',
+        gst_code: item.gst_code || 'IE',
+        dr_cr: item.dr_cr || 'DR',
+        is_foreign_currency: false,
+        files: [],
+        fx_screenshot_files: [],
+        isBankOnlyReceipt: true,
+      }
+    })
 }
 
 function claimDraftTotal(receipts, bankTransactions) {
-  return receipts.length > 0
-    ? receipts.reduce((sum, receipt) => sum + Number(receipt.claimed_amount ?? receipt.amount ?? 0), 0)
-    : bankTransactionNetTotal(bankTransactions)
+  const receiptTotal = receipts.reduce((sum, receipt) => sum + Number(receipt.claimed_amount ?? receipt.amount ?? 0), 0)
+  const bankOnlyTotal = bankOnlyTransactions(receipts, bankTransactions).reduce(
+    (sum, bt) => sum + bankTransactionNetAmount(bt),
+    0
+  )
+  return receiptTotal + bankOnlyTotal
 }
 
-function payerSplitRows(receipts) {
+function payerSplitRows(receipts, bankTransactions = [], fallbackPayer = null) {
   const rows = new Map()
-  receipts.forEach((receipt) => {
-    const name = receipt.payer_name?.trim() || 'Unassigned payer'
-    const email = cleanEmail(receipt.payer_email)
-    const key = email || name
-    const existing = rows.get(key) ?? { name, email, amount: 0, count: 0 }
-    existing.amount += Number(receipt.claimed_amount ?? receipt.amount ?? 0)
-    existing.count += 1
+  const addRow = ({ name, email, amount, receiptCount = 0, bankTransactionCount = 0 }) => {
+    const cleanName = name?.trim() || 'Unassigned payer'
+    const cleanMail = cleanEmail(email)
+    const key = cleanMail || cleanName
+    const existing = rows.get(key) ?? {
+      name: cleanName,
+      email: cleanMail,
+      amount: 0,
+      count: 0,
+      receiptCount: 0,
+      bankTransactionCount: 0,
+    }
+    existing.amount += Number(amount || 0)
+    existing.receiptCount += receiptCount
+    existing.bankTransactionCount += bankTransactionCount
+    existing.count += receiptCount + bankTransactionCount
     rows.set(key, existing)
+  }
+
+  receipts.forEach((receipt) => {
+    addRow({
+      name: receipt.payer_name,
+      email: receipt.payer_email,
+      amount: receipt.claimed_amount ?? receipt.amount ?? 0,
+      receiptCount: 1,
+    })
+  })
+
+  bankOnlyTransactions(receipts, bankTransactions).forEach((bt) => {
+    addRow({
+      name: fallbackPayer?.name,
+      email: fallbackPayer?.email,
+      amount: bankTransactionNetAmount(bt),
+      bankTransactionCount: 1,
+    })
   })
   return Array.from(rows.values()).sort((a, b) => b.amount - a.amount)
 }
 
-function buildClaimReview({ step1, step2, receipts, bankTransactions }) {
+function splitItemLabel(split) {
+  const parts = []
+  if (split.receiptCount) parts.push(`${split.receiptCount} receipt${split.receiptCount === 1 ? '' : 's'}`)
+  if (split.bankTransactionCount) {
+    parts.push(`${split.bankTransactionCount} bank transaction${split.bankTransactionCount === 1 ? '' : 's'} without receipt`)
+  }
+  return parts.join(' + ') || `${split.count} item${split.count === 1 ? '' : 's'}`
+}
+
+function buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPayer, isTreasurer = false }) {
   const blockers = []
   const warnings = []
   const total = claimDraftTotal(receipts, bankTransactions)
+  const bankOnly = bankOnlyTransactions(receipts, bankTransactions)
+  const bankOnlyDrafts = bankOnlyReceiptDrafts(receipts, bankTransactions, fallbackPayer, isTreasurer)
 
   if (!step1.ccaId) blockers.push('Select the CCA for this claim.')
   if (!step2.claimDescription.trim()) blockers.push('Enter a claim description.')
@@ -1203,6 +1424,28 @@ function buildClaimReview({ step1, step2, receipts, bankTransactions }) {
   const missingPayers = receipts.filter((receipt) => !receipt.payer_name?.trim() || !receipt.payer_email?.trim()).length
   if (missingPayers > 0) {
     blockers.push(`${missingPayers} receipt${missingPayers === 1 ? '' : 's'} missing payer selection.`)
+  }
+  const invalidBankOnly = bankOnly.filter((bt) => bankTransactionNetAmount(bt) <= 0).length
+  if (invalidBankOnly > 0) {
+    blockers.push(`${invalidBankOnly} bank transaction${invalidBankOnly === 1 ? '' : 's'} without receipts have a net amount of $0.00 or less.`)
+  }
+  const incompleteBankOnly = bankOnlyDrafts.filter((item) =>
+    !item.description?.trim() ||
+    !item.date ||
+    !item.payer_name?.trim() ||
+    !item.payer_email?.trim() ||
+    (!isTreasurer && !item.category)
+  ).length
+  if (incompleteBankOnly > 0) {
+    blockers.push(`${incompleteBankOnly} bank transaction-only item${incompleteBankOnly === 1 ? '' : 's'} missing description, date, payer${isTreasurer ? '' : ', or category'}.`)
+  }
+  const uniqueCategories = new Set(
+    [...receipts, ...bankOnlyDrafts]
+      .map((item) => item.category || (isTreasurer ? 'N/A' : ''))
+      .filter(Boolean)
+  )
+  if (uniqueCategories.size > MAX_CATEGORIES) {
+    blockers.push(`This claim has more than ${MAX_CATEGORIES} claim item categories. Please split it into separate claims.`)
   }
 
   const missingFx = receipts.filter((receipt) =>
@@ -1258,7 +1501,7 @@ function buildClaimReview({ step1, step2, receipts, bankTransactions }) {
     warnings,
     isBlocked: blockers.length > 0,
     total,
-    payerSplits: payerSplitRows(receipts),
+    payerSplits: payerSplitRows(receipts, bankTransactions, fallbackPayer),
   }
 }
 
@@ -1360,7 +1603,7 @@ function BankTransactionsStep({ bankTransactions, onAddBt, onEditBt, onRemoveBt,
 
 function ReceiptsStep({
   bankTransactions, receipts, onAddReceipt, onRemoveReceipt, onEditReceipt,
-  expandedBtId, onSetExpandedBtId, isTreasurer, isPartial,
+  onUpdateBankOnlyItem, expandedBtId, onSetExpandedBtId, isTreasurer, isPartial,
   payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
@@ -1372,18 +1615,16 @@ function ReceiptsStep({
       <div className="ui-card p-4">
         <p className="text-sm font-bold text-gray-900">Receipt details and payers</p>
         <p className="mt-1 text-xs text-gray-500">
-          Tap a bank transaction below, then add the receipts paid by that transaction. Select who paid for each receipt.
+          {bankTransactions.length > 0
+            ? 'Open the matching Bank Tx card below, add the receipts paid by that transaction, and select who paid for each receipt.'
+            : 'Add receipt details here and select who paid for each receipt.'}
         </p>
-      </div>
-
-      {bankTransactions.length > 0 && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
-          <p className="text-xs font-semibold text-blue-800">Attach receipts to bank transactions</p>
-          <p className="mt-0.5 text-xs text-blue-700">
-            Open the matching Bank Tx card and use its add receipt button. Receipts in the unlinked section are not attached to any bank transaction.
+        {bankTransactions.length > 0 && (
+          <p className="mt-2 rounded-lg bg-blue-50 px-2 py-1.5 text-xs font-medium text-blue-700">
+            Use Other receipts only when there is no matching bank transaction.
           </p>
-        </div>
-      )}
+        )}
+      </div>
 
       {bankTransactions.length > 0 && (
         <div className="space-y-2">
@@ -1402,6 +1643,7 @@ function ReceiptsStep({
                 onAddReceipt={(receipt) => onAddReceipt({ ...receipt, btLocalId: bt.localId })}
                 onRemoveReceipt={onRemoveReceipt}
                 onEditReceipt={onEditReceipt}
+                onUpdateBankOnlyItem={(claimItem) => onUpdateBankOnlyItem(bt.localId, claimItem)}
                 existingCategories={allCategories}
                 isTreasurer
                 isPartial={isPartial}
@@ -1485,8 +1727,9 @@ function ReceiptsStep({
   )
 }
 
-function SplitStep({ receipts, bankTransactions, isTreasurer }) {
-  const splits = payerSplitRows(receipts)
+function SplitStep({ receipts, bankTransactions, isTreasurer, fallbackPayer }) {
+  const splits = payerSplitRows(receipts, bankTransactions, fallbackPayer)
+  const bankOnlyCount = bankOnlyTransactions(receipts, bankTransactions).length
   const total = claimDraftTotal(receipts, bankTransactions)
 
   return (
@@ -1498,6 +1741,11 @@ function SplitStep({ receipts, bankTransactions, isTreasurer }) {
             ? 'Use this to check how much each payer should receive from your CCA.'
             : 'Review the receipt-level payer totals before saving this claim.'}
         </p>
+        {bankOnlyCount > 0 && (
+          <p className="mt-2 rounded-lg bg-blue-50 px-2 py-1.5 text-xs font-medium text-blue-700">
+            Bank transactions without receipts are included as bank-transaction-only items under the claimer.
+          </p>
+        )}
       </div>
 
       {splits.length > 0 ? (
@@ -1508,7 +1756,7 @@ function SplitStep({ receipts, bankTransactions, isTreasurer }) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-gray-900">{split.name}</p>
                   {split.email && <p className="truncate text-xs text-gray-500">{split.email}</p>}
-                  <p className="mt-1 text-xs text-gray-500">{split.count} receipt{split.count === 1 ? '' : 's'}</p>
+                  <p className="mt-1 text-xs text-gray-500">{splitItemLabel(split)}</p>
                 </div>
                 <p className="shrink-0 text-base font-bold text-gray-900">${split.amount.toFixed(2)}</p>
               </div>
@@ -1517,9 +1765,9 @@ function SplitStep({ receipts, bankTransactions, isTreasurer }) {
         </div>
       ) : (
         <div className="ui-card p-4">
-          <p className="text-sm font-semibold text-gray-800">No receipt-level payer split yet</p>
+          <p className="text-sm font-semibold text-gray-800">No payer split yet</p>
           <p className="mt-1 text-xs text-gray-500">
-            For bank-transaction-only claims, finance will process the total claim amount under the claimer.
+            Add receipts or bank transactions to preview how much each payer should receive.
           </p>
         </div>
       )}
@@ -1597,6 +1845,7 @@ function ReviewStep({ user, step1, step2, receipts, bankTransactions, review, is
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-gray-800">{split.name}</span>
                   {split.email && <span className="block truncate text-xs text-gray-400">{split.email}</span>}
+                  <span className="block truncate text-xs text-gray-400">{splitItemLabel(split)}</span>
                 </span>
                 <span className="shrink-0 font-bold text-gray-900">${split.amount.toFixed(2)}</span>
               </div>
@@ -1628,9 +1877,7 @@ function Step3({
   const [showUnlinkedForm, setShowUnlinkedForm] = useState(false)
 
   const allCategories = useMemo(() => receipts.map((r) => r.category), [receipts])
-  const receiptTotal = receipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
-  const btTotal = bankTransactionNetTotal(bankTransactions)
-  const total = receipts.length > 0 ? receiptTotal : btTotal
+  const total = claimDraftTotal(receipts, bankTransactions)
   const unlinkedReceipts = receipts.filter((r) => !r.btLocalId)
 
   function handleBtSave(data) {
@@ -1905,6 +2152,7 @@ export default function NewClaimPage() {
     if (payerOwnerId) return savedPayers.map(normalizePayer).filter(Boolean)
     return [oneOffPayer, ...claimOnlyPayers.map(normalizePayer)].filter(Boolean)
   }, [payerOwnerId, savedPayers, oneOffPayer, claimOnlyPayers])
+  const defaultPayer = payerOptions[0] ?? null
 
   async function createCurrentPayer({ name, email }) {
     if (payerOwnerId) {
@@ -2019,8 +2267,8 @@ export default function NewClaimPage() {
   const step2Valid = step2.claimDescription.trim() && step2.date && step2.wbsAccount
   const hasUnsavedAttachedFiles = hasDraftFiles(step2, receipts, bankTransactions)
   const formReview = useMemo(
-    () => buildClaimReview({ step1, step2, receipts, bankTransactions }),
-    [step1, step2, receipts, bankTransactions]
+    () => buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPayer: defaultPayer, isTreasurer }),
+    [step1, step2, receipts, bankTransactions, defaultPayer, isTreasurer]
   )
   const stepLabels = ['Details', 'Bank', 'Receipts', 'Split', isTreasurer ? 'Submit' : 'Save']
   const maxStep = stepLabels.length
@@ -2077,6 +2325,21 @@ export default function NewClaimPage() {
     if (expandedBtId === btLocalId) setExpandedBtId(null)
   }
 
+  function updateBankOnlyItem(btLocalId, claimItem) {
+    setBankTransactions((prev) =>
+      prev.map((bt) => bt.localId === btLocalId
+        ? {
+            ...bt,
+            claimItem: Object.fromEntries(
+              Object.entries(claimItem).filter(([key]) => key !== 'noReceiptAttached')
+            ),
+            noReceiptAttached: Boolean(claimItem.noReceiptAttached),
+          }
+        : bt
+      )
+    )
+  }
+
   function addReceipt(receipt) {
     setReceipts((prev) => [...prev, { ...receipt, localId: generateId() }])
   }
@@ -2090,7 +2353,7 @@ export default function NewClaimPage() {
   }
 
   async function handleSave({ submit = false } = {}) {
-    const currentReview = buildClaimReview({ step1, step2, receipts, bankTransactions })
+    const currentReview = buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPayer: defaultPayer, isTreasurer })
     if ((submit || isTreasurer) && currentReview.isBlocked) {
       setSaveError(`Fix the required items in the checklist before ${submit ? 'submitting for review' : 'saving'}.`)
       setStep(maxStep)
@@ -2111,6 +2374,21 @@ export default function NewClaimPage() {
       const missingPayer = receipts.find((r) => !r.payer_name?.trim() || !r.payer_email?.trim())
       if (missingPayer) {
         throw new Error('Every receipt must have a payer selected.')
+      }
+      const bankOnlyDrafts = bankOnlyReceiptDrafts(receipts, bankTransactions, defaultPayer, isTreasurer)
+      if (bankOnlyDrafts.length > 0 && bankOnlyDrafts.some((r) => !r.payer_name?.trim() || !r.payer_email?.trim())) {
+        throw new Error('Bank transactions without receipts need a default payer before they can be included in the split.')
+      }
+      const incompleteBankOnly = bankOnlyDrafts.some((r) =>
+        !r.description?.trim() ||
+        !r.date ||
+        (!isTreasurer && !r.category)
+      )
+      if (incompleteBankOnly) {
+        throw new Error(`Every bank transaction-only item needs description, date, payer${isTreasurer ? '' : ', and category'}.`)
+      }
+      if (bankOnlyDrafts.some((r) => Number(r.amount || 0) <= 0)) {
+        throw new Error('Bank transactions without receipts must have a net amount above $0.00.')
       }
 
       // Auto-append remarks for FX receipts and MF approval
@@ -2197,7 +2475,9 @@ export default function NewClaimPage() {
       }
 
       // 3. Create receipt rows first, then attach files to saved receipts.
-      for (const r of receipts) {
+      // Bank transactions without receipts are saved as placeholder receipt rows so
+      // claim totals, documents, and reimbursement splits all include them.
+      for (const r of [...receipts, ...bankOnlyDrafts]) {
         const createdReceipt = await createReceipt.mutateAsync({
           claim_id: claimId,
           bank_transaction_id: r.btLocalId ? btIdMap[r.btLocalId] : undefined,
@@ -2351,6 +2631,7 @@ export default function NewClaimPage() {
             onAddReceipt={addReceipt}
             onRemoveReceipt={removeReceipt}
             onEditReceipt={editReceipt}
+            onUpdateBankOnlyItem={updateBankOnlyItem}
             expandedBtId={expandedBtId}
             onSetExpandedBtId={setExpandedBtId}
             isTreasurer={isTreasurer}
@@ -2368,6 +2649,7 @@ export default function NewClaimPage() {
             receipts={receipts}
             bankTransactions={bankTransactions}
             isTreasurer={isTreasurer}
+            fallbackPayer={defaultPayer}
           />
         )}
         {step === 5 && (

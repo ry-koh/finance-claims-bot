@@ -242,7 +242,7 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
     receipts_resp = (
         db.table("receipts")
         .select(
-            "id, claim_id, bank_transaction_id, amount, receipt_image_drive_id, "
+            "id, claim_id, bank_transaction_id, receipt_no, amount, receipt_image_drive_id, "
             "bank_screenshot_drive_id, is_foreign_currency, "
             "exchange_rate_screenshot_drive_id, exchange_rate_screenshot_drive_ids"
         )
@@ -290,7 +290,15 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
         receipt_amounts_by_bt: dict[str, float] = {}
 
         for receipt in claim_receipts:
-            if not receipt.get("receipt_image_drive_id") and receipt_image_counts.get(receipt["id"], 0) == 0:
+            receipt_no = str(receipt.get("receipt_no") or "")
+            bt_id = receipt.get("bank_transaction_id")
+            is_bank_only_receipt = (
+                bool(bt_id)
+                and receipt_no.upper().startswith("BT")
+                and receipt_no[2:].isdigit()
+            )
+            bank_only_has_proof = is_bank_only_receipt and bt_image_counts.get(bt_id, 0) > 0
+            if not bank_only_has_proof and not receipt.get("receipt_image_drive_id") and receipt_image_counts.get(receipt["id"], 0) == 0:
                 missing_receipt_images += 1
             if not receipt.get("bank_transaction_id") and not receipt.get("bank_screenshot_drive_id"):
                 missing_bank_links += 1

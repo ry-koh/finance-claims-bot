@@ -6,11 +6,18 @@ function hasAny(value) {
   return Array.isArray(value) ? value.length > 0 : Boolean(value)
 }
 
+function isBankOnlyReceipt(receipt) {
+  return /^BT\d+$/i.test(receipt?.receipt_no || '') && Boolean(receipt?.bank_transaction_id)
+}
+
 function computeSummary(claim) {
   if (claim?.readiness) return claim.readiness
 
   const receipts = claim?.receipts ?? []
   const bankTransactions = claim?.bank_transactions ?? []
+  const bankTransactionHasImages = Object.fromEntries(
+    bankTransactions.map((bt) => [bt.id, hasAny(bt.images)])
+  )
 
   let receiptMissingImages = 0
   let receiptMissingBankLink = 0
@@ -18,7 +25,9 @@ function computeSummary(claim) {
   const receiptAmountsByBt = {}
 
   receipts.forEach((receipt) => {
-    if (!receipt.receipt_image_drive_id && !hasAny(receipt.images)) receiptMissingImages += 1
+    const bankOnly = isBankOnlyReceipt(receipt)
+    const bankOnlyHasProof = bankOnly && bankTransactionHasImages[receipt.bank_transaction_id]
+    if (!bankOnlyHasProof && !receipt.receipt_image_drive_id && !hasAny(receipt.images)) receiptMissingImages += 1
     if (!receipt.bank_transaction_id && !receipt.bank_screenshot_drive_id) receiptMissingBankLink += 1
     if (receipt.bank_transaction_id) {
       receiptAmountsByBt[receipt.bank_transaction_id] =
