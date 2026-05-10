@@ -797,12 +797,14 @@ function BankOnlyClaimItemForm({
   payersLoading,
 }) {
   const item = bt.claimItem || {}
-  const inputCls = 'box-border w-full min-w-0 max-w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300'
+  const inputBaseCls = 'box-border block w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300'
+  const inputCls = `${inputBaseCls} max-w-full`
+  const dateInputCls = `${inputBaseCls} max-w-[min(100%,200px)]`
   const set = (field, value) => onChange({ ...item, [field]: value })
   const setPayer = (payer) => onChange({ ...item, ...payer })
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-3">
       <div className="mb-3">
         <p className="text-xs font-bold text-amber-900">Bank transaction-only claim item</p>
         <p className="mt-1 text-xs text-amber-800">
@@ -834,7 +836,7 @@ function BankOnlyClaimItemForm({
           <div className="min-w-0">
             <Label required>Date</Label>
             <input
-              className={inputCls}
+              className={dateInputCls}
               type="date"
               value={item.date || ''}
               onChange={(e) => set('date', e.target.value)}
