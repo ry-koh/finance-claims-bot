@@ -797,7 +797,7 @@ function BankOnlyClaimItemForm({
   payersLoading,
 }) {
   const item = bt.claimItem || {}
-  const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300'
+  const inputCls = 'box-border w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300'
   const set = (field, value) => onChange({ ...item, [field]: value })
   const setPayer = (payer) => onChange({ ...item, ...payer })
 
@@ -821,8 +821,8 @@ function BankOnlyClaimItemForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="min-w-0">
             <Label>Company</Label>
             <input
               className={inputCls}
@@ -831,7 +831,7 @@ function BankOnlyClaimItemForm({
               placeholder="Company / payee"
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label required>Date</Label>
             <input
               className={inputCls}
@@ -857,11 +857,7 @@ function BankOnlyClaimItemForm({
           loading={payersLoading}
         />
 
-        {isTreasurer ? (
-          <p className="rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-amber-800">
-            Finance will set the category, GST code, and DR/CR during approval.
-          </p>
-        ) : (
+        {!isTreasurer && (
           <div className="space-y-2 border-t border-amber-200 pt-3">
             <div>
               <Label required>Category</Label>
@@ -872,8 +868,8 @@ function BankOnlyClaimItemForm({
                 options={CATEGORIES}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="min-w-0">
                 <Label>GST Code</Label>
                 <Select
                   value={item.gst_code || 'IE'}
@@ -881,7 +877,7 @@ function BankOnlyClaimItemForm({
                   options={GST_CODES}
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <Label>DR / CR</Label>
                 <Select
                   value={item.dr_cr || 'DR'}
@@ -1142,6 +1138,10 @@ function BtDraftCard({
     ? bt.amount - bt.refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
     : null
 
+  useEffect(() => {
+    if (bt.noReceiptAttached) setShowReceiptForm(false)
+  }, [bt.noReceiptAttached])
+
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
       <div className="flex items-center gap-1 px-3 py-2.5 bg-gray-50">
@@ -1158,7 +1158,7 @@ function BtDraftCard({
               </span>
             )}
             {!hasLinkedReceipts && bt.noReceiptAttached && (
-              <span className="font-normal text-amber-600"> Â· bank transaction-only</span>
+              <span className="font-normal text-amber-600"> - bank transaction-only</span>
             )}
             {bt.files?.length > 0 && (
               <span className="font-normal text-gray-400">
@@ -1251,36 +1251,38 @@ function BtDraftCard({
             </>
           )}
 
-          {!showReceiptForm ? (
-            <button
-              type="button"
-              onClick={() => setShowReceiptForm(true)}
-              className="w-full border border-dashed border-blue-200 text-blue-600 text-xs font-medium py-2 rounded-lg"
-            >
-              {isTreasurer ? `+ Add receipt for Bank Tx ${btIndex}` : '+ Add Receipt'}
-            </button>
-          ) : (
-            <div>
-              <ReceiptForm
-                onAdd={(r) => { onAddReceipt(r); setShowReceiptForm(false) }}
-                existingCategories={existingCategories}
-                isTreasurer={isTreasurer}
-                isPartial={isPartial}
-                payerOptions={payerOptions}
-                onCreatePayer={onCreatePayer}
-                onUpdatePayer={onUpdatePayer}
-                onDeletePayer={onDeletePayer}
-                canManagePayers={canManagePayers}
-                payersLoading={payersLoading}
-              />
+          {!bt.noReceiptAttached && (
+            !showReceiptForm ? (
               <button
                 type="button"
-                onClick={() => setShowReceiptForm(false)}
-                className="w-full mt-2 text-xs text-gray-500 py-1"
+                onClick={() => setShowReceiptForm(true)}
+                className="w-full border border-dashed border-blue-200 text-blue-600 text-xs font-medium py-2 rounded-lg"
               >
-                Cancel
+                {isTreasurer ? `+ Add receipt for Bank Tx ${btIndex}` : '+ Add Receipt'}
               </button>
-            </div>
+            ) : (
+              <div>
+                <ReceiptForm
+                  onAdd={(r) => { onAddReceipt(r); setShowReceiptForm(false) }}
+                  existingCategories={existingCategories}
+                  isTreasurer={isTreasurer}
+                  isPartial={isPartial}
+                  payerOptions={payerOptions}
+                  onCreatePayer={onCreatePayer}
+                  onUpdatePayer={onUpdatePayer}
+                  onDeletePayer={onDeletePayer}
+                  canManagePayers={canManagePayers}
+                  payersLoading={payersLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptForm(false)}
+                  className="w-full mt-2 text-xs text-gray-500 py-1"
+                >
+                  Cancel
+                </button>
+              </div>
+            )
           )}
         </div>
       )}
@@ -1312,7 +1314,9 @@ function bankOnlyTransactions(receipts, bankTransactions) {
 function bankOnlyReceiptDrafts(receipts, bankTransactions, fallbackPayer, isTreasurer = false) {
   return bankTransactions
     .map((bt, index) => ({ bt, index }))
-    .filter(({ bt }) => !receipts.some((receipt) => receipt.btLocalId === bt.localId))
+    .filter(({ bt }) =>
+      bt.noReceiptAttached && !receipts.some((receipt) => receipt.btLocalId === bt.localId)
+    )
     .map(({ bt, index }) => {
       const item = bt.claimItem || {}
       return {
@@ -1326,7 +1330,7 @@ function bankOnlyReceiptDrafts(receipts, bankTransactions, fallbackPayer, isTrea
         payer_id: item.payer_id ?? (fallbackPayer?.is_saved ? fallbackPayer.id : null),
         payer_name: item.payer_name || fallbackPayer?.name || '',
         payer_email: item.payer_email || fallbackPayer?.email || '',
-        category: item.category || '',
+        category: item.category || (isTreasurer ? 'N/A' : ''),
         gst_code: item.gst_code || 'IE',
         dr_cr: item.dr_cr || 'DR',
         is_foreign_currency: false,
@@ -2327,16 +2331,19 @@ export default function NewClaimPage() {
 
   function updateBankOnlyItem(btLocalId, claimItem) {
     setBankTransactions((prev) =>
-      prev.map((bt) => bt.localId === btLocalId
-        ? {
-            ...bt,
-            claimItem: Object.fromEntries(
-              Object.entries(claimItem).filter(([key]) => key !== 'noReceiptAttached')
-            ),
-            noReceiptAttached: Boolean(claimItem.noReceiptAttached),
-          }
-        : bt
-      )
+      prev.map((bt) => {
+        if (bt.localId !== btLocalId) return bt
+        const hasExplicitBankOnlyFlag = Object.prototype.hasOwnProperty.call(claimItem, 'noReceiptAttached')
+        return {
+          ...bt,
+          claimItem: Object.fromEntries(
+            Object.entries(claimItem).filter(([key]) => key !== 'noReceiptAttached')
+          ),
+          noReceiptAttached: hasExplicitBankOnlyFlag
+            ? Boolean(claimItem.noReceiptAttached)
+            : Boolean(bt.noReceiptAttached),
+        }
+      })
     )
   }
 
