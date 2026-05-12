@@ -38,6 +38,7 @@ import {
 } from '../utils/treasurerStatus'
 import { DEFAULT_MAX_UPLOAD_BYTES } from '../utils/uploadLimits'
 import { friendlyError } from '../utils/errors'
+import { documentUrl, imageUrl } from '../api/images'
 
 // ─── Transport trips input ───────────────────────────────────────────────────
 
@@ -229,15 +230,9 @@ function statusIndex(status) {
   return idx === -1 ? -1 : idx
 }
 
-function imageUrl(gcsPath) {
-  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(gcsPath)}`
-}
-
 // For documents: Drive file IDs (no '/') use a Google Drive URL; R2 paths (with '/') use backend proxy
 function docUrl(fileId) {
-  if (!fileId) return '#'
-  if (!fileId.includes('/')) return `https://drive.google.com/file/d/${fileId}/view`
-  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(fileId)}`
+  return documentUrl(fileId)
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

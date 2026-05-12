@@ -39,6 +39,18 @@ class AttachmentRequestBody(PydanticBaseModel):
 class ReimbursementClaimsRequest(PydanticBaseModel):
     claim_ids: list[str]
 
+
+class ClaimsListResponse(PydanticBaseModel):
+    items: list[dict]
+    total: int
+    page: int
+    page_size: int
+
+
+class BulkStatusResponse(PydanticBaseModel):
+    updated: int
+    skipped: int
+
 router = APIRouter(prefix="/claims", tags=["claims"])
 logger = logging.getLogger(__name__)
 
@@ -337,7 +349,7 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
 # GET /claims
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=ClaimsListResponse)
 async def list_claims(
     status: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
@@ -519,7 +531,7 @@ async def export_claims(
 # GET /claims/counts  — must be before /{claim_id} to avoid path conflict
 # ---------------------------------------------------------------------------
 
-@router.get("/counts")
+@router.get("/counts", response_model=dict[str, int])
 async def get_claim_counts(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
@@ -875,7 +887,7 @@ async def create_claim(
 # PATCH /claims/bulk
 # ---------------------------------------------------------------------------
 
-@router.patch("/bulk")
+@router.patch("/bulk", response_model=BulkStatusResponse)
 async def bulk_update_status(
     payload: BulkStatusUpdate,
     _member: dict = Depends(require_finance_team),

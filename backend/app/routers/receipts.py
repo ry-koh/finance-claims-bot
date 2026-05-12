@@ -147,6 +147,30 @@ def _assert_claim_editable(db: Client, claim_id: str, member: dict) -> None:
     get_claim_for_member(db, claim_id, member, require_treasurer_draft=True)
 
 
+def _assert_bank_transaction_for_claim(
+    db: Client,
+    bank_transaction_id: str,
+    claim_id: str,
+    member: dict,
+) -> None:
+    """Ensure a receipt can only link to a bank transaction on the same accessible claim."""
+    resp = (
+        db.table("bank_transactions")
+        .select("id, claim_id")
+        .eq("id", bank_transaction_id)
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Bank transaction not found")
+    bank_transaction = resp.data[0]
+    if str(bank_transaction.get("claim_id")) != str(claim_id):
+        raise HTTPException(
+            status_code=422,
+            detail="Bank transaction does not belong to this claim",
+        )
+    get_claim_for_member(db, bank_transaction["claim_id"], member, require_treasurer_draft=True)
+
+
 def _clean_email(email: Optional[str]) -> str:
     return (email or "").strip().lower()
 
@@ -563,6 +587,7 @@ async def create_receipt(
             db.table("receipts").update({"bank_transaction_id": bt_id}).eq("id", receipt["id"]).execute()
             receipt["bank_transaction_id"] = bt_id
     elif payload.bank_transaction_id:
+        _assert_bank_transaction_for_claim(db, payload.bank_transaction_id, payload.claim_id, _member)
         db.table("receipts").update({"bank_transaction_id": payload.bank_transaction_id}).eq("id", receipt["id"]).execute()
         receipt["bank_transaction_id"] = payload.bank_transaction_id
 
@@ -823,6 +848,7 @@ async def update_receipt(
                 db.table("bank_transaction_images").insert({"bank_transaction_id": bt_id, "drive_file_id": drive_id}).execute()
             db.table("receipts").update({"bank_transaction_id": bt_id}).eq("id", receipt_id).execute()
     elif payload.bank_transaction_id is not None:
+        _assert_bank_transaction_for_claim(db, payload.bank_transaction_id, receipt["claim_id"], _member)
         db.table("receipts").update({"bank_transaction_id": payload.bank_transaction_id}).eq("id", receipt_id).execute()
 
     return updated_receipt

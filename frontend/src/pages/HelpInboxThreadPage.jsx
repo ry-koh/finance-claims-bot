@@ -2,10 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuestion, usePostAnswer, useDeleteQuestion, useEditAnswer } from '../api/help'
 import { useAuth, useIsFinanceTeam } from '../context/AuthContext'
-
-function imageUrl(path) {
-  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(path)}`
-}
+import { imageUrl } from '../api/images'
 
 function formatDate(str) {
   if (!str) return ''

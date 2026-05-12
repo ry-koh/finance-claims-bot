@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -71,7 +72,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Finance Claims Bot API", lifespan=lifespan)
 
-# CORS: allow all origins by default; restrict via ALLOWED_ORIGINS env var.
+# CORS: allow configured origins only. Set ALLOWED_ORIGINS="*" explicitly for local debugging.
 def _normalise_origin(origin: str) -> str:
     """Match browser Origin headers: scheme + host + optional port, no trailing slash."""
     return (origin or "").strip().rstrip("/")
@@ -94,7 +95,7 @@ def _cors_origins() -> list[str]:
     if mini_app_origin and mini_app_origin not in origins:
         origins.append(mini_app_origin)
 
-    return origins or ["*"]
+    return origins
 
 
 origins = _cors_origins()
@@ -115,8 +116,13 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception: %s", exc)
-    return JSONResponse(status_code=500, content={"error": str(exc)})
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    logger.exception("Unhandled exception request_id=%s: %s", request_id, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id},
+        headers={"X-Request-ID": request_id},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     TELEGRAM_INIT_DATA_MAX_AGE_SECONDS: int = 86400
     TELEGRAM_WEBHOOK_SECRET_TOKEN: str = ""
     REGISTER_TELEGRAM_WEBHOOK_ON_STARTUP: bool = False
-    ALLOWED_ORIGINS: str = "*"
+    ALLOWED_ORIGINS: str = ""
     GOOGLE_SERVICE_ACCOUNT_JSON: str  # JSON string of service account credentials
     GMAIL_CLIENT_ID: str
     GMAIL_CLIENT_SECRET: str

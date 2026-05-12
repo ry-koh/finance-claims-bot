@@ -1,10 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateQuestion, uploadHelpImage } from '../api/help'
-
-function imageUrl(path) {
-  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(path)}`
-}
+import { imageUrl } from '../api/images'
 
 export default function HelpNewQuestionPage() {
   const navigate = useNavigate()

@@ -28,7 +28,7 @@ def _configured_cors_origins() -> list[str]:
     mini_app_origin = _normalise_origin(settings.MINI_APP_URL)
     if mini_app_origin and mini_app_origin not in origins:
         origins.append(mini_app_origin)
-    return origins or ["*"]
+    return origins
 
 
 def _has_value(value: str | None) -> bool:

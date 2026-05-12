@@ -10,12 +10,10 @@ import { uploadBankTransactionImage, deleteBankTransactionImage, updateBtRefundF
 import { sendEmail } from '../api/email'
 import ImageCropModal from '../components/ImageCropModal'
 import CroppableThumb from '../components/CroppableThumb'
+import { imageUrl } from '../api/images'
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function imageUrl(gcsPath) {
-  return `${import.meta.env.VITE_API_URL}/images/view?path=${encodeURIComponent(gcsPath)}`
-}
 function formatAmount(v) {
   if (v == null) return '—'
   return `$${Number(v).toFixed(2)}`
