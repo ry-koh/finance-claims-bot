@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useSettings, useUpdateSettings } from '../api/settings'
+import { useSettings, useUpdateSettings, useUpdateTestingMode } from '../api/settings'
 import { useAuth } from '../context/AuthContext'
 
 export default function SettingsPage() {
   const { data, isLoading } = useSettings()
   const updateMutation = useUpdateSettings()
+  const updateTestingModeMutation = useUpdateTestingMode()
   const { refreshTestingMode, setPreviewRole } = useAuth()
 
   const [academicYear, setAcademicYear] = useState('')
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const [claimCcEmail, setClaimCcEmail] = useState('')
   const [testingModeEnabled, setTestingModeEnabled] = useState(false)
   const [testingModeMessage, setTestingModeMessage] = useState('')
+  const [testingModeError, setTestingModeError] = useState('')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -64,6 +66,25 @@ export default function SettingsPage() {
         },
       }
     )
+  }
+
+  async function handleTestingModeToggle(nextEnabled) {
+    const previousEnabled = testingModeEnabled
+    setTestingModeError('')
+    setTestingModeEnabled(nextEnabled)
+    try {
+      await updateTestingModeMutation.mutateAsync({
+        enabled: nextEnabled,
+        message: testingModeMessage,
+      })
+      if (!nextEnabled) setPreviewRole('director')
+      await refreshTestingMode()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {
+      setTestingModeEnabled(previousEnabled)
+      setTestingModeError('Could not update testing mode. Please try again.')
+    }
   }
 
   if (isLoading) {
@@ -125,16 +146,25 @@ export default function SettingsPage() {
               <input
                 type="checkbox"
                 checked={testingModeEnabled}
-                onChange={(e) => setTestingModeEnabled(e.target.checked)}
+                onChange={(e) => handleTestingModeToggle(e.target.checked)}
+                disabled={updateTestingModeMutation.isPending}
                 className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
               />
               <span>
-                <span className="block text-sm font-semibold text-gray-900">Show downtime screen to users</span>
+                <span className="block text-sm font-semibold text-gray-900">
+                  Show downtime screen to users
+                  {updateTestingModeMutation.isPending && (
+                    <span className="ml-2 text-xs font-semibold text-amber-700">Saving...</span>
+                  )}
+                </span>
                 <span className="mt-1 block text-xs leading-relaxed text-gray-500">
                   CCA treasurers and finance team members will be blocked while Finance Director accounts stay open for testing.
                 </span>
               </span>
             </label>
+            {testingModeError && (
+              <p className="mt-2 text-xs font-semibold text-red-600">{testingModeError}</p>
+            )}
             <label className="mt-3 block text-xs text-gray-500">Downtime Message</label>
             <textarea
               value={testingModeMessage}
