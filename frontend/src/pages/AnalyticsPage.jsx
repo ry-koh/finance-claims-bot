@@ -432,14 +432,19 @@ export default function AnalyticsPage() {
 
   return (
     <div className="mobile-page min-h-full bg-gray-50 pb-6">
-      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-4 backdrop-blur">
+      <div className="mobile-header sticky top-0 z-20 border-b px-4 py-4">
         <div className="mx-auto flex max-w-2xl items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="section-eyebrow">Analytics</p>
             <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">Finance spend view</h1>
-            <p className="mt-1 text-xs text-gray-500">
-              {activeView?.[1]} analysis{hasFilters ? ' with filters applied' : ' across all claims'}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                {activeView?.[1]}
+              </span>
+              <span className="text-xs font-semibold text-gray-700">
+                {hasFilters ? 'Filters applied' : 'All claims'}
+              </span>
+            </div>
           </div>
           {data && !isLoading && !isError && (
             <button
