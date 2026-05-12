@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useAnalyticsSummary, useAnalyticsFundBreakdown } from '../api/analytics'
 
 const STATUS_LABELS = {
@@ -17,22 +17,22 @@ const STATUS_LABELS = {
 const ALL_STATUSES = Object.keys(STATUS_LABELS)
 
 const GROUP_BY_OPTIONS = [
-  ['cca', 'By CCA'],
-  ['portfolio', 'By Portfolio'],
-  ['fund', 'By Fund'],
-  ['portfolio_fund', 'Portfolio x Fund'],
-  ['cca_fund', 'CCA x Fund'],
+  ['cca', 'CCA', 'Treasurer-facing spend by CCA'],
+  ['portfolio', 'Portfolio', 'Portfolio totals'],
+  ['fund', 'Fund', 'SA, MF, and other funds'],
+  ['portfolio_fund', 'Portfolio + Fund', 'SA/MF by portfolio'],
+  ['cca_fund', 'CCA + Fund', 'SA/MF by CCA'],
 ]
 
 function fmt(amount) {
-  return `$${Number(amount).toLocaleString('en-SG', {
+  return `$${Number(amount || 0).toLocaleString('en-SG', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
 }
 
 function fmtRaw(amount) {
-  return Number(amount).toFixed(2)
+  return Number(amount || 0).toFixed(2)
 }
 
 function escapeCSV(val) {
@@ -77,7 +77,12 @@ function downloadCSV(groupBy, isFundBreakdown, data, dateFrom, dateTo) {
   URL.revokeObjectURL(url)
 }
 
-function groupRowsByPortfolio(rows) {
+function rowTotal(row, isFundBreakdown) {
+  if (isFundBreakdown) return Number(row.sa_total || 0) + Number(row.mf_total || 0)
+  return Number(row.total || 0)
+}
+
+function groupRowsByPortfolio(rows, isFundBreakdown) {
   const map = {}
   rows.forEach((row) => {
     const key = row.portfolio ?? '(No Portfolio)'
@@ -85,149 +90,304 @@ function groupRowsByPortfolio(rows) {
       map[key] = { portfolio: key, rows: [], subtotal: 0, sa_subtotal: 0, mf_subtotal: 0 }
     }
     map[key].rows.push(row)
-    map[key].subtotal += (row.total ?? 0)
-    map[key].sa_subtotal += (row.sa_total ?? 0)
-    map[key].mf_subtotal += (row.mf_total ?? 0)
+    map[key].subtotal += rowTotal(row, isFundBreakdown)
+    map[key].sa_subtotal += Number(row.sa_total || 0)
+    map[key].mf_subtotal += Number(row.mf_total || 0)
   })
   return Object.values(map)
 }
 
-// Regular summary table
+function analyticsStats(data, isFundBreakdown) {
+  const rows = data?.rows ?? []
+  const grandTotal = Number(data?.grand_total || 0)
+  const ranked = [...rows].sort((a, b) => rowTotal(b, isFundBreakdown) - rowTotal(a, isFundBreakdown))
+  const top = ranked[0] ?? null
+  const average = rows.length ? grandTotal / rows.length : 0
+  const saTotal = isFundBreakdown ? Number(data?.sa_total || 0) : 0
+  const mfTotal = isFundBreakdown ? Number(data?.mf_total || 0) : 0
 
-function SummaryTable({ groupBy, data }) {
-  const portfolioGroups = groupBy === 'cca' ? groupRowsByPortfolio(data.rows) : null
+  return {
+    rows,
+    ranked,
+    grandTotal,
+    rowCount: rows.length,
+    top,
+    topTotal: top ? rowTotal(top, isFundBreakdown) : 0,
+    average,
+    saTotal,
+    mfTotal,
+    maxTotal: ranked.length ? rowTotal(ranked[0], isFundBreakdown) : 0,
+  }
+}
+
+function KpiTile({ label, value, note, tone = 'neutral' }) {
+  const toneClass = {
+    neutral: 'border-gray-200 bg-white',
+    accent: 'border-blue-200 bg-blue-50',
+    good: 'border-green-200 bg-green-50',
+    warn: 'border-amber-200 bg-amber-50',
+  }[tone]
 
   return (
-    <div className="ui-card overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
-            <th className="text-right px-4 py-2 font-medium text-gray-600">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.length === 0 ? (
-            <tr>
-              <td colSpan={2} className="text-center text-gray-400 py-8 text-sm">
-                No claims match the selected filters.
-              </td>
-            </tr>
-          ) : groupBy === 'cca' ? (
-            portfolioGroups.map((group) => (
-              <React.Fragment key={`hdr-${group.portfolio}`}>
-                <tr className="bg-gray-100 border-b border-gray-200">
-                  <td className="px-4 py-1.5 font-semibold text-gray-700 text-xs uppercase tracking-wide">
-                    {group.portfolio}
-                  </td>
-                  <td className="px-4 py-1.5 text-right font-semibold text-gray-700">
-                    {fmt(group.subtotal)}
-                  </td>
-                </tr>
-                {group.rows.map((row) => (
-                  <tr key={`row-${group.portfolio}-${row.name}`} className="border-b border-gray-100">
-                    <td className="px-4 py-2 pl-8 text-gray-700">{row.name}</td>
-                    <td className="px-4 py-2 text-right text-gray-700">{fmt(row.total)}</td>
-                  </tr>
-                ))}
-              </React.Fragment>
-            ))
-          ) : (
-            data.rows.map((row) => (
-              <tr key={`row-${row.name}`} className="border-b border-gray-100">
-                <td className="px-4 py-2 text-gray-700">{row.name}</td>
-                <td className="px-4 py-2 text-right text-gray-700">{fmt(row.total)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-gray-300 bg-gray-50">
-            <td className="px-4 py-2.5 font-bold text-gray-800">Grand Total</td>
-            <td className="px-4 py-2.5 text-right font-bold text-gray-800">{fmt(data.grand_total)}</td>
-          </tr>
-        </tfoot>
-      </table>
+    <div className={`min-w-0 rounded-xl border p-3 ${toneClass}`}>
+      <p className="section-eyebrow text-[10px]">{label}</p>
+      <p className="finance-amount mt-2 truncate text-lg text-gray-900">{value}</p>
+      {note && <p className="mt-1 truncate text-[11px] font-medium text-gray-500">{note}</p>}
     </div>
   )
 }
 
-// Fund breakdown table
-
-function FundBreakdownTable({ groupBy, data }) {
-  const isCca = groupBy === 'cca_fund'
-  const portfolioGroups = isCca ? groupRowsByPortfolio(data.rows) : null
+function SplitBar({ saTotal, mfTotal }) {
+  const total = saTotal + mfTotal
+  const saPct = total > 0 ? (saTotal / total) * 100 : 0
+  const mfPct = total > 0 ? (mfTotal / total) * 100 : 0
 
   return (
-    <div className="ui-card overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
-            <th className="text-right px-4 py-2 font-medium text-gray-600">SA</th>
-            <th className="text-right px-4 py-2 font-medium text-gray-600">MF</th>
-            <th className="text-right px-4 py-2 font-medium text-gray-600">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.length === 0 ? (
-            <tr>
-              <td colSpan={4} className="text-center text-gray-400 py-8 text-sm">
-                No claims match the selected filters.
-              </td>
-            </tr>
-          ) : isCca ? (
-            portfolioGroups.map((group) => (
-              <React.Fragment key={`hdr-${group.portfolio}`}>
-                <tr className="bg-gray-100 border-b border-gray-200">
-                  <td className="px-4 py-1.5 font-semibold text-gray-700 text-xs uppercase tracking-wide">
-                    {group.portfolio}
-                  </td>
-                  <td className="px-4 py-1.5 text-right font-semibold text-gray-700">
-                    {fmt(group.sa_subtotal)}
-                  </td>
-                  <td className="px-4 py-1.5 text-right font-semibold text-gray-700">
-                    {fmt(group.mf_subtotal)}
-                  </td>
-                  <td className="px-4 py-1.5 text-right font-semibold text-gray-700">
-                    {fmt(group.sa_subtotal + group.mf_subtotal)}
-                  </td>
-                </tr>
-                {group.rows.map((row) => (
-                  <tr key={`row-${group.portfolio}-${row.name}`} className="border-b border-gray-100">
-                    <td className="px-4 py-2 pl-8 text-gray-700">{row.name}</td>
-                    <td className="px-4 py-2 text-right text-gray-600">{fmt(row.sa_total)}</td>
-                    <td className="px-4 py-2 text-right text-gray-600">{fmt(row.mf_total)}</td>
-                    <td className="px-4 py-2 text-right text-gray-700">{fmt(row.sa_total + row.mf_total)}</td>
-                  </tr>
-                ))}
-              </React.Fragment>
-            ))
-          ) : (
-            data.rows.map((row) => (
-              <tr key={`row-${row.name}`} className="border-b border-gray-100">
-                <td className="px-4 py-2 text-gray-700">{row.name}</td>
-                <td className="px-4 py-2 text-right text-gray-600">{fmt(row.sa_total)}</td>
-                <td className="px-4 py-2 text-right text-gray-600">{fmt(row.mf_total)}</td>
-                <td className="px-4 py-2 text-right text-gray-700">{fmt(row.sa_total + row.mf_total)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-gray-300 bg-gray-50">
-            <td className="px-4 py-2.5 font-bold text-gray-800">Grand Total</td>
-            <td className="px-4 py-2.5 text-right font-bold text-gray-800">{fmt(data.sa_total)}</td>
-            <td className="px-4 py-2.5 text-right font-bold text-gray-800">{fmt(data.mf_total)}</td>
-            <td className="px-4 py-2.5 text-right font-bold text-gray-800">{fmt(data.grand_total)}</td>
-          </tr>
-        </tfoot>
-      </table>
+    <div className="rounded-xl border border-gray-200 bg-white p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-bold text-gray-700">Fund split</p>
+        <p className="text-xs font-semibold text-gray-500">{fmt(total)}</p>
+      </div>
+      <div className="flex h-3 overflow-hidden rounded-full bg-gray-100">
+        <div className="bg-blue-600" style={{ width: `${saPct}%` }} />
+        <div className="bg-emerald-500" style={{ width: `${mfPct}%` }} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-blue-50 p-2">
+          <p className="font-semibold text-blue-700">SA</p>
+          <p className="finance-amount text-sm text-gray-900">{fmt(saTotal)}</p>
+          <p className="text-[11px] text-blue-700">{saPct.toFixed(0)}%</p>
+        </div>
+        <div className="rounded-lg bg-emerald-50 p-2">
+          <p className="font-semibold text-emerald-700">MF</p>
+          <p className="finance-amount text-sm text-gray-900">{fmt(mfTotal)}</p>
+          <p className="text-[11px] text-emerald-700">{mfPct.toFixed(0)}%</p>
+        </div>
+      </div>
     </div>
   )
 }
 
-// Main page
+function GroupByPicker({ value, onChange }) {
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 pb-1">
+      <div className="flex gap-2">
+        {GROUP_BY_OPTIONS.map(([val, label, description]) => (
+          <button
+            key={val}
+            type="button"
+            onClick={() => onChange(val)}
+            className={`min-w-[8.25rem] rounded-xl border p-3 text-left transition-colors ${
+              value === val
+                ? 'border-blue-600 bg-blue-50 shadow-sm'
+                : 'border-gray-200 bg-white active:bg-gray-50'
+            }`}
+          >
+            <p className={`text-sm font-bold ${value === val ? 'text-blue-700' : 'text-gray-900'}`}>{label}</p>
+            <p className="mt-1 text-[11px] leading-4 text-gray-500">{description}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DateFilters({ dateFrom, dateTo, setDateFrom, setDateTo }) {
+  const hasDate = Boolean(dateFrom || dateTo)
+
+  return (
+    <div className="grid min-w-0 grid-cols-2 gap-2">
+      <label className="min-w-0">
+        <span className="mb-1 block text-xs font-medium text-gray-500">From</span>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="toolbar-field w-full min-w-0 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+      </label>
+      <label className="min-w-0">
+        <span className="mb-1 block text-xs font-medium text-gray-500">To</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="toolbar-field w-full min-w-0 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+      </label>
+      {hasDate && (
+        <button
+          type="button"
+          onClick={() => { setDateFrom(''); setDateTo('') }}
+          className="col-span-2 rounded-lg border border-gray-200 bg-white py-2 text-xs font-bold text-gray-600 active:bg-gray-50"
+        >
+          Clear Date Range
+        </button>
+      )}
+    </div>
+  )
+}
+
+function StatusFilters({ statuses, toggleStatus, clearStatuses }) {
+  return (
+    <details className="rounded-xl border border-gray-200 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-3">
+        <div>
+          <p className="text-sm font-bold text-gray-900">Status filter</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {statuses.length ? `${statuses.length} selected` : 'All claim statuses'}
+          </p>
+        </div>
+        <span className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-600">Edit</span>
+      </summary>
+      <div className="border-t border-gray-100 p-3">
+        <div className="flex flex-wrap gap-2">
+          {ALL_STATUSES.map((status) => {
+            const active = statuses.includes(status)
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => toggleStatus(status)}
+                className={`rounded-full border px-3 py-2 text-xs font-bold ${
+                  active
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-gray-200 bg-gray-50 text-gray-600'
+                }`}
+              >
+                {STATUS_LABELS[status]}
+              </button>
+            )
+          })}
+        </div>
+        {statuses.length > 0 && (
+          <button
+            type="button"
+            onClick={clearStatuses}
+            className="mt-3 w-full rounded-lg border border-gray-200 bg-white py-2 text-xs font-bold text-gray-600 active:bg-gray-50"
+          >
+            Clear Statuses
+          </button>
+        )}
+      </div>
+    </details>
+  )
+}
+
+function RowCard({ row, isFundBreakdown, maxTotal, rank }) {
+  const total = rowTotal(row, isFundBreakdown)
+  const width = maxTotal > 0 ? Math.max(4, (total / maxTotal) * 100) : 0
+  const sa = Number(row.sa_total || 0)
+  const mf = Number(row.mf_total || 0)
+  const saWidth = total > 0 ? (sa / total) * 100 : 0
+  const mfWidth = total > 0 ? (mf / total) * 100 : 0
+
+  return (
+    <div className="ui-card p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold text-gray-400">#{rank}</p>
+          <p className="mt-0.5 truncate text-sm font-bold text-gray-900">{row.name}</p>
+          {row.portfolio && <p className="mt-0.5 truncate text-xs text-gray-500">{row.portfolio}</p>}
+        </div>
+        <p className="finance-amount shrink-0 text-sm text-gray-900">{fmt(total)}</p>
+      </div>
+
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+        <div className="h-full rounded-full bg-blue-600" style={{ width: `${width}%` }} />
+      </div>
+
+      {isFundBreakdown && (
+        <>
+          <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-gray-100">
+            <div className="bg-blue-600" style={{ width: `${saWidth}%` }} />
+            <div className="bg-emerald-500" style={{ width: `${mfWidth}%` }} />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+            <div className="rounded-lg bg-blue-50 px-2 py-1.5">
+              <span className="font-bold text-blue-700">SA</span>
+              <span className="float-right font-semibold text-gray-700">{fmt(sa)}</span>
+            </div>
+            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+              <span className="font-bold text-emerald-700">MF</span>
+              <span className="float-right font-semibold text-gray-700">{fmt(mf)}</span>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ResultsList({ groupBy, data, isFundBreakdown, stats }) {
+  const shouldGroupByPortfolio = groupBy === 'cca' || groupBy === 'cca_fund'
+
+  if (!data.rows.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center">
+        <p className="text-sm font-semibold text-gray-700">No claims match these filters.</p>
+        <p className="mt-1 text-xs text-gray-500">Try clearing statuses or widening the date range.</p>
+      </div>
+    )
+  }
+
+  if (shouldGroupByPortfolio) {
+    const groups = groupRowsByPortfolio(data.rows, isFundBreakdown)
+      .sort((a, b) => b.subtotal - a.subtotal)
+    let rank = 0
+    return (
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <section key={group.portfolio} className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-sm font-bold text-gray-900">{group.portfolio}</h2>
+              <p className="finance-amount text-sm text-gray-900">{fmt(group.subtotal)}</p>
+            </div>
+            {group.rows
+              .slice()
+              .sort((a, b) => rowTotal(b, isFundBreakdown) - rowTotal(a, isFundBreakdown))
+              .map((row) => {
+                rank += 1
+                return (
+                  <RowCard
+                    key={`${group.portfolio}-${row.name}`}
+                    row={row}
+                    isFundBreakdown={isFundBreakdown}
+                    maxTotal={stats.maxTotal}
+                    rank={rank}
+                  />
+                )
+              })}
+          </section>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {stats.ranked.map((row, index) => (
+        <RowCard
+          key={row.name}
+          row={row}
+          isFundBreakdown={isFundBreakdown}
+          maxTotal={stats.maxTotal}
+          rank={index + 1}
+        />
+      ))}
+    </div>
+  )
+}
+
+function LoadingState() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3].map((item) => (
+        <div key={item} className="h-24 animate-pulse rounded-xl bg-white shadow-sm" />
+      ))}
+    </div>
+  )
+}
 
 export default function AnalyticsPage() {
   const [groupBy, setGroupBy] = useState('cca')
@@ -237,6 +397,7 @@ export default function AnalyticsPage() {
 
   const isFundBreakdown = groupBy === 'portfolio_fund' || groupBy === 'cca_fund'
   const fundGroupBy = groupBy === 'portfolio_fund' ? 'portfolio' : 'cca'
+  const activeView = GROUP_BY_OPTIONS.find(([value]) => value === groupBy)
 
   const summaryQuery = useAnalyticsSummary({
     groupBy: isFundBreakdown ? null : groupBy,
@@ -254,112 +415,96 @@ export default function AnalyticsPage() {
   })
 
   const { data, isLoading, isError } = isFundBreakdown ? fundQuery : summaryQuery
+  const stats = useMemo(() => analyticsStats(data, isFundBreakdown), [data, isFundBreakdown])
+  const hasFilters = statuses.length > 0 || Boolean(dateFrom || dateTo)
 
-  function toggleStatus(s) {
+  function toggleStatus(status) {
     setStatuses((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+      prev.includes(status) ? prev.filter((item) => item !== status) : [...prev, status]
     )
   }
 
+  function resetFilters() {
+    setStatuses([])
+    setDateFrom('')
+    setDateTo('')
+  }
+
   return (
-    <div className="mobile-page mx-auto min-h-full max-w-2xl p-4">
-      <div className="mb-4">
-        <p className="section-eyebrow">Analytics Overview</p>
-        <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">Portfolio spend</h1>
-      </div>
-
-      <div className="ui-card mb-4 p-4">
-        {/* Group-by toggle */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {GROUP_BY_OPTIONS.map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setGroupBy(val)}
-              className={`filter-pill ${
-                groupBy === val
-                  ? 'filter-pill-active'
-                  : ''
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Date filters */}
-        <div className="flex gap-3 mb-3 flex-wrap">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">From</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="toolbar-field px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
+    <div className="mobile-page min-h-full bg-gray-50 pb-6">
+      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-4 backdrop-blur">
+        <div className="mx-auto flex max-w-2xl items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="section-eyebrow">Analytics</p>
+            <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">Finance spend view</h1>
+            <p className="mt-1 text-xs text-gray-500">
+              {activeView?.[1]} analysis{hasFilters ? ' with filters applied' : ' across all claims'}
+            </p>
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">To</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="toolbar-field px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-          </div>
-        </div>
-
-        {/* Status checkboxes */}
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {ALL_STATUSES.map((s) => (
-            <label
-              key={s}
-              className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={statuses.includes(s)}
-                onChange={() => toggleStatus(s)}
-                className="rounded border-gray-300"
-              />
-              {STATUS_LABELS[s]}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* Results */}
-      {isLoading && (
-        <div className="flex justify-center py-12">
-          <span className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
-      {isError && (
-        <p className="text-sm text-red-500 py-4 text-center">
-          Failed to load analytics.
-        </p>
-      )}
-
-      {!isLoading && !isError && data && (
-        <>
-          <div className="flex justify-end mb-2">
+          {data && !isLoading && !isError && (
             <button
               type="button"
               onClick={() => downloadCSV(groupBy, isFundBreakdown, data, dateFrom, dateTo)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 active:bg-gray-100"
+              className="shrink-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 active:bg-gray-100"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-              Export CSV
+              Export
             </button>
+          )}
+        </div>
+      </div>
+
+      <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-4">
+        <GroupByPicker value={groupBy} onChange={setGroupBy} />
+
+        <section className="space-y-3">
+          <DateFilters dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} />
+          <StatusFilters statuses={statuses} toggleStatus={toggleStatus} clearStatuses={() => setStatuses([])} />
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-bold text-gray-600 active:bg-gray-50"
+            >
+              Clear All Filters
+            </button>
+          )}
+        </section>
+
+        {isLoading && <LoadingState />}
+
+        {isError && (
+          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-5 text-center">
+            <p className="text-sm font-bold text-red-700">Failed to load analytics.</p>
+            <p className="mt-1 text-xs text-red-600">Check your connection and try again.</p>
           </div>
-          {isFundBreakdown
-            ? <FundBreakdownTable groupBy={groupBy} data={data} />
-            : <SummaryTable groupBy={groupBy} data={data} />}
-        </>
-      )}
+        )}
+
+        {!isLoading && !isError && data && (
+          <>
+            <section className="grid grid-cols-2 gap-2">
+              <KpiTile label="Total Spend" value={fmt(stats.grandTotal)} note={`${stats.rowCount} row${stats.rowCount === 1 ? '' : 's'}`} tone="accent" />
+              <KpiTile label="Average" value={fmt(stats.average)} note="Per visible row" />
+              <KpiTile label="Largest" value={fmt(stats.topTotal)} note={stats.top?.name || 'No spend'} tone="good" />
+              <KpiTile label="View" value={activeView?.[1] || groupBy} note={statuses.length ? `${statuses.length} statuses` : 'All statuses'} />
+            </section>
+
+            {isFundBreakdown && (
+              <SplitBar saTotal={stats.saTotal} mfTotal={stats.mfTotal} />
+            )}
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Ranked spend</h2>
+                  <p className="mt-0.5 text-xs text-gray-500">Bars are scaled to the largest visible row.</p>
+                </div>
+                <p className="text-xs font-bold text-gray-500">{fmt(stats.grandTotal)}</p>
+              </div>
+              <ResultsList groupBy={groupBy} data={data} isFundBreakdown={isFundBreakdown} stats={stats} />
+            </section>
+          </>
+        )}
+      </main>
     </div>
   )
 }
