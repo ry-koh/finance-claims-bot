@@ -20,8 +20,8 @@ const GROUP_BY_OPTIONS = [
   ['cca', 'By CCA'],
   ['portfolio', 'By Portfolio'],
   ['fund', 'By Fund'],
-  ['portfolio_fund', 'Portfolio × Fund'],
-  ['cca_fund', 'CCA × Fund'],
+  ['portfolio_fund', 'Portfolio x Fund'],
+  ['cca_fund', 'CCA x Fund'],
 ]
 
 function fmt(amount) {
@@ -92,13 +92,13 @@ function groupRowsByPortfolio(rows) {
   return Object.values(map)
 }
 
-// ─── Regular summary table ────────────────────────────────────────────────────
+// Regular summary table
 
 function SummaryTable({ groupBy, data }) {
   const portfolioGroups = groupBy === 'cca' ? groupRowsByPortfolio(data.rows) : null
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <div className="ui-card overflow-hidden">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
@@ -152,14 +152,14 @@ function SummaryTable({ groupBy, data }) {
   )
 }
 
-// ─── Fund breakdown table ─────────────────────────────────────────────────────
+// Fund breakdown table
 
 function FundBreakdownTable({ groupBy, data }) {
   const isCca = groupBy === 'cca_fund'
   const portfolioGroups = isCca ? groupRowsByPortfolio(data.rows) : null
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <div className="ui-card overflow-hidden">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
@@ -227,7 +227,7 @@ function FundBreakdownTable({ groupBy, data }) {
   )
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// Main page
 
 export default function AnalyticsPage() {
   const [groupBy, setGroupBy] = useState('cca')
@@ -262,13 +262,13 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
+    <div className="mobile-page mx-auto min-h-full max-w-2xl p-4">
       <div className="mb-4">
-        <h1 className="text-lg font-bold text-gray-900">Analytics</h1>
-        <p className="text-xs text-gray-400">Portfolio, CCA, and fund spend views.</p>
+        <p className="section-eyebrow">Analytics Overview</p>
+        <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">Portfolio spend</h1>
       </div>
 
-      <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="ui-card mb-4 p-4">
         {/* Group-by toggle */}
         <div className="flex flex-wrap gap-2 mb-4">
           {GROUP_BY_OPTIONS.map(([val, label]) => (
@@ -276,10 +276,10 @@ export default function AnalyticsPage() {
               key={val}
               type="button"
               onClick={() => setGroupBy(val)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`filter-pill ${
                 groupBy === val
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 active:bg-gray-200'
+                  ? 'filter-pill-active'
+                  : ''
               }`}
             >
               {label}
@@ -295,7 +295,7 @@ export default function AnalyticsPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="toolbar-field px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
           <div>
@@ -304,7 +304,7 @@ export default function AnalyticsPage() {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="toolbar-field px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
         </div>
@@ -347,7 +347,7 @@ export default function AnalyticsPage() {
             <button
               type="button"
               onClick={() => downloadCSV(groupBy, isFundBreakdown, data, dateFrom, dateTo)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 active:bg-gray-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 active:bg-gray-100"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />

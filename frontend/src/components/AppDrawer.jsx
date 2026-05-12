@@ -77,18 +77,24 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
     <>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/40"
+          className="fixed inset-0 z-40 bg-black/40"
           onClick={onClose}
         />
       )}
 
       <div
-        className={`app-drawer fixed top-0 left-0 h-full w-3/4 max-w-xs z-40 transform transition-transform duration-200 flex flex-col ${
+        className={`app-drawer fixed top-0 left-0 z-50 flex h-full w-3/4 max-w-xs transform flex-col transition-transform duration-200 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="px-4 py-4 border-b border-gray-100 shrink-0">
-          <p className="font-bold text-gray-900 text-base">Menu</p>
+        <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 px-4 py-4">
+          <span className="finance-logo">
+            <span className="material-symbols-outlined material-symbols-filled">account_balance_wallet</span>
+          </span>
+          <div className="min-w-0">
+            <p className="finance-wordmark truncate text-base">Finance Hub</p>
+            <p className="section-eyebrow mt-0.5">Workspace menu</p>
+          </div>
         </div>
 
         <nav className="flex-1 p-3 overflow-y-auto">
@@ -104,7 +110,7 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
                   end={item.end}
                   onClick={onClose}
                   className={({ isActive }) =>
-                    `drawer-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium mb-0.5 ${
+                    `drawer-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold mb-0.5 ${
                       isActive
                         ? 'drawer-nav-link-active'
                         : 'active:bg-gray-100'
@@ -120,9 +126,9 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
           ))}
         </nav>
 
-        <div className="shrink-0 border-t border-gray-100 px-4 py-3 space-y-3">
+        <div className="shrink-0 space-y-3 border-t border-gray-100 px-4 py-3">
           <ThemeModeToggle />
-          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <div className="ui-card px-3 py-2">
             <p className="truncate text-xs font-bold text-gray-800" title={user?.name || 'Finance Claims'}>
               {user?.name || 'Finance Claims'}
             </p>

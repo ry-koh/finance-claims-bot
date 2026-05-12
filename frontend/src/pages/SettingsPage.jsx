@@ -75,11 +75,14 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 max-w-lg mx-auto">
-      <h1 className="text-lg font-bold text-gray-900 mb-6">Settings</h1>
-      <form onSubmit={handleSave} className="space-y-6">
+    <div className="mobile-page mx-auto min-h-full max-w-lg p-4">
+      <div className="mb-4">
+        <p className="section-eyebrow">Settings & Management</p>
+        <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">Workspace controls</h1>
+      </div>
+      <form onSubmit={handleSave} className="space-y-4">
 
-        <div>
+        <div className="ui-card p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Academic Year</h2>
           <label className="block text-xs text-gray-500 mb-1">Academic Year</label>
           <input
@@ -87,14 +90,14 @@ export default function SettingsPage() {
             value={academicYear}
             onChange={(e) => setAcademicYear(e.target.value)}
             placeholder="e.g. 2526"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
           <p className="text-xs text-amber-600 mt-1">
             Changing the AY will reset the claim counter to 0001
           </p>
         </div>
 
-        <div>
+        <div className="ui-card p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Your App Identity</h2>
           <p className="text-xs text-gray-400 mb-3">Used for audit timeline names and your director account identity.</p>
           <label className="block text-xs text-gray-500 mb-1">Your Name</label>
@@ -103,7 +106,7 @@ export default function SettingsPage() {
             value={accountName}
             onChange={(e) => setAccountName(e.target.value)}
             placeholder="e.g. Ryan Koh Jun Hao"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
           <label className="block text-xs text-gray-500 mb-1 mt-3">Your Personal / Account Email</label>
           <input
@@ -111,11 +114,11 @@ export default function SettingsPage() {
             value={accountEmail}
             onChange={(e) => setAccountEmail(e.target.value)}
             placeholder="e.g. e0596601@u.nus.edu"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
         </div>
 
-        <div>
+        <div className="ui-card p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Testing Mode</h2>
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
             <label className="flex items-start gap-3">
@@ -137,12 +140,12 @@ export default function SettingsPage() {
               value={testingModeMessage}
               onChange={(e) => setTestingModeMessage(e.target.value)}
               rows={3}
-              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="toolbar-field mt-1 w-full px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
         </div>
 
-        <div>
+        <div className="ui-card p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Claim Email Routing</h2>
           <p className="text-xs text-gray-400 mb-3">
             Used in the email block that treasurers copy and send after finance approves a claim.
@@ -155,7 +158,7 @@ export default function SettingsPage() {
                 value={claimToEmail}
                 onChange={(e) => setClaimToEmail(e.target.value)}
                 placeholder="e.g. rh.finance@u.nus.edu"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
               <p className="text-xs text-gray-400 mt-1">Appears as the To line in claim submission emails.</p>
             </div>
@@ -166,14 +169,14 @@ export default function SettingsPage() {
                 value={claimCcEmail}
                 onChange={(e) => setClaimCcEmail(e.target.value)}
                 placeholder="e.g. 68findirector.rh@gmail.com"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
               <p className="text-xs text-gray-400 mt-1">Appears as the default CC line in claim submission emails.</p>
             </div>
           </div>
         </div>
 
-        <div>
+        <div className="ui-card p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Document & Email Finance Director</h2>
           <p className="text-xs text-gray-400 mb-3">
             Used for generated document identity and email salutation. This can stay as the previous Finance Director until your handover is complete.
@@ -193,7 +196,7 @@ export default function SettingsPage() {
                   value={value}
                   onChange={(e) => set(e.target.value)}
                   placeholder={placeholder}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
             ))}
@@ -203,7 +206,7 @@ export default function SettingsPage() {
         <button
           type="submit"
           disabled={updateMutation.isPending}
-          className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+          className="ui-button ui-button-primary w-full disabled:opacity-50"
         >
           {updateMutation.isPending && (
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

@@ -17,7 +17,19 @@ api.interceptors.request.use(config => {
 })
 
 api.interceptors.response.use(
-  response => response,
+  response => {
+    const contentType = response.headers?.['content-type'] || ''
+    const data = response.data
+    if (
+      contentType.includes('text/html') ||
+      (typeof data === 'string' && /^\s*<!doctype html/i.test(data))
+    ) {
+      return Promise.reject(new Error(
+        'API returned the frontend HTML. Set VITE_API_URL to the backend URL or run the backend API.'
+      ))
+    }
+    return response
+  },
   async error => {
     const config = error.config
     const method = config?.method?.toLowerCase()

@@ -44,7 +44,7 @@ export function ThemeProvider({ children }) {
       document.documentElement.style.colorScheme = next
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', next === 'dark' ? '#0b1120' : '#f6f8fb')
+        ?.setAttribute('content', next === 'dark' ? '#0b1326' : '#f9f9ff')
     }
 
     apply()

@@ -47,11 +47,12 @@ function ClaimCard({ claim, onClick }) {
   const meta = getTreasurerStatusMeta(claim)
   const progressMessage = getTreasurerProgressMessage(claim)
   const isAction = statusKey === 'needs_action'
+  const claimTitle = claim.claim_description || claim.reference_code || `Claim #${claim.id.slice(0, 8)}`
 
   return (
     <button
       onClick={onClick}
-      className={`ui-card w-full border-l-4 ${meta.border} p-4 text-left active:scale-[0.995]`}
+      className="ui-card w-full p-3 text-left"
     >
       {claim.status === 'draft' && claim.rejection_comment && (
         <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
@@ -66,16 +67,18 @@ function ClaimCard({ claim, onClick }) {
         </div>
       )}
 
-      <div className="mb-1 flex flex-col items-start gap-1.5">
-        <span className="min-w-0 text-sm font-semibold leading-tight text-gray-900">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="finance-ref block truncate">
           {claim.reference_code ?? `Claim #${claim.id.slice(0, 8)}`}
-        </span>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold leading-tight ${meta.badge}`}>
-          {meta.label}
-        </span>
+          </span>
+          <h3 className="mt-0.5 truncate text-base font-semibold leading-6 text-gray-900">
+            {claimTitle}
+          </h3>
+        </div>
+        <span className="finance-amount shrink-0">{formatAmount(claim.total_amount)}</span>
       </div>
 
-      <p className="mb-2 truncate text-xs text-gray-500">{claim.claim_description || 'No description'}</p>
       {progressMessage && (
         <p className={`mb-2 rounded-lg px-2 py-1 text-xs font-medium ${
           isAction ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-600'
@@ -84,17 +87,9 @@ function ClaimCard({ claim, onClick }) {
         </p>
       )}
 
-      <div className="flex items-start justify-between text-xs">
+      <div className="flex items-center justify-between gap-3 text-xs">
         <span className="text-gray-400">{formatDate(claim.date)}</span>
-        <div className="text-right">
-          <p className="font-semibold text-gray-800">{formatAmount(claim.total_amount)}</p>
-          {claim.submitted_at && (
-            <p className="text-emerald-600">Submitted {formatDate(claim.submitted_at)}</p>
-          )}
-          {claim.reimbursed_at && (
-            <p className="text-teal-600">Reimbursed {formatDate(claim.reimbursed_at)}</p>
-          )}
-        </div>
+        <span className={`status-pill ${meta.badge}`}>{meta.label}</span>
       </div>
     </button>
   )
@@ -121,18 +116,18 @@ export default function TreasurerHomePage() {
   const reimbursedCount = grouped.reimbursed.length
 
   return (
-    <div className="mx-auto max-w-lg p-4">
+    <div className="mobile-page mx-auto min-h-full max-w-lg p-4">
       <div className="ui-card mb-4 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">My Claims</h1>
-            <p className="text-xs text-gray-500">Submission, review, and reimbursement status.</p>
+            <p className="section-eyebrow">Claims Dashboard</p>
+            <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">My claims</h1>
           </div>
           <button
             onClick={() => navigate('/claims/new')}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white active:bg-blue-700"
+            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white active:bg-blue-700"
           >
-            + New Claim
+            New
           </button>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -142,9 +137,9 @@ export default function TreasurerHomePage() {
             ['Submitted', submittedCount, TREASURER_STATUS_META.submitted.panel],
             ['Reimbursed', reimbursedCount, TREASURER_STATUS_META.reimbursed.panel],
           ].map(([label, value, panel]) => (
-            <div key={label} className={`rounded-xl border px-3 py-2 ${panel}`}>
-              <p className="text-[10px] font-bold uppercase tracking-wide opacity-75">{label}</p>
-              <p className="text-base font-bold tabular-nums">{value}</p>
+            <div key={label} className={`metric-tile ${label === 'Needs Action' ? '' : 'metric-tile-neutral'} ${panel}`}>
+              <p className="section-eyebrow mb-1 text-[10px]">{label}</p>
+              <p className="finance-amount text-gray-900">{value}</p>
             </div>
           ))}
         </div>

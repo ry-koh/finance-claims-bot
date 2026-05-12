@@ -17,11 +17,21 @@ export const fetchClaims = ({ status, page, page_size, search, date_from, date_t
   if (search) params.search = search
   if (date_from) params.date_from = date_from
   if (date_to) params.date_to = date_to
-  return api.get('/claims', { params }).then((r) => r.data)
+  return api.get('/claims', { params }).then((r) => {
+    if (!r.data || typeof r.data !== 'object' || Array.isArray(r.data)) {
+      throw new Error('Invalid claims response from API.')
+    }
+    return r.data
+  })
 }
 
 export const fetchClaimCounts = () =>
-  api.get('/claims/counts').then((r) => r.data)
+  api.get('/claims/counts').then((r) => {
+    if (!r.data || typeof r.data !== 'object' || Array.isArray(r.data)) {
+      throw new Error('Invalid claim counts response from API.')
+    }
+    return r.data
+  })
 
 export const exportClaims = async ({ status, search, date_from, date_to } = {}) => {
   const params = {}

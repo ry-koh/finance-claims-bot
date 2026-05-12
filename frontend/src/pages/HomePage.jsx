@@ -40,17 +40,21 @@ const STATUS_BORDER = {
   error: 'border-l-red-500',
 }
 
+function isCountsMap(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
 function badgeClasses(status) {
   return STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'
 }
 
 function formatAmount(amount) {
-  if (amount == null) return '—'
+  if (amount == null) return '-'
   return `$${Number(amount).toFixed(2)}`
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return '—'
+  if (!dateStr) return '-'
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -74,7 +78,7 @@ function DateRangeFilter({ dateFrom, dateTo, onDateFromChange, onDateToChange })
           type="date"
           value={dateFrom}
           onChange={e => onDateFromChange(e.target.value)}
-          className="mt-0.5 block min-w-0 w-full max-w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+          className="toolbar-field mt-1 block min-w-0 w-full max-w-full px-2 text-xs outline-none focus:border-blue-400"
         />
       </div>
       <div className="min-w-0">
@@ -83,7 +87,7 @@ function DateRangeFilter({ dateFrom, dateTo, onDateFromChange, onDateToChange })
           type="date"
           value={dateTo}
           onChange={e => onDateToChange(e.target.value)}
-          className="mt-0.5 block min-w-0 w-full max-w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs outline-none focus:border-blue-400"
+          className="toolbar-field mt-1 block min-w-0 w-full max-w-full px-2 text-xs outline-none focus:border-blue-400"
         />
       </div>
     </div>
@@ -110,17 +114,23 @@ function SkeletonCard() {
 // A single claim card
 function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
   const statusLabel = STATUSES.find(s => s.value === claim.status)?.label ?? claim.status
-  const borderColor = STATUS_BORDER[claim.status] ?? 'border-l-gray-200'
   const readiness = getClaimReadiness(claim)
+  const claimTitle = claim.claim_description || claim.claimer?.name || claim.one_off_name || 'Untitled claim'
+  const orgLabel = claim.cca?.name || claim.claimer?.name || claim.one_off_name || 'Finance claim'
   return (
     <button
       onClick={selectMode ? onToggle : onClick}
-      className={`ui-card w-full border-l-4 ${borderColor} p-3 text-left active:bg-gray-50 transition-colors`}
+      className="ui-card w-full p-3 text-left transition-colors active:bg-gray-50"
     >
-      <div className="flex justify-between items-start gap-2">
-        <span className="text-sm font-semibold text-gray-900 break-all leading-tight">
-          {claim.reference_code ?? `#${claim.id}`}
-        </span>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="finance-ref block truncate">
+            {claim.reference_code ?? `#${claim.id}`}
+          </span>
+          <h3 className="mt-0.5 truncate text-base font-semibold leading-6 text-gray-900">
+            {claimTitle}
+          </h3>
+        </div>
         {selectMode ? (
           selected ? (
             <div className="shrink-0 w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center">
@@ -132,18 +142,16 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
             <div className="shrink-0 w-5 h-5 rounded-full border-2 border-gray-300" />
           )
         ) : (
-          <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${badgeClasses(claim.status)}`}>
-            {statusLabel}
+          <span className="finance-amount shrink-0">
+            {formatAmount(claim.total_amount)}
           </span>
         )}
       </div>
 
-      <p className="text-xs text-gray-500 mt-0.5 truncate">
-        {claim.claimer?.name || claim.one_off_name || 'Unknown claimer'}
+      <p className="mb-3 flex items-center gap-1.5 truncate text-xs text-gray-500">
+        <span className="material-symbols-outlined text-[1rem] text-gray-400">groups</span>
+        <span className="truncate">{orgLabel}</span>
       </p>
-      {claim.claim_description && (
-        <p className="text-xs text-gray-400 truncate">{claim.claim_description}</p>
-      )}
       {claim.internal_notes && (
         <p className="mt-1 flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">
           <IconPencil className="h-3 w-3 shrink-0" />
@@ -156,21 +164,13 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
         </p>
       )}
 
-      <div className="flex justify-between items-start mt-2">
-        <span className="text-sm font-bold text-gray-800">
-          {formatAmount(claim.total_amount)}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-xs text-gray-400">
+          {formatDate(claim.submitted_at || claim.reimbursed_at || claim.created_at)}
         </span>
-        <div className="text-right text-xs">
-          {claim.submitted_at && (
-            <p className="text-green-600">Submitted {formatDate(claim.submitted_at)}</p>
-          )}
-          {claim.reimbursed_at && (
-            <p className="text-teal-600">Reimbursed {formatDate(claim.reimbursed_at)}</p>
-          )}
-          {!claim.submitted_at && !claim.reimbursed_at && (
-            <p className="text-gray-400">{formatDate(claim.created_at)}</p>
-          )}
-        </div>
+        <span className={`status-pill ${badgeClasses(claim.status)}`}>
+          {statusLabel}
+        </span>
       </div>
     </button>
   )
@@ -257,10 +257,10 @@ export default function HomePage() {
     try {
       if (action === 'send') {
         const result = await sendMutation.mutateAsync({ claim_ids: ids })
-        setActionResult(`Sent ${result.sent} PDF${result.sent !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
+        setActionResult(`Sent ${result.sent} PDF${result.sent !== 1 ? 's' : ''}${result.skipped ? ` - ${result.skipped} skipped` : ''}`)
       } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
-        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted${result.skipped ? ` · ${result.skipped} skipped` : ''}`)
+        setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted${result.skipped ? ` - ${result.skipped} skipped` : ''}`)
       }
     } catch {
       setActionResult('Action failed. Please try again.')
@@ -274,19 +274,22 @@ export default function HomePage() {
     return () => clearTimeout(t)
   }, [actionResult])
 
-  const allCount = Object.values(countsData ?? {}).reduce((a, b) => a + b, 0)
-  const reviewQueue = (countsData?.pending_review ?? 0) + (countsData?.attachment_uploaded ?? 0)
+  const counts = isCountsMap(countsData) ? countsData : null
+  const allCount = counts
+    ? Object.values(counts).reduce((sum, value) => sum + (Number(value) || 0), 0)
+    : total
+  const reviewQueue = (Number(counts?.pending_review) || 0) + (Number(counts?.attachment_uploaded) || 0)
   const documentQueue =
-    (countsData?.email_sent ?? 0) +
-    (countsData?.screenshot_pending ?? 0) +
-    (countsData?.screenshot_uploaded ?? 0) +
-    (countsData?.docs_generated ?? 0)
-  const completedCount = (countsData?.submitted ?? 0) + (countsData?.reimbursed ?? 0)
+    (Number(counts?.email_sent) || 0) +
+    (Number(counts?.screenshot_pending) || 0) +
+    (Number(counts?.screenshot_uploaded) || 0) +
+    (Number(counts?.docs_generated) || 0)
+  const completedCount = (Number(counts?.submitted) || 0) + (Number(counts?.reimbursed) || 0)
 
   return (
     <div className="mobile-page flex min-h-full flex-col">
       {/* Header */}
-      <div className="mobile-header border-b px-4 pt-4 pb-3">
+      <div className="mobile-header border-b px-4 py-4">
         {/* Header row */}
         {selectMode ? (
           <div className="space-y-2 mb-2">
@@ -304,7 +307,7 @@ export default function HomePage() {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search…"
+                placeholder="Search..."
                 className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400"
               />
               <button
@@ -328,12 +331,12 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Claims</h1>
-                <p className="text-xs text-gray-400">Finance workflow queue</p>
+                <p className="section-eyebrow">Claims Dashboard</p>
+                <h1 className="mt-1 text-xl font-bold leading-7 text-gray-900">Finance workflow</h1>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <button
                   disabled={isExporting}
                   onClick={async () => {
@@ -349,12 +352,12 @@ export default function HomePage() {
                       setIsExporting(false)
                     }
                   }}
-                  className="text-sm text-gray-500 font-medium disabled:opacity-40"
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 disabled:opacity-40"
                 >
-                  {isExporting ? 'Exporting…' : 'Export'}
+                  {isExporting ? 'Exporting...' : 'Export'}
                 </button>
                 <button onClick={() => setSelectMode(true)}
-                  className="text-sm text-blue-600 font-medium">Select</button>
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">Select</button>
               </div>
             </div>
             <div className="-mx-4 mb-2 overflow-x-auto px-4 pb-1 scrollbar-none">
@@ -364,12 +367,12 @@ export default function HomePage() {
                   ['Review', reviewQueue],
                   ['Docs', documentQueue],
                   ['Done', completedCount],
-                  ['Errors', countsData?.error ?? 0],
-                  ['Compiled', countsData?.compiled ?? 0],
+                  ['Errors', Number(counts?.error) || 0],
+                  ['Compiled', Number(counts?.compiled) || 0],
                 ].map(([label, value]) => (
-                  <div key={label} className="min-w-[76px] rounded-lg border border-gray-200 bg-white px-2.5 py-1.5">
-                    <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-                    <p className="text-sm font-bold text-gray-900 tabular-nums">{value}</p>
+                  <div key={label} className={`min-w-[84px] ${label === 'Total' ? 'metric-tile' : 'metric-tile metric-tile-neutral'}`}>
+                    <p className="section-eyebrow mb-1 text-[10px]">{label}</p>
+                    <p className="finance-amount text-gray-900">{value}</p>
                   </div>
                 ))}
               </div>
@@ -379,20 +382,23 @@ export default function HomePage() {
 
         {!selectMode && (
           <>
-            <div className="flex gap-2 mt-2">
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search ref code or claimer…"
-                className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400"
-              />
+            <div className="mt-3 flex gap-2">
+              <label className="relative min-w-0 flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[1.15rem] text-gray-400">search</span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search claims..."
+                  className="toolbar-field w-full pl-10 pr-3 text-sm outline-none focus:border-blue-400"
+                />
+              </label>
               <button
                 onClick={() => {
                   if (filterOpen) { setDateFrom(''); setDateTo('') }
                   setFilterOpen(f => !f)
                 }}
-                className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${filterOpen ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600'}`}
+                className={`filter-pill ${filterOpen ? 'filter-pill-active' : ''}`}
               >
                 Filter
               </button>
@@ -418,18 +424,18 @@ export default function HomePage() {
           >
             {STATUSES.map(({ label, value }) => {
               const isActive = activeStatus === value
-              const count = value === null ? allCount : (countsData?.[value] ?? 0)
+              const count = value === null ? allCount : (Number(counts?.[value]) || 0)
               return (
                 <button
                   key={label}
                   onClick={() => setActiveStatus(value)}
-                  className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${
+                  className={`filter-pill shrink-0 whitespace-nowrap ${
                     isActive
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-200'
+                      ? 'filter-pill-active'
+                      : ''
                   }`}
                 >
-                  {label}{countsData ? ` ${count}` : ''}
+                  {label}{counts || value === null ? ` ${count}` : ''}
                 </button>
               )
             })}
@@ -495,7 +501,7 @@ export default function HomePage() {
         <div className="mobile-footer border-t px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">
-              {total === 0 ? 'No results' : `${pageStart}–${pageEnd} of ${total}`}
+              {total === 0 ? 'No results' : `${pageStart}-${pageEnd} of ${total}`}
             </span>
             <div className="flex gap-1">
               {[20, 50, 100].map(n => (
@@ -520,7 +526,7 @@ export default function HomePage() {
                 onClick={() => setPage(p => p - 1)}
                 className="text-sm text-blue-600 disabled:text-gray-300 font-medium px-3 py-1.5 rounded-lg border border-gray-200 disabled:border-gray-100"
               >
-                ← Prev
+                Prev
               </button>
               <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
               <button
@@ -528,7 +534,7 @@ export default function HomePage() {
                 onClick={() => setPage(p => p + 1)}
                 className="text-sm text-blue-600 disabled:text-gray-300 font-medium px-3 py-1.5 rounded-lg border border-gray-200 disabled:border-gray-100"
               >
-                Next →
+                Next
               </button>
             </div>
           )}
@@ -543,14 +549,14 @@ export default function HomePage() {
             onClick={() => canSendSelected && setConfirmAction('send')}
             className="flex-1 bg-blue-600 disabled:bg-blue-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
-            {sendMutation.isPending ? 'Sending…' : `Send (${selectedIds.size})`}
+            {sendMutation.isPending ? 'Sending...' : `Send (${selectedIds.size})`}
           </button>
           <button
             disabled={!canSubmitSelected || bulkStatusMutation.isPending}
             onClick={() => canSubmitSelected && setConfirmAction('submit')}
             className="flex-1 bg-green-600 disabled:bg-green-300 text-white text-xs font-semibold py-2.5 rounded-xl"
           >
-            {bulkStatusMutation.isPending ? 'Updating…' : `Submitted (${selectedIds.size})`}
+            {bulkStatusMutation.isPending ? 'Updating...' : `Submitted (${selectedIds.size})`}
           </button>
           <button
             disabled={!canReimburseSelected}
@@ -593,8 +599,8 @@ export default function HomePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl px-8 py-6 flex flex-col items-center gap-3 mx-4">
             <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-gray-800">Sending to Telegram…</p>
-            <p className="text-xs text-gray-500 text-center">Uploading PDFs — this may take 1–2 minutes</p>
+            <p className="text-sm font-semibold text-gray-800">Sending to Telegram...</p>
+            <p className="text-xs text-gray-500 text-center">Uploading PDFs - this may take 1-2 minutes</p>
           </div>
         </div>
       )}

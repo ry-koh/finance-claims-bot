@@ -92,7 +92,7 @@ function StepIndicator({ current, steps = ['Who', 'What', 'Transactions'] }) {
 
 function Label({ children, required }) {
   return (
-    <label className="block text-xs font-semibold text-gray-700 mb-1">
+    <label className="section-eyebrow mb-1 block">
       {children}
       {required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
@@ -105,7 +105,7 @@ function Select({ value, onChange, disabled, placeholder, options, className = '
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 ${className}`}
+      className={`toolbar-field w-full px-3 text-sm disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 ${className}`}
     >
       {placeholder && (
         <option value="" disabled>
@@ -136,7 +136,7 @@ function Input({ value, onChange, type = 'text', placeholder, disabled, inputMod
       placeholder={placeholder}
       disabled={disabled}
       inputMode={inputMode}
-      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400 ${type === 'date' ? 'max-w-[200px]' : ''} ${className}`}
+      className={`toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400 ${type === 'date' ? 'max-w-[200px]' : ''} ${className}`}
     />
   )
 }
@@ -148,7 +148,7 @@ function Textarea({ value, onChange, placeholder, rows = 3 }) {
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       rows={rows}
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+      className="toolbar-field w-full resize-none px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
     />
   )
 }
@@ -2582,8 +2582,8 @@ export default function NewClaimPage() {
           <IconChevronLeft className="h-4 w-4" />
         </button>
         <div>
-          <h1 className="text-base font-bold text-gray-900">New Claim</h1>
-          <p className="text-xs font-medium text-gray-500">Guided reimbursement claim setup</p>
+          <p className="section-eyebrow">New Claim</p>
+          <h1 className="mt-1 text-lg font-bold leading-6 text-gray-900">Guided setup</h1>
         </div>
         </div>
       </div>
