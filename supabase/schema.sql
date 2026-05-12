@@ -585,5 +585,7 @@ INSERT INTO app_settings (key, value) VALUES
   ('claim_submission_cc_email', '68findirector.rh@gmail.com'),
   ('document_fd_name', ''),
   ('document_fd_salutation', ''),
-  ('document_fd_email', '')
+  ('document_fd_email', ''),
+  ('testing_mode_enabled', 'false'),
+  ('testing_mode_message', 'The finance claims app is temporarily down for testing. Please check back later.')
 ON CONFLICT DO NOTHING;

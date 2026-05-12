@@ -478,6 +478,18 @@ VALUES
 ON CONFLICT (key) DO NOTHING;
 ```
 
+### Seed testing-mode settings
+
+These settings are optional because the app creates them from the Settings page when needed.
+
+```sql
+INSERT INTO app_settings (key, value)
+VALUES
+  ('testing_mode_enabled', 'false'),
+  ('testing_mode_message', 'The finance claims app is temporarily down for testing. Please check back later.')
+ON CONFLICT (key) DO NOTHING;
+```
+
 ### Add receipt-level payers
 
 This replaces the old claim-level "other emails" workflow. Existing claims are treated as paid by the claimer until a receipt is edited in the app.

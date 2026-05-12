@@ -69,6 +69,7 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
     : user?.role === 'treasurer'
     ? 'CCA Treasurer'
     : 'Finance Claims'
+  const accountRoleLabel = user?.is_role_preview ? `Previewing ${roleLabel}` : roleLabel
   const telegramUsername = formatTelegramUsername(user?.telegram_username)
   const ccaNames = user?.ccas?.length ? user.ccas.map((cca) => cca.name).join(', ') : ''
 
@@ -125,7 +126,7 @@ export default function AppDrawer({ open, onClose, navGroups, pendingCount = 0 }
             <p className="truncate text-xs font-bold text-gray-800" title={user?.name || 'Finance Claims'}>
               {user?.name || 'Finance Claims'}
             </p>
-            <p className="mt-0.5 text-[11px] font-medium text-gray-500">{roleLabel}</p>
+            <p className="mt-0.5 text-[11px] font-medium text-gray-500">{accountRoleLabel}</p>
             <div className="mt-2 space-y-1 border-t border-gray-100 pt-2">
               <AccountDetail label="Email" value={user?.email} />
               <AccountDetail label="Matric" value={user?.matric_number} />

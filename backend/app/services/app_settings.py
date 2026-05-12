@@ -14,8 +14,16 @@ CLAIM_EMAIL_SETTING_KEYS = {
     "cc_email": "claim_submission_cc_email",
 }
 
+TESTING_MODE_SETTING_KEYS = {
+    "enabled": "testing_mode_enabled",
+    "message": "testing_mode_message",
+}
+
 DEFAULT_CLAIM_TO_EMAIL = "rh.finance@u.nus.edu"
 DEFAULT_CLAIM_CC_EMAIL = "68findirector.rh@gmail.com"
+DEFAULT_TESTING_MODE_MESSAGE = (
+    "The finance claims app is temporarily down for testing. Please check back later."
+)
 
 
 def get_setting(db, key: str, default: str = "") -> str:
@@ -90,3 +98,20 @@ def get_claim_email_settings(db) -> dict:
             DEFAULT_CLAIM_CC_EMAIL,
         ),
     }
+
+
+def get_testing_mode(db) -> dict:
+    enabled = get_setting(db, TESTING_MODE_SETTING_KEYS["enabled"], "false").lower() == "true"
+    message = get_setting(
+        db,
+        TESTING_MODE_SETTING_KEYS["message"],
+        DEFAULT_TESTING_MODE_MESSAGE,
+    ).strip() or DEFAULT_TESTING_MODE_MESSAGE
+    return {"enabled": enabled, "message": message}
+
+
+def set_testing_mode(db, enabled: bool, message: str | None = None) -> None:
+    values = {TESTING_MODE_SETTING_KEYS["enabled"]: "true" if enabled else "false"}
+    if message is not None:
+        values[TESTING_MODE_SETTING_KEYS["message"]] = message.strip() or DEFAULT_TESTING_MODE_MESSAGE
+    upsert_settings(db, values)

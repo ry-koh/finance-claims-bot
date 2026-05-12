@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { useIsDirector, useIsTreasurer } from '../context/AuthContext'
 import { usePendingCount } from '../api/admin'
 import AppDrawer from './AppDrawer'
+import DirectorTestingBar from './DirectorTestingBar'
 import {
   IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconMenu, IconBookOpen,
   IconBarChart, IconUserCheck, IconShield, IconSettings, IconLayers, IconAlertTriangle,
@@ -136,6 +137,7 @@ export default function Layout() {
         <span className="app-title font-semibold text-base">{pageTitle}</span>
       </header>
       <main className="app-main flex-1 overflow-y-auto pt-14">
+        <DirectorTestingBar />
         <Outlet />
       </main>
       <AppDrawer

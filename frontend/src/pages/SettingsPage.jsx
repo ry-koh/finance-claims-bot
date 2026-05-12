@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useSettings, useUpdateSettings } from '../api/settings'
+import { useAuth } from '../context/AuthContext'
 
 export default function SettingsPage() {
   const { data, isLoading } = useSettings()
   const updateMutation = useUpdateSettings()
+  const { refreshTestingMode, setPreviewRole } = useAuth()
 
   const [academicYear, setAcademicYear] = useState('')
   const [accountName, setAccountName] = useState('')
@@ -15,6 +17,8 @@ export default function SettingsPage() {
   const [fdSalutation, setFdSalutation] = useState('')
   const [claimToEmail, setClaimToEmail] = useState('')
   const [claimCcEmail, setClaimCcEmail] = useState('')
+  const [testingModeEnabled, setTestingModeEnabled] = useState(false)
+  const [testingModeMessage, setTestingModeMessage] = useState('')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -29,6 +33,8 @@ export default function SettingsPage() {
       setFdSalutation(data.fd_salutation || '')
       setClaimToEmail(data.claim_to_email || '')
       setClaimCcEmail(data.claim_cc_email || '')
+      setTestingModeEnabled(Boolean(data.testing_mode_enabled))
+      setTestingModeMessage(data.testing_mode_message || 'The finance claims app is temporarily down for testing. Please check back later.')
     }
   }, [data])
 
@@ -46,10 +52,14 @@ export default function SettingsPage() {
         fd_salutation: fdSalutation,
         claim_to_email: claimToEmail,
         claim_cc_email: claimCcEmail,
+        testing_mode_enabled: testingModeEnabled,
+        testing_mode_message: testingModeMessage,
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           setSaved(true)
+          if (!testingModeEnabled) setPreviewRole('director')
+          await refreshTestingMode()
           setTimeout(() => setSaved(false), 2000)
         },
       }
@@ -103,6 +113,33 @@ export default function SettingsPage() {
             placeholder="e.g. e0596601@u.nus.edu"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
+        </div>
+
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Testing Mode</h2>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={testingModeEnabled}
+                onChange={(e) => setTestingModeEnabled(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-gray-900">Show downtime screen to users</span>
+                <span className="mt-1 block text-xs leading-relaxed text-gray-500">
+                  CCA treasurers and finance team members will be blocked while Finance Director accounts stay open for testing.
+                </span>
+              </span>
+            </label>
+            <label className="mt-3 block text-xs text-gray-500">Downtime Message</label>
+            <textarea
+              value={testingModeMessage}
+              onChange={(e) => setTestingModeMessage(e.target.value)}
+              rows={3}
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </div>
         </div>
 
         <div>

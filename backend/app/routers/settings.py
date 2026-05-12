@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.auth import require_director
+from app.auth import require_auth, require_director
 from app.database import get_supabase
 from app.services.app_settings import (
     CLAIM_EMAIL_SETTING_KEYS,
@@ -11,6 +11,8 @@ from app.services.app_settings import (
     get_claim_email_settings,
     get_document_finance_director,
     get_setting,
+    get_testing_mode,
+    set_testing_mode,
     upsert_setting,
     upsert_settings,
 )
@@ -30,6 +32,8 @@ class SettingsResponse(BaseModel):
     fd_salutation: str
     claim_to_email: str
     claim_cc_email: str
+    testing_mode_enabled: bool
+    testing_mode_message: str
 
 
 class SettingsUpdate(BaseModel):
@@ -44,6 +48,13 @@ class SettingsUpdate(BaseModel):
     fd_salutation: Optional[str] = None
     claim_to_email: Optional[str] = None
     claim_cc_email: Optional[str] = None
+    testing_mode_enabled: Optional[bool] = None
+    testing_mode_message: Optional[str] = None
+
+
+class TestingModeUpdate(BaseModel):
+    enabled: bool
+    message: Optional[str] = None
 
 
 @router.get("", response_model=SettingsResponse)
@@ -54,6 +65,7 @@ async def get_settings(
     ay = get_setting(db, "academic_year", "")
     fd = get_document_finance_director(db)
     email_settings = get_claim_email_settings(db)
+    testing_mode = get_testing_mode(db)
 
     return {
         "academic_year": ay,
@@ -67,7 +79,27 @@ async def get_settings(
         "fd_salutation": fd.get("salutation") or "",
         "claim_to_email": email_settings.get("to_email") or "",
         "claim_cc_email": email_settings.get("cc_email") or "",
+        "testing_mode_enabled": testing_mode["enabled"],
+        "testing_mode_message": testing_mode["message"],
     }
+
+
+@router.get("/testing-mode")
+async def get_testing_mode_status(
+    _member: dict = Depends(require_auth),
+    db=Depends(get_supabase),
+):
+    return get_testing_mode(db)
+
+
+@router.patch("/testing-mode")
+async def update_testing_mode_status(
+    payload: TestingModeUpdate,
+    _director: dict = Depends(require_director),
+    db=Depends(get_supabase),
+):
+    set_testing_mode(db, payload.enabled, payload.message)
+    return get_testing_mode(db)
 
 
 @router.patch("")
@@ -105,5 +137,13 @@ async def update_settings(
         email_settings[CLAIM_EMAIL_SETTING_KEYS["cc_email"]] = payload.claim_cc_email.strip()
 
     upsert_settings(db, {**fd_settings, **email_settings})
+
+    if payload.testing_mode_enabled is not None or payload.testing_mode_message is not None:
+        current_testing_mode = get_testing_mode(db)
+        set_testing_mode(
+            db,
+            payload.testing_mode_enabled if payload.testing_mode_enabled is not None else current_testing_mode["enabled"],
+            payload.testing_mode_message,
+        )
 
     return {"ok": True}

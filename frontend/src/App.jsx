@@ -54,8 +54,27 @@ function ErrorScreen({ onRetry, message }) {
   )
 }
 
+function TestingModeScreen({ message, onRetry }) {
+  return (
+    <div className="app-shell flex min-h-screen items-center justify-center px-6 py-10 text-center">
+      <Card className="w-full max-w-sm p-6">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
+          <span className="text-lg font-bold">!</span>
+        </div>
+        <h1 className="mb-2 text-lg font-bold text-gray-900">App down for testing</h1>
+        <p className="mb-5 text-sm leading-relaxed text-gray-500">
+          {message || 'The finance claims app is temporarily down for testing. Please check back later.'}
+        </p>
+        <Button onClick={onRetry} className="w-full">
+          Check Again
+        </Button>
+      </Card>
+    </div>
+  )
+}
+
 export default function App() {
-  const { user, retryAuth } = useAuth()
+  const { user, actualUser, retryAuth, testingMode, refreshTestingMode } = useAuth()
   const [retryNotice, setRetryNotice] = useState(false)
 
   useEffect(() => {
@@ -78,6 +97,20 @@ export default function App() {
   if (user.status === 'error') return <>{retryBanner}<ErrorScreen onRetry={retryAuth} message={user.message} /></>
   if (!user || user.status === 'unregistered') return <RegistrationPage />
   if (user.status === 'pending') return <PendingApprovalPage />
+  if (testingMode?.enabled && actualUser?.role !== 'director') {
+    return (
+      <>
+        {retryBanner}
+        <TestingModeScreen
+          message={testingMode.message}
+          onRetry={() => {
+            refreshTestingMode()
+            retryAuth()
+          }}
+        />
+      </>
+    )
+  }
 
   const isTreasurer = user.role === 'treasurer'
   const isDirector = user.role === 'director'
