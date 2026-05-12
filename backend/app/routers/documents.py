@@ -642,9 +642,10 @@ async def upload_mf_approval(
     claim_id: str,
     file: UploadFile = File(...),
     db=Depends(get_supabase),
-    _auth=Depends(require_finance_team),
+    _auth=Depends(require_auth),
 ):
     """Upload Master's Fund approval screenshot for a claim."""
+    claim = get_claim_for_member(db, claim_id, _auth, require_treasurer_draft=True)
     from app.services import image as image_service
     raw_bytes = await file.read()
     try:
@@ -654,7 +655,6 @@ async def upload_mf_approval(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
 
-    claim = _get_full_claim(claim_id, db)
     from datetime import datetime as _dt
     timestamp = _dt.now().strftime("%Y%m%d_%H%M%S_%f")
     object_name = f"mf_approval/{claim_id}_{timestamp}.jpg"

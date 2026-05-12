@@ -2440,7 +2440,13 @@ export default function NewClaimPage() {
       // 1b. Upload MF approval if present (one call per page)
       if (step2.wbsAccount === 'MF' && step2.mfApprovalFiles?.length) {
         for (const file of step2.mfApprovalFiles) {
-          try { await uploadMfApproval({ claimId, file }) } catch {}
+          try {
+            await uploadMfApproval({ claimId, file })
+          } catch (e) {
+            const msg = e?.response?.data?.detail || e?.message || 'Unknown error'
+            imageWarnings.push(`Master Fund approval: ${msg}`)
+            console.error('MF approval upload failed:', e)
+          }
         }
       }
 

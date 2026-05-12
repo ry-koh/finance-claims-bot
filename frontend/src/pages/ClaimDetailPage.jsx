@@ -2582,7 +2582,7 @@ export default function ClaimDetailPage() {
         </div>
 
         {/* ── MF Approval Screenshot ── */}
-        {claim.wbs_account === 'MF' && !isTreasurer && (
+        {claim.wbs_account === 'MF' && canEdit && (
           <MfApprovalUpload
             claim={claim}
             onUploaded={() => {
