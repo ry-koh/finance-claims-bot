@@ -63,6 +63,16 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function apiErrorMessage(err, fallback = 'Please try again.') {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => item?.msg || item?.message).filter(Boolean)
+    if (messages.length > 0) return messages.join(', ')
+  }
+  return err?.message || fallback
+}
+
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {
@@ -198,6 +208,7 @@ export default function HomePage() {
   const [isExporting, setIsExporting] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
   const [actionResult, setActionResult] = useState(null)
+  const [actionResultTone, setActionResultTone] = useState('success')
 
   const debouncedSearch = useDebounce(search, 300)
   const activeFilter = DASHBOARD_FILTERS.find((filter) => filter.key === activeFilterKey) || DASHBOARD_FILTERS[0]
@@ -237,6 +248,7 @@ export default function HomePage() {
   const canSendSelected = selectedIds.size > 0
   const canSubmitSelected = selectedClaims.some((c) => c.status === 'compiled')
   const canReimburseSelected = selectedClaims.some((c) => c.status === 'submitted')
+  const showSelectionActionBar = selectMode && !confirmAction && !sendMutation.isPending
   const openReimbursementProcess = () => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
@@ -247,25 +259,47 @@ export default function HomePage() {
     const action = confirmAction  // capture before clearing
     const ids = [...selectedIds]
     setConfirmAction(null)
+    let shouldExitSelectMode = true
     try {
       if (action === 'send') {
         const result = await sendMutation.mutateAsync({ claim_ids: ids })
-        setActionResult(`Sent ${result.sent} PDF${result.sent !== 1 ? 's' : ''}${result.skipped ? ` - ${result.skipped} skipped` : ''}`)
+        const sent = Number(result.sent || 0)
+        const skipped = Number(result.skipped || 0)
+        if (sent === 0) {
+          setActionResultTone('error')
+          setActionResult(
+            skipped > 0
+              ? `Failed to send. ${skipped} selected claim${skipped !== 1 ? 's' : ''} had no compiled PDF or could not be sent.`
+              : 'Failed to send. No PDFs were sent.'
+          )
+          shouldExitSelectMode = false
+        } else if (skipped > 0) {
+          setActionResultTone('warning')
+          setActionResult(`Sent ${sent} PDF${sent !== 1 ? 's' : ''}. ${skipped} failed or had no compiled PDF.`)
+        } else {
+          setActionResultTone('success')
+          setActionResult(`Sent ${sent} PDF${sent !== 1 ? 's' : ''}`)
+        }
       } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
+        setActionResultTone('success')
         setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted${result.skipped ? ` - ${result.skipped} skipped` : ''}`)
       }
-    } catch {
-      setActionResult('Action failed. Please try again.')
+    } catch (err) {
+      setActionResultTone('error')
+      setActionResult(`${action === 'send' ? 'Failed to send' : 'Action failed'}: ${apiErrorMessage(err)}`)
+      shouldExitSelectMode = false
     }
-    exitSelectMode()
+    if (shouldExitSelectMode) {
+      exitSelectMode()
+    }
   }
 
   useEffect(() => {
     if (!actionResult) return
-    const t = setTimeout(() => setActionResult(null), 3000)
+    const t = setTimeout(() => setActionResult(null), actionResultTone === 'error' ? 6000 : 3000)
     return () => clearTimeout(t)
-  }, [actionResult])
+  }, [actionResult, actionResultTone])
 
   const counts = isCountsMap(countsData) ? countsData : null
   const dashboardFilters = DASHBOARD_FILTERS.map((filter) => ({
@@ -505,7 +539,7 @@ export default function HomePage() {
       )}
 
       {/* Floating action bar */}
-      {selectMode && (
+      {showSelectionActionBar && (
         <div className="mobile-footer fixed bottom-0 left-0 right-0 z-[60] flex gap-2 border-t px-4 py-3">
           <button
             disabled={!canSendSelected || sendMutation.isPending}
@@ -533,7 +567,7 @@ export default function HomePage() {
 
       {/* Confirmation dialog */}
       {confirmAction && (
-        <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50">
+        <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-[80]">
           <div className="bg-white rounded-lg w-full max-w-sm p-5 shadow-xl mb-4 mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
               {confirmAction === 'send' ? 'Send to Telegram?' : 'Mark as Submitted?'}
@@ -559,7 +593,7 @@ export default function HomePage() {
 
       {/* Sending overlay */}
       {sendMutation.isPending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl px-8 py-6 flex flex-col items-center gap-3 mx-4">
             <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-semibold text-gray-800">Sending to Telegram...</p>
@@ -570,7 +604,15 @@ export default function HomePage() {
 
       {/* Toast */}
       {actionResult && (
-        <div className="fixed top-4 left-4 right-4 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg z-50 text-center">
+        <div
+          className={`fixed top-4 left-4 right-4 text-white text-sm px-4 py-3 rounded-xl shadow-lg z-[90] text-center ${
+            actionResultTone === 'error'
+              ? 'bg-red-700'
+              : actionResultTone === 'warning'
+                ? 'bg-amber-700'
+                : 'bg-gray-900'
+          }`}
+        >
           {actionResult}
         </div>
       )}
