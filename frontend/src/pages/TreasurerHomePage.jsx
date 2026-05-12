@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useClaims } from '../api/claims'
 import { IconAlertTriangle, IconPaperclip } from '../components/Icons'
+import { useScrollReveal } from '../hooks/useScrollReveal'
 import {
   getTreasurerProgressMessage,
   getTreasurerStatusKey,
@@ -42,7 +43,8 @@ function SkeletonCard() {
   )
 }
 
-function ClaimCard({ claim, onClick }) {
+function ClaimCard({ claim, onClick, revealDelay = 0 }) {
+  const { ref, isVisible } = useScrollReveal()
   const statusKey = getTreasurerStatusKey(claim)
   const meta = getTreasurerStatusMeta(claim)
   const progressMessage = getTreasurerProgressMessage(claim)
@@ -51,8 +53,10 @@ function ClaimCard({ claim, onClick }) {
 
   return (
     <button
+      ref={ref}
       onClick={onClick}
-      className="ui-card w-full p-3 text-left"
+      style={{ '--reveal-delay': `${revealDelay}ms` }}
+      className={`ui-card reveal-card w-full p-3 text-left ${isVisible ? 'reveal-card-visible' : ''}`}
     >
       {claim.status === 'draft' && claim.rejection_comment && (
         <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
@@ -189,11 +193,12 @@ export default function TreasurerHomePage() {
                   </button>
                 ) : (
                   <div className="space-y-2">
-                    {visibleClaims.map((claim) => (
+                    {visibleClaims.map((claim, index) => (
                       <ClaimCard
                         key={claim.id}
                         claim={claim}
                         onClick={() => navigate(`/claims/${claim.id}`)}
+                        revealDelay={(index % 5) * 35}
                       />
                     ))}
                   </div>

@@ -210,6 +210,38 @@ a.ui-card:active {
   transform: scale(0.985);
 }
 
+.reveal-card {
+  --reveal-delay: 0ms;
+  opacity: 0;
+  transform: translateY(14px) scale(0.985);
+  filter: saturate(0.92);
+  transition:
+    opacity 360ms ease,
+    transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 360ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+  will-change: opacity, transform;
+}
+
+.reveal-card-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: saturate(1);
+  transition-delay: var(--reveal-delay), var(--reveal-delay), var(--reveal-delay), 0ms, 0ms, 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-card,
+  .reveal-card-visible {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition-delay: 0ms;
+  }
+}
+
 .ui-button {
   display: inline-flex;
   align-items: center;

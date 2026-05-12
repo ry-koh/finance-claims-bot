@@ -4,6 +4,7 @@ import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '..
 import { useSendToTelegram } from '../api/documents'
 import { getClaimReadiness } from '../utils/claimReadiness'
 import { IconPencil } from '../components/Icons'
+import { useScrollReveal } from '../hooks/useScrollReveal'
 
 // Status definitions: [tabLabel, backendValue, tailwind colour classes for badge]
 const STATUSES = [
@@ -112,15 +113,18 @@ function SkeletonCard() {
 }
 
 // A single claim card
-function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
+function ClaimCard({ claim, onClick, selectMode, selected, onToggle, revealDelay = 0 }) {
+  const { ref, isVisible } = useScrollReveal()
   const statusLabel = STATUSES.find(s => s.value === claim.status)?.label ?? claim.status
   const readiness = getClaimReadiness(claim)
   const claimTitle = claim.claim_description || claim.claimer?.name || claim.one_off_name || 'Untitled claim'
   const orgLabel = claim.cca?.name || claim.claimer?.name || claim.one_off_name || 'Finance claim'
   return (
     <button
+      ref={ref}
       onClick={selectMode ? onToggle : onClick}
-      className="ui-card w-full p-3 text-left transition-colors active:bg-gray-50"
+      style={{ '--reveal-delay': `${revealDelay}ms` }}
+      className={`ui-card reveal-card w-full p-3 text-left transition-colors active:bg-gray-50 ${isVisible ? 'reveal-card-visible' : ''}`}
     >
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -484,7 +488,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {!isLoading && !isError && claims.map(claim => (
+        {!isLoading && !isError && claims.map((claim, index) => (
           <ClaimCard
             key={claim.id}
             claim={claim}
@@ -492,6 +496,7 @@ export default function HomePage() {
             selectMode={selectMode}
             selected={selectedIds.has(claim.id)}
             onToggle={() => toggleSelect(claim.id)}
+            revealDelay={(index % 5) * 35}
           />
         ))}
       </div>
