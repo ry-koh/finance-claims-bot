@@ -93,7 +93,7 @@ function DateRangeFilter({ dateFrom, dateTo, onDateFromChange, onDateToChange })
 // Skeleton placeholder for a single claim card
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4 animate-pulse">
+    <div className="ui-card p-4 animate-pulse">
       <div className="flex justify-between items-start mb-2">
         <div className="h-4 bg-gray-200 rounded w-40" />
         <div className="h-5 bg-gray-200 rounded w-20" />
@@ -115,7 +115,7 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle }) {
   return (
     <button
       onClick={selectMode ? onToggle : onClick}
-      className={`w-full text-left bg-white rounded-xl border border-gray-100 border-l-4 ${borderColor} shadow-sm p-4 active:bg-gray-50 transition-colors`}
+      className={`ui-card w-full border-l-4 ${borderColor} p-3 text-left active:bg-gray-50 transition-colors`}
     >
       <div className="flex justify-between items-start gap-2">
         <span className="text-sm font-semibold text-gray-900 break-all leading-tight">
@@ -284,9 +284,9 @@ export default function HomePage() {
   const completedCount = (countsData?.submitted ?? 0) + (countsData?.reimbursed ?? 0)
 
   return (
-    <div className="flex flex-col min-h-full bg-gray-50">
+    <div className="mobile-page flex min-h-full flex-col">
       {/* Header */}
-      <div className="bg-white px-4 pt-4 pb-3 border-b border-gray-100 shadow-sm">
+      <div className="mobile-header border-b px-4 pt-4 pb-3">
         {/* Header row */}
         {selectMode ? (
           <div className="space-y-2 mb-2">
@@ -367,7 +367,7 @@ export default function HomePage() {
                   ['Errors', countsData?.error ?? 0],
                   ['Compiled', countsData?.compiled ?? 0],
                 ].map(([label, value]) => (
-                  <div key={label} className="min-w-[76px] rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1.5">
+                  <div key={label} className="min-w-[76px] rounded-lg border border-gray-200 bg-white px-2.5 py-1.5">
                     <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
                     <p className="text-sm font-bold text-gray-900 tabular-nums">{value}</p>
                   </div>
@@ -492,7 +492,7 @@ export default function HomePage() {
 
       {/* Pagination footer */}
       {!selectMode && !isLoading && !isError && (
-        <div className="bg-white border-t border-gray-100 px-4 py-3 space-y-2">
+        <div className="mobile-footer border-t px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">
               {total === 0 ? 'No results' : `${pageStart}–${pageEnd} of ${total}`}
@@ -537,7 +537,7 @@ export default function HomePage() {
 
       {/* Floating action bar */}
       {selectMode && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-2 shadow-lg z-40">
+        <div className="mobile-footer fixed bottom-0 left-0 right-0 z-40 flex gap-2 border-t px-4 py-3">
           <button
             disabled={!canSendSelected || sendMutation.isPending}
             onClick={() => canSendSelected && setConfirmAction('send')}
@@ -565,7 +565,7 @@ export default function HomePage() {
       {/* Confirmation dialog */}
       {confirmAction && (
         <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl mb-4 mx-4">
+          <div className="bg-white rounded-lg w-full max-w-sm p-5 shadow-xl mb-4 mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
               {confirmAction === 'send' ? 'Send to Telegram?' : 'Mark as Submitted?'}
             </h3>
@@ -591,7 +591,7 @@ export default function HomePage() {
       {/* Sending overlay */}
       {sendMutation.isPending && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl px-8 py-6 flex flex-col items-center gap-3 mx-4">
+          <div className="bg-white rounded-lg shadow-xl px-8 py-6 flex flex-col items-center gap-3 mx-4">
             <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-semibold text-gray-800">Sending to Telegram…</p>
             <p className="text-xs text-gray-500 text-center">Uploading PDFs — this may take 1–2 minutes</p>

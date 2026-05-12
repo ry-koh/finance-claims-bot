@@ -1809,7 +1809,7 @@ function ReviewStep({ user, step1, step2, receipts, bankTransactions, review, is
     ['CCA', selectedCca?.name || (step1.ccaId ? 'Selected' : 'Not selected')],
     ['Description', step2.claimDescription || 'Not filled'],
     ['Date', step2.date || 'Not selected'],
-    ['Fund', step2.wbsAccount === 'MF' ? 'Master Fund' : step2.wbsAccount === 'SA' ? 'Society Account' : 'Others'],
+    ['Fund', step2.wbsAccount === 'MF' ? 'Master Fund' : step2.wbsAccount === 'SA' ? 'Student Account' : 'Others'],
     ['Bank Transactions', String(bankTransactions.length)],
     ['Receipts', String(receipts.length)],
   ]

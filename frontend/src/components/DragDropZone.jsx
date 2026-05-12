@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import ImageCropModal from './ImageCropModal'
+import { IconPaperclip } from './Icons'
 import { pdfToImageFiles, isPdfFile } from '../utils/pdfToImages'
 import { DEFAULT_MAX_UPLOAD_BYTES, formatBytes, getUploadSizeError } from '../utils/uploadLimits'
 
@@ -109,12 +110,15 @@ export default function DragDropZone({
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); dispatch(e.dataTransfer.files) }}
         onClick={() => !busy && fileRef.current?.click()}
         className={[
-          'w-full border-2 border-dashed rounded-xl text-center cursor-pointer transition-colors select-none',
+          'w-full border border-dashed rounded-lg text-center cursor-pointer transition-colors select-none',
           compact ? 'py-2 px-2' : 'py-4 px-3',
           isDragging ? dragBorder : idleBorder,
           busy ? 'opacity-50 cursor-not-allowed' : '',
         ].filter(Boolean).join(' ')}
       >
+        <span className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-blue-600">
+          <IconPaperclip className="h-4 w-4" />
+        </span>
         <p className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-gray-700`}>
           {converting ? 'Converting…' : busy ? 'Uploading…' : isDragging ? 'Drop to upload' : label}
         </p>
