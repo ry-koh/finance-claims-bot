@@ -133,7 +133,7 @@ export default function PayerSelect({
           Name on invoice <span className="text-red-500">*</span>
         </label>
         <p className="mb-1 text-xs text-gray-400">
-          If another person appears on the invoice, add their name and email here. This is the email stored in the database for reimbursement records.
+          If another person appears on the invoice, add their name and email here.
         </p>
         <select
           value={selectedKey}

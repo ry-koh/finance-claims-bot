@@ -30,10 +30,6 @@ function cleanEmail(email) {
   return String(email || '').trim().toLowerCase()
 }
 
-function countWords(value) {
-  return String(value || '').trim().split(/\s+/).filter(Boolean).length
-}
-
 function normalizeRemarkLines(value) {
   return String(value || '')
     .split('\n')
@@ -384,7 +380,7 @@ function Step2({ data, onChange, isTreasurer }) {
           className="max-w-full"
         />
         <p className="mt-1 text-xs text-gray-400">
-          Keep this short, 5 words. {countWords(data.claimDescription)}/5
+          Keep it short, max 5 words.
         </p>
       </div>
 
