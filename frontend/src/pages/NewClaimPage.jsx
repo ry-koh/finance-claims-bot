@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { usePortfolios, useCcasByPortfolio } from '../api/portfolios'
+import { usePortfolios, useCcasByPortfolio, usePublicCcas } from '../api/portfolios'
 import { useTreasurerOptions } from '../api/admin'
 import { useCreateClaim, useSubmitForReview } from '../api/claims'
 import { useCreateReceipt, uploadReceiptImageById, uploadReceiptFxImageById } from '../api/receipts'
@@ -2055,13 +2055,20 @@ function Step3({
 // ─── Treasurer CCA / Claimer Picker ──────────────────────────────────────────
 
 function TreasurerClaimerPicker({ user, value, onChange }) {
-  const ccas = user?.ccas || []
+  const assignedCcas = user?.ccas || []
+  const isPreviewTreasurer = user?.is_role_preview && user?.preview_role === 'treasurer'
+  const { data: publicCcas = [], isLoading: publicCcasLoading } = usePublicCcas()
+  const ccas = isPreviewTreasurer && assignedCcas.length === 0 ? publicCcas : assignedCcas
 
   useEffect(() => {
     if (ccas.length === 1 && !value) {
       onChange(ccas[0].id)
     }
   }, [ccas, value, onChange])
+
+  if (isPreviewTreasurer && publicCcasLoading && assignedCcas.length === 0) {
+    return <p className="text-sm text-gray-400">Loading CCAs for preview...</p>
+  }
 
   if (ccas.length === 0) return <p className="text-sm text-gray-400">No CCAs assigned to your account.</p>
 
@@ -2075,21 +2082,26 @@ function TreasurerClaimerPicker({ user, value, onChange }) {
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-700 mb-1">
+      <label className="section-eyebrow mb-1 block">
         Which CCA is this claim for? <span className="text-red-500">*</span>
       </label>
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+        className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
       >
         <option value="" disabled>Select CCA</option>
         {ccas.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.name}
+            {c.name}{c.portfolio?.name ? ` / ${c.portfolio.name}` : ''}
           </option>
         ))}
       </select>
+      {isPreviewTreasurer && (
+        <p className="mt-1 text-xs text-amber-700">
+          Preview mode uses the full CCA list because your director account is not assigned as a CCA treasurer.
+        </p>
+      )}
     </div>
   )
 }
@@ -2130,6 +2142,8 @@ export default function NewClaimPage() {
 
   const { user } = useAuth()
   const isTreasurer = user?.role === 'treasurer'
+  const isTreasurerPreview = user?.is_role_preview && user?.preview_role === 'treasurer'
+  const canSubmitAsTreasurer = isTreasurer && !isTreasurerPreview
 
 
   const [step, setStep] = useState(1)
@@ -2150,7 +2164,7 @@ export default function NewClaimPage() {
   const [expandedBtId, setExpandedBtId] = useState(null)
   const [claimOnlyPayers, setClaimOnlyPayers] = useState([])
 
-  const payerOwnerId = isTreasurer ? user?.id : (!step1.isOneOff ? step1.claimerId : '')
+  const payerOwnerId = canSubmitAsTreasurer ? user?.id : (!step1.isOneOff ? step1.claimerId : '')
   const { data: savedPayers = [], isLoading: payersLoading } = usePayers(payerOwnerId, Boolean(payerOwnerId))
   const deletePayerMut = useDeletePayer(payerOwnerId)
   const oneOffPayer = useMemo(() => oneOffSelfPayer(step1), [step1.oneOffName, step1.oneOffEmail])
@@ -2276,7 +2290,7 @@ export default function NewClaimPage() {
     () => buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPayer: defaultPayer, isTreasurer }),
     [step1, step2, receipts, bankTransactions, defaultPayer, isTreasurer]
   )
-  const stepLabels = ['Details', 'Bank', 'Receipts', 'Split', isTreasurer ? 'Submit' : 'Save']
+  const stepLabels = ['Details', 'Bank', 'Receipts', 'Split', isTreasurer && !isTreasurerPreview ? 'Submit' : 'Save']
   const maxStep = stepLabels.length
   const canGoNext = step === 1 ? step1Valid && step2Valid : true
 
@@ -2421,7 +2435,10 @@ export default function NewClaimPage() {
         transport_form_needed: step2.transportFormNeeded,
         is_partial: step2.isPartial,
       }
-      if (!isTreasurer) {
+      if (isTreasurerPreview) {
+        claimPayload.one_off_name = `${user?.name || 'Preview Treasurer'} (Treasurer preview)`
+        if (user?.email) claimPayload.one_off_email = user.email
+      } else if (!isTreasurer) {
         if (step1.isOneOff) {
           claimPayload.one_off_name = step1.oneOffName.trim()
           if (step1.oneOffMatricNo.trim()) claimPayload.one_off_matric_no = step1.oneOffMatricNo.trim()
@@ -2541,10 +2558,10 @@ export default function NewClaimPage() {
       sessionStorage.removeItem(DRAFT_KEY)
       const nextState = {}
       if (imageWarnings.length > 0) nextState.imageWarnings = imageWarnings
-      if (submit && isTreasurer && imageWarnings.length === 0) {
+      if (submit && canSubmitAsTreasurer && imageWarnings.length === 0) {
         await submitForReviewMut.mutateAsync(claimId)
         nextState.submittedForReview = true
-      } else if (isTreasurer) {
+      } else if (canSubmitAsTreasurer) {
         nextState.needsSubmitReview = true
       }
       navigate(`/claims/${claimId}`, {
@@ -2557,7 +2574,7 @@ export default function NewClaimPage() {
         navigate(`/claims/${claimId}`, {
           state: {
             saveError: detail,
-            ...(isTreasurer ? { needsSubmitReview: true } : {}),
+            ...(canSubmitAsTreasurer ? { needsSubmitReview: true } : {}),
           },
         })
       } else {
@@ -2716,7 +2733,7 @@ export default function NewClaimPage() {
           <div className="flex-1 flex flex-col gap-1">
             <button
               type="button"
-              onClick={() => handleSave({ submit: isTreasurer })}
+              onClick={() => handleSave({ submit: canSubmitAsTreasurer })}
               disabled={saving || formReview.isBlocked}
               className="ui-button ui-button-primary w-full disabled:opacity-50"
             >
@@ -2726,12 +2743,12 @@ export default function NewClaimPage() {
                   Uploading…
                 </>
               ) : (
-                isTreasurer ? 'Submit for Review' : 'Save Claim'
+                canSubmitAsTreasurer ? 'Submit for Review' : isTreasurerPreview ? 'Save Preview Claim' : 'Save Claim'
               )}
             </button>
             {!saving && formReview.isBlocked && (
               <p className="text-center text-xs font-medium text-gray-500">
-                Complete the required checklist items before {isTreasurer ? 'submitting' : 'saving'}.
+                Complete the required checklist items before {canSubmitAsTreasurer ? 'submitting' : 'saving'}.
               </p>
             )}
             {saving && (

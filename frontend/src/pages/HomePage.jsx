@@ -543,7 +543,7 @@ export default function HomePage() {
 
       {/* Floating action bar */}
       {selectMode && (
-        <div className="mobile-footer fixed bottom-0 left-0 right-0 z-40 flex gap-2 border-t px-4 py-3">
+        <div className="mobile-footer fixed bottom-0 left-0 right-0 z-[60] flex gap-2 border-t px-4 py-3">
           <button
             disabled={!canSendSelected || sendMutation.isPending}
             onClick={() => canSendSelected && setConfirmAction('send')}
