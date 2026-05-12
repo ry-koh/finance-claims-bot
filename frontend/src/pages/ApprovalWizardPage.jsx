@@ -32,6 +32,51 @@ function getFxImageIds(receipt) {
   return ids
 }
 
+function toAmount(value) {
+  const n = Number(value ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function receiptSpendAmount(receipt) {
+  return toAmount(receipt?.amount)
+}
+
+function receiptClaimedAmount(receipt) {
+  return toAmount(receipt?.claimed_amount ?? receipt?.amount)
+}
+
+function refundTotal(bt) {
+  return (bt?.refunds ?? []).reduce((sum, refund) => sum + toAmount(refund.amount), 0)
+}
+
+function bankTransactionNetAmount(bt) {
+  return toAmount(bt?.amount) - refundTotal(bt)
+}
+
+function linkedReceipts(bt, receipts) {
+  return receipts.filter((receipt) => receipt.bank_transaction_id === bt.id)
+}
+
+function amountMatches(a, b) {
+  return Math.abs(toAmount(a) - toAmount(b)) <= 0.01
+}
+
+function amountDifference(a, b) {
+  return toAmount(a) - toAmount(b)
+}
+
+function receiptImages(receipt) {
+  return (receipt?.images ?? []).filter((img) => img?.drive_file_id)
+}
+
+function bankImages(bt) {
+  return (bt?.images ?? []).filter((img) => img?.drive_file_id)
+}
+
+function compactName(claim) {
+  return claim?.one_off_name || claim?.claimer?.name || 'Unknown claimer'
+}
+
 function InfoRow({ label, value, bold = false }) {
   return (
     <div className="flex justify-between gap-2 text-sm">
@@ -228,7 +273,635 @@ function RejectModal({ receipts, selections, onConfirm, onCancel, loading }) {
   )
 }
 
-// ─── Per-receipt screen ───────────────────────────────────────────────────────
+// ─── Mobile approval workspace ────────────────────────────────────────────────
+
+function ReviewPill({ tone = 'neutral', children }) {
+  const toneClass = {
+    neutral: 'bg-gray-100 text-gray-700 border-gray-200',
+    good: 'bg-green-50 text-green-700 border-green-200',
+    warn: 'bg-amber-50 text-amber-800 border-amber-200',
+    bad: 'bg-red-50 text-red-700 border-red-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200',
+  }[tone]
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${toneClass}`}>
+      {children}
+    </span>
+  )
+}
+
+function MobileStat({ label, value, tone = 'neutral' }) {
+  const toneClass = {
+    neutral: 'border-gray-200 bg-white text-gray-900',
+    good: 'border-green-200 bg-green-50 text-green-800',
+    warn: 'border-amber-200 bg-amber-50 text-amber-900',
+    bad: 'border-red-200 bg-red-50 text-red-800',
+  }[tone]
+
+  return (
+    <div className={`min-w-0 rounded-xl border p-3 ${toneClass}`}>
+      <p className="text-[11px] font-medium opacity-70">{label}</p>
+      <p className="mt-1 text-base font-bold tabular-nums">{value}</p>
+    </div>
+  )
+}
+
+function SectionBlock({ title, subtitle, children, defaultOpen = true }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+
+  return (
+    <details
+      open={isOpen}
+      onToggle={(e) => setIsOpen(e.currentTarget.open)}
+      className="rounded-xl border border-gray-200 bg-white"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-gray-900">
+        <span>{title}</span>
+        {subtitle && <span className="text-[11px] font-medium text-gray-500">{subtitle}</span>}
+      </summary>
+      <div className="border-t border-gray-100 p-3">
+        {children}
+      </div>
+    </details>
+  )
+}
+
+function EmptyEvidence({ children }) {
+  return (
+    <div className="rounded-xl border border-dashed border-red-200 bg-red-50 px-3 py-4 text-center text-xs font-medium text-red-700">
+      {children}
+    </div>
+  )
+}
+
+function EvidenceImageGrid({ title, images, emptyText, onCropped, replacingImages }) {
+  return (
+    <SectionBlock title={title} subtitle={`${images.length} image${images.length === 1 ? '' : 's'}`}>
+      {images.length === 0 ? (
+        <EmptyEvidence>{emptyText}</EmptyEvidence>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {images.map((img, index) => (
+            <div key={img.id ?? img.drive_file_id} className="min-w-0">
+              <p className="mb-1.5 text-[11px] font-medium text-gray-500">{title} {index + 1}</p>
+              <CroppableFullImage
+                src={imageUrl(img.drive_file_id)}
+                label={`${title} ${index + 1}`}
+                reuploading={replacingImages?.[img.id]}
+                onCropped={(file) => onCropped?.(img, file)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionBlock>
+  )
+}
+
+function ReceiptInfoPanel({ receipt }) {
+  return (
+    <SectionBlock title="Receipt Information" subtitle={receipt.receipt_no || 'No receipt no.'}>
+      <div className="flex flex-col gap-2">
+        <InfoRow label="Description" value={receipt.description} bold />
+        <InfoRow label="Company" value={receipt.company} />
+        <InfoRow label="Date" value={formatDate(receipt.date)} />
+        <InfoRow label="Receipt No." value={receipt.receipt_no} />
+        <InfoRow label="Receipt Amount" value={formatAmount(receiptSpendAmount(receipt))} bold />
+        {receipt.claimed_amount != null && (
+          <InfoRow label="Claimed Amount" value={`${formatAmount(receiptClaimedAmount(receipt))} claimed`} bold />
+        )}
+        <InfoRow label="Payer" value={receipt.payer_name} />
+        <InfoRow label="Payer Email" value={receipt.payer_email} />
+      </div>
+    </SectionBlock>
+  )
+}
+
+function FxEvidencePanel({ receipt }) {
+  const fxIds = getFxImageIds(receipt)
+  if (!receipt.is_foreign_currency && fxIds.length === 0) return null
+
+  return (
+    <SectionBlock title="Exchange Rate Evidence" subtitle={fxIds.length ? `${fxIds.length} image${fxIds.length === 1 ? '' : 's'}` : 'Missing'}>
+      {fxIds.length === 0 ? (
+        <EmptyEvidence>Foreign currency receipt needs an exchange rate screenshot.</EmptyEvidence>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {fxIds.map((driveId, index) => (
+            <div key={driveId}>
+              <p className="mb-1.5 text-[11px] font-medium text-gray-500">FX screenshot {index + 1}</p>
+              <FullWidthImage src={imageUrl(driveId)} label={`FX screenshot ${index + 1}`} />
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionBlock>
+  )
+}
+
+function AmountCheck({ receipt, linkedBt, allReceipts }) {
+  const receiptSpend = receiptSpendAmount(receipt)
+  const claimed = receiptClaimedAmount(receipt)
+
+  if (!linkedBt) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-red-800">Bank link missing</p>
+          <ReviewPill tone="bad">Check needed</ReviewPill>
+        </div>
+        <p className="mt-1 text-xs text-red-700">No bank transaction is linked to this receipt.</p>
+      </div>
+    )
+  }
+
+  const linked = linkedReceipts(linkedBt, allReceipts)
+  const linkedSpend = linked.reduce((sum, r) => sum + receiptSpendAmount(r), 0)
+  const btNet = bankTransactionNetAmount(linkedBt)
+  const diff = amountDifference(linkedSpend, btNet)
+  const matches = amountMatches(linkedSpend, btNet)
+
+  return (
+    <div className={`rounded-xl border p-3 ${matches ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-sm font-semibold ${matches ? 'text-green-800' : 'text-amber-900'}`}>Amount tally</p>
+        <ReviewPill tone={matches ? 'good' : 'warn'}>{matches ? 'Matches' : 'Mismatch'}</ReviewPill>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white/80 p-2">
+          <p className="text-gray-500">This receipt</p>
+          <p className="font-bold text-gray-900 tabular-nums">{formatAmount(receiptSpend)}</p>
+        </div>
+        <div className="rounded-lg bg-white/80 p-2">
+          <p className="text-gray-500">Claimed</p>
+          <p className="font-bold text-gray-900 tabular-nums">{formatAmount(claimed)}</p>
+        </div>
+        <div className="rounded-lg bg-white/80 p-2">
+          <p className="text-gray-500">Linked receipts</p>
+          <p className="font-bold text-gray-900 tabular-nums">{formatAmount(linkedSpend)}</p>
+        </div>
+        <div className="rounded-lg bg-white/80 p-2">
+          <p className="text-gray-500">Bank net</p>
+          <p className="font-bold text-gray-900 tabular-nums">{formatAmount(btNet)}</p>
+        </div>
+      </div>
+      {!matches && (
+        <p className="mt-2 text-xs font-medium text-amber-800">
+          Difference: {formatAmount(Math.abs(diff))}. Check refunds, partial claim, or linked receipts.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function BankEvidencePanel({ bt, allReceipts, onReplaceBtImage, onReplaceRefundImage, replacingImages }) {
+  if (!bt) {
+    return (
+      <SectionBlock title="Bank Transaction Screenshot">
+        <EmptyEvidence>No linked bank transaction for this receipt.</EmptyEvidence>
+      </SectionBlock>
+    )
+  }
+
+  const images = bankImages(bt)
+  const linked = linkedReceipts(bt, allReceipts)
+  const linkedSpend = linked.reduce((sum, receipt) => sum + receiptSpendAmount(receipt), 0)
+  const net = bankTransactionNetAmount(bt)
+
+  return (
+    <SectionBlock title="Bank Transaction Screenshot" subtitle={`Net ${formatAmount(net)}`}>
+      <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <p className="text-gray-500">Bank gross</p>
+            <p className="font-bold text-gray-900 tabular-nums">{formatAmount(bt.amount)}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Refunds</p>
+            <p className="font-bold text-gray-900 tabular-nums">{formatAmount(refundTotal(bt))}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Bank net</p>
+            <p className="font-bold text-gray-900 tabular-nums">{formatAmount(net)}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Linked receipts</p>
+            <p className="font-bold text-gray-900 tabular-nums">{formatAmount(linkedSpend)}</p>
+          </div>
+        </div>
+      </div>
+
+      {images.length === 0 ? (
+        <EmptyEvidence>Bank transaction screenshot is missing.</EmptyEvidence>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {images.map((img, index) => (
+            <CroppableFullImage
+              key={img.id ?? img.drive_file_id}
+              src={imageUrl(img.drive_file_id)}
+              label={`Bank transaction ${index + 1}`}
+              reuploading={replacingImages?.[img.id]}
+              onCropped={(file) => onReplaceBtImage?.(img, bt.id, file)}
+            />
+          ))}
+        </div>
+      )}
+
+      {(bt.refunds ?? []).length > 0 && (
+        <div className="mt-3 space-y-2">
+          <p className="text-xs font-semibold text-gray-600">Refund proof</p>
+          {bt.refunds.map((refund, index) => (
+            <div key={refund.id ?? index} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 p-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-gray-900">Refund {index + 1}</p>
+                <p className="text-xs text-gray-500">{formatAmount(refund.amount)}</p>
+              </div>
+              {refund.drive_file_id ? (
+                <CroppableThumb
+                  src={imageUrl(refund.drive_file_id)}
+                  label={`Refund ${index + 1}`}
+                  reuploading={replacingImages?.[refund.id]}
+                  onCropped={(file) => onReplaceRefundImage?.(refund, bt.id, file)}
+                  thumbSize="w-16 h-16"
+                />
+              ) : (
+                <ReviewPill tone="bad">Missing file</ReviewPill>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionBlock>
+  )
+}
+
+function FinanceFields({ receipt, selection, allSelections, onUpdate }) {
+  const current = {
+    category: '',
+    gst_code: 'IE',
+    dr_cr: 'DR',
+    remark: '',
+    ...(selection ?? {}),
+  }
+
+  function handleCategoryChange(category) {
+    const entries = Object.entries(allSelections)
+    const myIdx = entries.findIndex(([receiptId]) => receiptId === receipt.id)
+    const priorMatch = myIdx > -1
+      ? entries.slice(0, myIdx).find(([, item]) => item.category === category)
+      : null
+
+    if (priorMatch) {
+      onUpdate({ category, gst_code: priorMatch[1].gst_code, dr_cr: priorMatch[1].dr_cr })
+    } else {
+      onUpdate({ category })
+    }
+  }
+
+  return (
+    <SectionBlock title="Finance Coding" subtitle={current.category || 'Category needed'}>
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Category *</label>
+          <select
+            value={current.category}
+            onChange={(e) => handleCategoryChange(e.target.value)}
+            className={`w-full rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 ${
+              current.category
+                ? 'border-gray-300 bg-white focus:ring-blue-300'
+                : 'border-red-300 bg-red-50 focus:ring-red-200'
+            }`}
+          >
+            <option value="">Select category</option>
+            {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">GST</label>
+            <SegmentedControl options={GST_CODES} value={current.gst_code} onChange={(gst_code) => onUpdate({ gst_code })} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">DR / CR</label>
+            <SegmentedControl options={DR_CR_OPTIONS} value={current.dr_cr} onChange={(dr_cr) => onUpdate({ dr_cr })} />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Issue note for rejection</label>
+          <input
+            value={current.remark}
+            onChange={(e) => onUpdate({ remark: e.target.value })}
+            className="w-full rounded-xl border border-gray-300 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-200"
+            placeholder="e.g. Amount mismatch"
+          />
+        </div>
+      </div>
+    </SectionBlock>
+  )
+}
+
+function ReceiptReviewCard({
+  receipt,
+  receiptIndex,
+  claim,
+  allReceipts,
+  bankTransactions,
+  selection,
+  allSelections,
+  onUpdate,
+  onReplaceReceiptImage,
+  onReplaceBtImage,
+  onReplaceRefundImage,
+  replacingImages,
+}) {
+  const images = receiptImages(receipt)
+  const linkedBt = bankTransactions.find((bt) => bt.id === receipt.bank_transaction_id)
+  const hasCategory = Boolean(selection?.category)
+  const hasReceiptImage = images.length > 0
+  const hasBankImage = linkedBt ? bankImages(linkedBt).length > 0 : false
+  const bankLinked = Boolean(linkedBt)
+  const amountOk = linkedBt
+    ? amountMatches(
+        linkedReceipts(linkedBt, allReceipts).reduce((sum, r) => sum + receiptSpendAmount(r), 0),
+        bankTransactionNetAmount(linkedBt)
+      )
+    : false
+
+  return (
+    <article id={`receipt-${receipt.id}`} className="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-100 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Receipt {receiptIndex + 1}</p>
+            <h2 className="mt-1 text-base font-bold leading-tight text-gray-900">{receipt.description || claim.claim_description || 'Untitled receipt'}</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Claim: {claim.claim_description || 'No claim description'}
+            </p>
+          </div>
+          <p className="shrink-0 text-base font-bold tabular-nums text-gray-900">
+            {formatAmount(receiptClaimedAmount(receipt))}
+          </p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <ReviewPill tone={hasCategory ? 'good' : 'bad'}>{hasCategory ? 'Category set' : 'No category'}</ReviewPill>
+          <ReviewPill tone={hasReceiptImage ? 'good' : 'bad'}>{hasReceiptImage ? 'Receipt proof' : 'No receipt proof'}</ReviewPill>
+          <ReviewPill tone={bankLinked && hasBankImage ? 'good' : 'bad'}>{bankLinked && hasBankImage ? 'Bank proof' : 'Bank proof needed'}</ReviewPill>
+          <ReviewPill tone={amountOk ? 'good' : 'warn'}>{amountOk ? 'Amounts tally' : 'Check amount'}</ReviewPill>
+        </div>
+      </div>
+
+      <div className="space-y-3 bg-gray-50 p-3">
+        <AmountCheck receipt={receipt} linkedBt={linkedBt} allReceipts={allReceipts} />
+        <EvidenceImageGrid
+          title="Receipt Screenshot"
+          images={images}
+          emptyText="Receipt screenshot is missing."
+          replacingImages={replacingImages}
+          onCropped={(img, file) => onReplaceReceiptImage?.(img, receipt.id, file)}
+        />
+        <BankEvidencePanel
+          bt={linkedBt}
+          allReceipts={allReceipts}
+          onReplaceBtImage={onReplaceBtImage}
+          onReplaceRefundImage={onReplaceRefundImage}
+          replacingImages={replacingImages}
+        />
+        <ReceiptInfoPanel receipt={receipt} />
+        <FxEvidencePanel receipt={receipt} />
+        <FinanceFields
+          receipt={receipt}
+          selection={selection}
+          allSelections={allSelections}
+          onUpdate={onUpdate}
+        />
+      </div>
+    </article>
+  )
+}
+
+function BankOnlyCard({ bt, index, allReceipts, onReplaceBtImage, onReplaceRefundImage, replacingImages }) {
+  return (
+    <article className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-100 p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bank-only transaction {index + 1}</p>
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h2 className="text-base font-bold text-gray-900">No linked receipt</h2>
+          <p className="text-base font-bold tabular-nums text-gray-900">{formatAmount(bankTransactionNetAmount(bt))}</p>
+        </div>
+        <p className="mt-1 text-xs text-gray-500">Review this separately if the claim is intentionally bank-only.</p>
+      </div>
+      <div className="bg-gray-50 p-3">
+        <BankEvidencePanel
+          bt={bt}
+          allReceipts={allReceipts}
+          onReplaceBtImage={onReplaceBtImage}
+          onReplaceRefundImage={onReplaceRefundImage}
+          replacingImages={replacingImages}
+        />
+      </div>
+    </article>
+  )
+}
+
+function ApprovalWorkspace({
+  claim,
+  receipts,
+  bankTransactions,
+  selections,
+  onUpdateSelection,
+  onApprove,
+  onBack,
+  onReject,
+  approving,
+  onReplaceReceiptImage,
+  onReplaceBtImage,
+  onReplaceRefundImage,
+  replacingImages,
+}) {
+  const missingCategories = receipts.filter((receipt) => !selections[receipt.id]?.category)
+  const missingReceiptImages = receipts.filter((receipt) => receiptImages(receipt).length === 0)
+  const bankTransactionsMissingImages = bankTransactions.filter((bt) => bankImages(bt).length === 0)
+  const amountMismatches = bankTransactions.filter((bt) => {
+    const linked = linkedReceipts(bt, receipts)
+    if (linked.length === 0) return false
+    const linkedSpend = linked.reduce((sum, receipt) => sum + receiptSpendAmount(receipt), 0)
+    return !amountMatches(linkedSpend, bankTransactionNetAmount(bt))
+  })
+  const totalClaimed = receipts.reduce((sum, receipt) => sum + receiptClaimedAmount(receipt), 0)
+  const totalReceiptSpend = receipts.reduce((sum, receipt) => sum + receiptSpendAmount(receipt), 0)
+  const totalBankNet = bankTransactions.reduce((sum, bt) => sum + bankTransactionNetAmount(bt), 0)
+  const bankOnlyTransactions = bankTransactions.filter((bt) => linkedReceipts(bt, receipts).length === 0)
+  const claimTotal = toAmount(claim.total_amount ?? totalClaimed)
+  const canApprove = missingCategories.length === 0
+  const claimerName = compactName(claim)
+  const ccaName = claim.cca?.name || 'No CCA'
+  const portfolioName = claim.cca?.portfolio?.name
+
+  return (
+    <div className="mobile-page min-h-screen bg-gray-50 pb-28">
+      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-lg items-center gap-2">
+          <button type="button" onClick={onBack} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 active:bg-gray-100">
+            Back
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-gray-900">{claim.reference_code ?? `Claim #${claim.id}`}</p>
+            <p className="truncate text-xs text-gray-500">Finance approval</p>
+          </div>
+          <button type="button" onClick={onReject} className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 active:bg-red-100">
+            Reject
+          </button>
+        </div>
+      </div>
+
+      <main className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-4">
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Claim description</p>
+              <h1 className="mt-1 text-lg font-bold leading-tight text-gray-900">{claim.claim_description || 'No claim description'}</h1>
+              <p className="mt-1 text-xs text-gray-500">
+                {claimerName} - {ccaName}{portfolioName ? ` / ${portfolioName}` : ''}
+              </p>
+            </div>
+            <p className="shrink-0 text-lg font-bold tabular-nums text-gray-900">{formatAmount(claimTotal)}</p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <MobileStat label="Claim total" value={formatAmount(claimTotal)} />
+            <MobileStat label="Receipt spend" value={formatAmount(totalReceiptSpend)} />
+            <MobileStat label="Bank net" value={formatAmount(totalBankNet)} tone={amountMismatches.length ? 'warn' : 'good'} />
+            <MobileStat label="Need category" value={String(missingCategories.length)} tone={missingCategories.length ? 'bad' : 'good'} />
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <ReviewPill tone={missingReceiptImages.length ? 'bad' : 'good'}>
+              {missingReceiptImages.length ? `${missingReceiptImages.length} receipt proof missing` : 'Receipt proof ready'}
+            </ReviewPill>
+            <ReviewPill tone={bankTransactionsMissingImages.length ? 'bad' : 'good'}>
+              {bankTransactionsMissingImages.length ? `${bankTransactionsMissingImages.length} bank proof missing` : 'Bank proof ready'}
+            </ReviewPill>
+            <ReviewPill tone={amountMismatches.length ? 'warn' : 'good'}>
+              {amountMismatches.length ? `${amountMismatches.length} amount mismatch` : 'Amounts tally'}
+            </ReviewPill>
+          </div>
+
+          {(claim.remarks || claim.treasurer_notes) && (
+            <div className="mt-3 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
+              {claim.remarks && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Remarks</p>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-gray-700">{claim.remarks}</p>
+                </div>
+              )}
+              {claim.treasurer_notes && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Treasurer notes</p>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-gray-700">{claim.treasurer_notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {receipts.length > 0 && (
+          <nav className="sticky top-[65px] z-20 -mx-4 border-y border-gray-200 bg-gray-50/95 px-4 py-2 backdrop-blur">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {receipts.map((receipt, index) => {
+                const missingCategory = !selections[receipt.id]?.category
+                const linkedBt = bankTransactions.find((bt) => bt.id === receipt.bank_transaction_id)
+                const linkedSpend = linkedBt
+                  ? linkedReceipts(linkedBt, receipts).reduce((sum, r) => sum + receiptSpendAmount(r), 0)
+                  : 0
+                const amountOk = linkedBt ? amountMatches(linkedSpend, bankTransactionNetAmount(linkedBt)) : false
+                return (
+                  <a
+                    key={receipt.id}
+                    href={`#receipt-${receipt.id}`}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      missingCategory || !amountOk
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-green-200 bg-green-50 text-green-700'
+                    }`}
+                  >
+                    R{index + 1}
+                  </a>
+                )
+              })}
+            </div>
+          </nav>
+        )}
+
+        {receipts.length === 0 ? (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-900">No receipts attached</p>
+            <p className="mt-1 text-xs text-amber-800">Review the bank transactions below before approving.</p>
+          </section>
+        ) : (
+          receipts.map((receipt, index) => (
+            <ReceiptReviewCard
+              key={receipt.id}
+              receipt={receipt}
+              receiptIndex={index}
+              claim={claim}
+              allReceipts={receipts}
+              bankTransactions={bankTransactions}
+              selection={selections[receipt.id]}
+              allSelections={selections}
+              onUpdate={(patch) => onUpdateSelection(receipt.id, patch)}
+              onReplaceReceiptImage={onReplaceReceiptImage}
+              onReplaceBtImage={onReplaceBtImage}
+              onReplaceRefundImage={onReplaceRefundImage}
+              replacingImages={replacingImages}
+            />
+          ))
+        )}
+
+        {bankOnlyTransactions.length > 0 && (
+          <section className="space-y-3">
+            <div className="px-1">
+              <h2 className="text-sm font-bold text-gray-900">Bank-only transactions</h2>
+              <p className="mt-1 text-xs text-gray-500">These bank transactions are not linked to a receipt.</p>
+            </div>
+            {bankOnlyTransactions.map((bt, index) => (
+              <BankOnlyCard
+                key={bt.id}
+                bt={bt}
+                index={index}
+                allReceipts={receipts}
+                onReplaceBtImage={onReplaceBtImage}
+                onReplaceRefundImage={onReplaceRefundImage}
+                replacingImages={replacingImages}
+              />
+            ))}
+          </section>
+        )}
+      </main>
+
+      <div
+        className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white px-4 pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]"
+        style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="mx-auto flex max-w-lg items-center gap-3">
+          <button type="button" onClick={onReject} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 active:bg-red-50">
+            Reject
+          </button>
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={!canApprove || approving}
+            className="min-w-0 flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white active:bg-green-700 disabled:bg-gray-300 disabled:text-gray-500"
+          >
+            {approving ? 'Approving...' : canApprove ? 'Approve & Send Email' : `Fill ${missingCategories.length} category`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ReceiptStep({ receipt, selection, allSelections, bankTransactions, stepNum, totalSteps, onUpdate, onNext, onBack, onReject, onReplaceReceiptImage, onReplaceBtImage, onReplaceRefundImage, replacingImages }) {
   function handleCategoryChange(cat) {
@@ -712,7 +1385,6 @@ export default function ApprovalWizardPage() {
   const { data: claim, isLoading } = useClaim(id)
   const queryClient = useQueryClient()
 
-  const [step, setStep] = useState(0)
   const [selections, setSelections] = useState({})
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejecting, setRejecting] = useState(false)
@@ -726,8 +1398,7 @@ export default function ApprovalWizardPage() {
     initializedRef.current = true
     const draft = loadDraft(id)
     if (draft) {
-      setStep(draft.step)
-      setSelections(draft.selections)
+      setSelections(draft.selections ?? initSelections(claim))
     } else {
       setSelections(initSelections(claim))
     }
@@ -736,8 +1407,8 @@ export default function ApprovalWizardPage() {
   // Persist on every change
   useEffect(() => {
     if (!initializedRef.current) return
-    saveDraft(id, { step, selections })
-  }, [step, selections, id])
+    saveDraft(id, { selections })
+  }, [selections, id])
 
   function updateSelection(receiptId, patch) {
     setSelections((prev) => ({
@@ -796,7 +1467,6 @@ export default function ApprovalWizardPage() {
 
   const receipts = claim.receipts ?? []
   const bankTransactions = claim.bank_transactions ?? []
-  const totalSteps = receipts.length
 
   async function handleReject(comment) {
     setRejecting(true)
@@ -816,12 +1486,11 @@ export default function ApprovalWizardPage() {
   async function handleApprove() {
     setApproving(true)
     try {
-      const skipped = receipts.filter((r) => !selections[r.id]?.category)
-      if (skipped.length > 0) {
-        const confirmed = window.confirm(
-          `${skipped.length} receipt(s) have no category and will be skipped. Continue?`
-        )
-        if (!confirmed) { setApproving(false); return }
+      const missingCategories = receipts.filter((r) => !selections[r.id]?.category)
+      if (missingCategories.length > 0) {
+        alert(`Fill category for ${missingCategories.length} receipt(s) before approving.`)
+        setApproving(false)
+        return
       }
       for (const receipt of receipts) {
         const sel = selections[receipt.id]
@@ -847,52 +1516,7 @@ export default function ApprovalWizardPage() {
     }
   }
 
-  function handleNext() {
-    setStep((s) => s + 1)
-  }
-
-  function handleBack() {
-    if (step === 0) {
-      navigate(`/claims/${id}`)
-    } else {
-      setStep((s) => s - 1)
-    }
-  }
-
-  if (step < totalSteps) {
-    const receipt = receipts[step]
-    return (
-      <>
-        {showRejectModal && (
-          <RejectModal
-            receipts={receipts}
-            selections={selections}
-            onConfirm={handleReject}
-            onCancel={() => setShowRejectModal(false)}
-            loading={rejecting}
-          />
-        )}
-        <ReceiptStep
-          receipt={receipt}
-          selection={selections[receipt.id]}
-          allSelections={selections}
-          bankTransactions={bankTransactions}
-          stepNum={step + 1}
-          totalSteps={totalSteps}
-          onUpdate={(patch) => updateSelection(receipt.id, patch)}
-          onNext={handleNext}
-          onBack={handleBack}
-          onReject={() => setShowRejectModal(true)}
-          onReplaceReceiptImage={handleReplaceReceiptImage}
-          onReplaceBtImage={handleReplaceBtImage}
-          onReplaceRefundImage={handleReplaceRefundImage}
-          replacingImages={replacingImages}
-        />
-      </>
-    )
-  }
-
-  // step === totalSteps → summary
+  // Mobile approval workspace
   return (
     <>
       {showRejectModal && (
@@ -904,14 +1528,17 @@ export default function ApprovalWizardPage() {
           loading={rejecting}
         />
       )}
-      <SummaryScreen
+      <ApprovalWorkspace
+        claim={claim}
         receipts={receipts}
         bankTransactions={bankTransactions}
         selections={selections}
+        onUpdateSelection={updateSelection}
         onApprove={handleApprove}
-        onBack={() => totalSteps > 0 ? setStep(totalSteps - 1) : navigate(`/claims/${id}`)}
+        onBack={() => navigate(`/claims/${id}`)}
         onReject={() => setShowRejectModal(true)}
         approving={approving}
+        onReplaceReceiptImage={handleReplaceReceiptImage}
         onReplaceBtImage={handleReplaceBtImage}
         onReplaceRefundImage={handleReplaceRefundImage}
         replacingImages={replacingImages}
