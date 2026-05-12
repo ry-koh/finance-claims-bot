@@ -88,6 +88,7 @@ CREATE TABLE claims (
   mf_approval_drive_id text,
   mf_approval_drive_ids text[] DEFAULT '{}',
   internal_notes    text,
+  treasurer_notes   text,
   remarks           text,
   rejection_comment text,
   transport_data    jsonb,

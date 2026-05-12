@@ -30,6 +30,19 @@ function cleanEmail(email) {
   return String(email || '').trim().toLowerCase()
 }
 
+function countWords(value) {
+  return String(value || '').trim().split(/\s+/).filter(Boolean).length
+}
+
+function normalizeRemarkLines(value) {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.startsWith('- ') ? line : `- ${line.replace(/^-+/, '').trim()}`)
+    .join('\n')
+}
+
 function normalizePayer(option) {
   if (!option?.name || !option?.email) return null
   return {
@@ -364,11 +377,15 @@ function Step2({ data, onChange, isTreasurer }) {
       {/* Claim Description */}
       <div>
         <Label required>Claim Description</Label>
-        <Textarea
+        <Input
           value={data.claimDescription}
           onChange={(v) => onChange({ claimDescription: v })}
-          placeholder="Describe the purpose of this claim…"
+          placeholder="e.g. Camp supplies"
+          className="max-w-full"
         />
+        <p className="mt-1 text-xs text-gray-400">
+          Keep this short, 5 words. {countWords(data.claimDescription)}/5
+        </p>
       </div>
 
       {/* Date */}
@@ -440,12 +457,25 @@ function Step2({ data, onChange, isTreasurer }) {
       {!isTreasurer && (
         <div>
           <Label>Remarks</Label>
-          <p className="text-xs text-gray-400 mb-1">Write each remark starting with "- " e.g. - Bought for event</p>
+          <p className="text-xs text-gray-400 mb-1">Format each line as: - remark</p>
           <Textarea
             value={data.remarks}
             onChange={(v) => onChange({ remarks: v })}
             placeholder="- Optional remark…"
             rows={2}
+          />
+        </div>
+      )}
+
+      {isTreasurer && (
+        <div>
+          <Label>Treasurer Notes</Label>
+          <p className="text-xs text-gray-400 mb-1">Visible to you, finance team, and finance director.</p>
+          <Textarea
+            value={data.treasurerNotes}
+            onChange={(v) => onChange({ treasurerNotes: v })}
+            placeholder="Optional context for finance…"
+            rows={3}
           />
         </div>
       )}
@@ -543,7 +573,7 @@ function ReceiptForm({
       e.amount = 'Enter a valid amount > 0'
     if (!isTreasurer && !form.category) e.category = 'Required'
     if (!form.date) e.date = 'Required'
-    if (!form.payer_name?.trim() || !form.payer_email?.trim()) e.payer = 'Select who paid for this receipt'
+    if (!form.payer_name?.trim() || !form.payer_email?.trim()) e.payer = 'Select the invoice name and email'
     return e
   }
 
@@ -1429,7 +1459,7 @@ function buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPa
 
   const missingPayers = receipts.filter((receipt) => !receipt.payer_name?.trim() || !receipt.payer_email?.trim()).length
   if (missingPayers > 0) {
-    blockers.push(`${missingPayers} receipt${missingPayers === 1 ? '' : 's'} missing payer selection.`)
+    blockers.push(`${missingPayers} receipt${missingPayers === 1 ? '' : 's'} missing invoice name/email.`)
   }
   const invalidBankOnly = bankOnly.filter((bt) => bankTransactionNetAmount(bt) <= 0).length
   if (invalidBankOnly > 0) {
@@ -1443,7 +1473,7 @@ function buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPa
     (!isTreasurer && !item.category)
   ).length
   if (incompleteBankOnly > 0) {
-    blockers.push(`${incompleteBankOnly} bank transaction-only item${incompleteBankOnly === 1 ? '' : 's'} missing description, date, payer${isTreasurer ? '' : ', or category'}.`)
+    blockers.push(`${incompleteBankOnly} bank transaction-only item${incompleteBankOnly === 1 ? '' : 's'} missing description, date, invoice name/email${isTreasurer ? '' : ', or category'}.`)
   }
   const uniqueCategories = new Set(
     [...receipts, ...bankOnlyDrafts]
@@ -2125,6 +2155,7 @@ const DEFAULT_STEP2 = {
   date: today(),
   wbsAccount: 'SA',
   remarks: '',
+  treasurerNotes: '',
   transportFormNeeded: false,
   transportTrips: [],
   mfApprovalFiles: [],
@@ -2396,11 +2427,11 @@ export default function NewClaimPage() {
       }
       const missingPayer = receipts.find((r) => !r.payer_name?.trim() || !r.payer_email?.trim())
       if (missingPayer) {
-        throw new Error('Every receipt must have a payer selected.')
+        throw new Error('Every receipt needs the invoice name and email.')
       }
       const bankOnlyDrafts = bankOnlyReceiptDrafts(receipts, bankTransactions, defaultPayer, isTreasurer)
       if (bankOnlyDrafts.length > 0 && bankOnlyDrafts.some((r) => !r.payer_name?.trim() || !r.payer_email?.trim())) {
-        throw new Error('Bank transactions without receipts need a default payer before they can be included in the split.')
+        throw new Error('Bank transactions without receipts need an invoice name and email before they can be included in the split.')
       }
       const incompleteBankOnly = bankOnlyDrafts.some((r) =>
         !r.description?.trim() ||
@@ -2408,14 +2439,14 @@ export default function NewClaimPage() {
         (!isTreasurer && !r.category)
       )
       if (incompleteBankOnly) {
-        throw new Error(`Every bank transaction-only item needs description, date, payer${isTreasurer ? '' : ', and category'}.`)
+        throw new Error(`Every bank transaction-only item needs description, date, invoice name/email${isTreasurer ? '' : ', and category'}.`)
       }
       if (bankOnlyDrafts.some((r) => Number(r.amount || 0) <= 0)) {
         throw new Error('Bank transactions without receipts must have a net amount above $0.00.')
       }
 
       // Auto-append remarks for FX receipts and MF approval
-      let autoRemarks = step2.remarks.trim()
+      let autoRemarks = normalizeRemarkLines(step2.remarks)
       const hasFxReceipt = receipts.some(r => r.is_foreign_currency && r.fx_screenshot_files?.length)
       const FX_REMARK = '- Exchange Rate Screenshot is Attached'
       const MF_REMARK = "- Master's Approval Screenshot is attached"
@@ -2434,6 +2465,9 @@ export default function NewClaimPage() {
         remarks: autoRemarks || undefined,
         transport_form_needed: step2.transportFormNeeded,
         is_partial: step2.isPartial,
+      }
+      if (canSubmitAsTreasurer && step2.treasurerNotes?.trim()) {
+        claimPayload.treasurer_notes = step2.treasurerNotes.trim()
       }
       if (isTreasurerPreview) {
         claimPayload.one_off_name = `${user?.name || 'Preview Treasurer'} (Treasurer preview)`

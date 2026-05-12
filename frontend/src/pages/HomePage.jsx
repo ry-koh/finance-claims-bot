@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
@@ -26,23 +26,25 @@ const STATUS_BADGE = Object.fromEntries(
 )
 STATUS_BADGE['error'] = 'bg-red-100 text-red-800'
 
-const STATUS_BORDER = {
-  draft: 'border-l-gray-300',
-  pending_review: 'border-l-amber-400',
-  email_sent: 'border-l-blue-400',
-  screenshot_pending: 'border-l-amber-400',
-  screenshot_uploaded: 'border-l-orange-400',
-  docs_generated: 'border-l-purple-400',
-  compiled: 'border-l-indigo-400',
-  submitted: 'border-l-green-500',
-  attachment_requested: 'border-l-orange-500',
-  attachment_uploaded: 'border-l-blue-500',
-  reimbursed: 'border-l-teal-500',
-  error: 'border-l-red-500',
-}
+const DASHBOARD_FILTERS = [
+  { key: 'all', label: 'Total', statuses: null },
+  { key: 'review', label: 'Review', statuses: ['pending_review', 'attachment_uploaded'] },
+  { key: 'docs', label: 'Docs', statuses: ['email_sent', 'screenshot_pending', 'screenshot_uploaded', 'docs_generated'] },
+  { key: 'compiled', label: 'Compiled', statuses: ['compiled'] },
+  { key: 'done', label: 'Done', statuses: ['submitted', 'reimbursed'] },
+  { key: 'errors', label: 'Errors', statuses: ['error'] },
+]
 
 function isCountsMap(value) {
   return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function countStatuses(counts, statuses, fallback = 0) {
+  if (!counts) return fallback
+  if (!statuses) {
+    return Object.values(counts).reduce((sum, value) => sum + (Number(value) || 0), 0)
+  }
+  return statuses.reduce((sum, status) => sum + (Number(counts?.[status]) || 0), 0)
 }
 
 function badgeClasses(status) {
@@ -72,14 +74,14 @@ function useDebounce(value, delay) {
 
 function DateRangeFilter({ dateFrom, dateTo, onDateFromChange, onDateToChange }) {
   return (
-    <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+    <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
       <div className="min-w-0">
         <label className="text-xs text-gray-500">From</label>
         <input
           type="date"
           value={dateFrom}
           onChange={e => onDateFromChange(e.target.value)}
-          className="toolbar-field mt-1 block min-w-0 w-full max-w-full px-2 text-xs outline-none focus:border-blue-400"
+          className="toolbar-field mt-1 block min-w-0 w-full max-w-full box-border px-2 text-xs outline-none focus:border-blue-400"
         />
       </div>
       <div className="min-w-0">
@@ -88,7 +90,7 @@ function DateRangeFilter({ dateFrom, dateTo, onDateFromChange, onDateToChange })
           type="date"
           value={dateTo}
           onChange={e => onDateToChange(e.target.value)}
-          className="toolbar-field mt-1 block min-w-0 w-full max-w-full px-2 text-xs outline-none focus:border-blue-400"
+          className="toolbar-field mt-1 block min-w-0 w-full max-w-full box-border px-2 text-xs outline-none focus:border-blue-400"
         />
       </div>
     </div>
@@ -182,7 +184,7 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle, revealDelay
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const [activeStatus, setActiveStatus] = useState(null)
+  const [activeFilterKey, setActiveFilterKey] = useState('all')
 
   const [search, setSearch] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -197,24 +199,11 @@ export default function HomePage() {
   const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
   const [actionResult, setActionResult] = useState(null)
 
-  const tabsRef = useRef(null)
-
-  useEffect(() => {
-    const el = tabsRef.current
-    if (!el) return
-    const onWheel = (e) => {
-      if (e.deltaY === 0 && e.deltaX === 0) return
-      e.preventDefault()
-      el.scrollLeft += e.deltaY + e.deltaX
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [])
-
   const debouncedSearch = useDebounce(search, 300)
+  const activeFilter = DASHBOARD_FILTERS.find((filter) => filter.key === activeFilterKey) || DASHBOARD_FILTERS[0]
 
   // Reset to page 1 whenever any filter changes
-  useEffect(() => { setPage(1) }, [activeStatus, debouncedSearch, dateFrom, dateTo, pageSize])
+  useEffect(() => { setPage(1) }, [activeFilterKey, debouncedSearch, dateFrom, dateTo, pageSize])
 
   const sendMutation = useSendToTelegram()
   const bulkStatusMutation = useBulkUpdateStatus()
@@ -226,7 +215,7 @@ export default function HomePage() {
   const queryParams = {
     page,
     page_size: pageSize,
-    ...(activeStatus && { status: activeStatus }),
+    ...(activeFilter.statuses?.length && { statuses: activeFilter.statuses }),
     ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
     ...(dateFrom && { date_from: dateFrom }),
     ...(dateTo && { date_to: dateTo }),
@@ -279,16 +268,10 @@ export default function HomePage() {
   }, [actionResult])
 
   const counts = isCountsMap(countsData) ? countsData : null
-  const allCount = counts
-    ? Object.values(counts).reduce((sum, value) => sum + (Number(value) || 0), 0)
-    : total
-  const reviewQueue = (Number(counts?.pending_review) || 0) + (Number(counts?.attachment_uploaded) || 0)
-  const documentQueue =
-    (Number(counts?.email_sent) || 0) +
-    (Number(counts?.screenshot_pending) || 0) +
-    (Number(counts?.screenshot_uploaded) || 0) +
-    (Number(counts?.docs_generated) || 0)
-  const completedCount = (Number(counts?.submitted) || 0) + (Number(counts?.reimbursed) || 0)
+  const dashboardFilters = DASHBOARD_FILTERS.map((filter) => ({
+    ...filter,
+    count: countStatuses(counts, filter.statuses, filter.key === 'all' || filter.key === activeFilterKey ? total : 0),
+  }))
 
   return (
     <div className="mobile-page flex min-h-full flex-col">
@@ -347,7 +330,7 @@ export default function HomePage() {
                     setIsExporting(true)
                     try {
                       await exportClaims({
-                        status: activeStatus,
+                        statuses: activeFilter.statuses || undefined,
                         search: debouncedSearch.trim() || undefined,
                         date_from: dateFrom || undefined,
                         date_to: dateTo || undefined,
@@ -366,18 +349,18 @@ export default function HomePage() {
             </div>
             <div className="-mx-4 mb-2 overflow-x-auto px-4 pb-1 scrollbar-none">
               <div className="flex gap-2">
-                {[
-                  ['Total', allCount],
-                  ['Review', reviewQueue],
-                  ['Docs', documentQueue],
-                  ['Done', completedCount],
-                  ['Errors', Number(counts?.error) || 0],
-                  ['Compiled', Number(counts?.compiled) || 0],
-                ].map(([label, value]) => (
-                  <div key={label} className={`min-w-[84px] ${label === 'Total' ? 'metric-tile' : 'metric-tile metric-tile-neutral'}`}>
-                    <p className="section-eyebrow mb-1 text-[10px]">{label}</p>
-                    <p className="finance-amount text-gray-900">{value}</p>
-                  </div>
+                {dashboardFilters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => setActiveFilterKey(filter.key)}
+                    className={`metric-tile min-w-[92px] text-left transition-colors ${
+                      activeFilterKey === filter.key ? 'metric-tile-active' : 'metric-tile-neutral'
+                    }`}
+                  >
+                    <p className="section-eyebrow mb-1 text-[10px]">{filter.label}</p>
+                    <p className="finance-amount text-gray-900">{filter.count}</p>
+                  </button>
                 ))}
               </div>
             </div>
@@ -420,31 +403,6 @@ export default function HomePage() {
           </>
         )}
 
-        {/* Status filter pills */}
-        {!selectMode && (
-          <div
-            ref={tabsRef}
-            className="mt-2 -mx-4 px-4 overflow-x-auto flex gap-1.5 pb-1 scrollbar-none"
-          >
-            {STATUSES.map(({ label, value }) => {
-              const isActive = activeStatus === value
-              const count = value === null ? allCount : (Number(counts?.[value]) || 0)
-              return (
-                <button
-                  key={label}
-                  onClick={() => setActiveStatus(value)}
-                  className={`filter-pill shrink-0 whitespace-nowrap ${
-                    isActive
-                      ? 'filter-pill-active'
-                      : ''
-                  }`}
-                >
-                  {label}{counts || value === null ? ` ${count}` : ''}
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>
 
       {/* Claims list */}
@@ -473,11 +431,11 @@ export default function HomePage() {
         {!isLoading && !isError && claims.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-gray-400 text-sm">
-              {debouncedSearch.trim() || dateFrom || dateTo || activeStatus
+              {debouncedSearch.trim() || dateFrom || dateTo || activeFilterKey !== 'all'
                 ? 'No claims match your filters'
                 : 'No claims yet'}
             </p>
-            {!activeStatus && !debouncedSearch.trim() && !dateFrom && !dateTo && (
+            {activeFilterKey === 'all' && !debouncedSearch.trim() && !dateFrom && !dateTo && (
               <button
                 onClick={() => navigate('/claims/new')}
                 className="mt-3 text-sm text-blue-600 font-medium"

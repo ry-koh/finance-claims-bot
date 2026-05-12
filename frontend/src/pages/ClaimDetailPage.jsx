@@ -1323,17 +1323,53 @@ function BtCard({
   )
 }
 
-// ─── Internal Notes (finance team only) ──────────────────────────────────────
+// ─── Claim Notes ─────────────────────────────────────────────────────────────
 
-function InternalNotesCard({ claim, claimId }) {
+function ClaimNotesCard({
+  claim,
+  claimId,
+  field,
+  title,
+  description,
+  placeholder,
+  emptyText = 'No notes yet',
+  canEdit = true,
+  tone = 'amber',
+}) {
   const updateClaimMut = useUpdateClaim()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(claim.internal_notes ?? '')
+  const currentValue = claim[field] ?? ''
+  const [value, setValue] = useState(currentValue)
+  const toneClasses = {
+    amber: {
+      shell: 'bg-amber-50 border-amber-200',
+      title: 'text-amber-800',
+      edit: 'text-amber-700 bg-amber-100 active:bg-amber-200',
+      input: 'border-amber-300 focus:ring-amber-300',
+      save: 'bg-amber-600',
+      cancel: 'border-amber-300 text-amber-700',
+      body: 'text-amber-900',
+      empty: 'text-amber-400',
+    },
+    blue: {
+      shell: 'bg-blue-50 border-blue-200',
+      title: 'text-blue-800',
+      edit: 'text-blue-700 bg-blue-100 active:bg-blue-200',
+      input: 'border-blue-300 focus:ring-blue-300',
+      save: 'bg-blue-600',
+      cancel: 'border-blue-300 text-blue-700',
+      body: 'text-blue-900',
+      empty: 'text-blue-400',
+    },
+  }
+  const classes = toneClasses[tone] || toneClasses.amber
+
+  if (!canEdit && !currentValue) return null
 
   function handleSave() {
     updateClaimMut.mutate(
-      { id: claimId, internal_notes: value.trim() },
+      { id: claimId, [field]: value.trim() },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all })
@@ -1344,20 +1380,23 @@ function InternalNotesCard({ claim, claimId }) {
   }
 
   function handleCancel() {
-    setValue(claim.internal_notes ?? '')
+    setValue(currentValue)
     setEditing(false)
   }
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+    <div className={`${classes.shell} border rounded-xl p-4`}>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold text-amber-800">Internal Notes</h2>
-        {!editing && (
+        <div>
+          <h2 className={`text-sm font-semibold ${classes.title}`}>{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-gray-500">{description}</p>}
+        </div>
+        {canEdit && !editing && (
           <button
-            onClick={() => setEditing(true)}
-            className="text-xs text-amber-700 font-medium px-2 py-0.5 rounded-lg bg-amber-100 active:bg-amber-200"
+            onClick={() => { setValue(currentValue); setEditing(true) }}
+            className={`text-xs font-medium px-2 py-0.5 rounded-lg ${classes.edit}`}
           >
-            {claim.internal_notes ? 'Edit' : '+ Add'}
+            {currentValue ? 'Edit' : '+ Add'}
           </button>
         )}
       </div>
@@ -1368,28 +1407,28 @@ function InternalNotesCard({ claim, claimId }) {
             rows={3}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="Notes visible only to finance team…"
-            className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-300"
+            placeholder={placeholder}
+            className={`w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 ${classes.input}`}
           />
           <div className="flex gap-2">
             <button
               onClick={handleSave}
               disabled={updateClaimMut.isPending}
-              className="text-xs font-medium px-3 py-1.5 bg-amber-600 text-white rounded-lg disabled:opacity-50"
+              className={`text-xs font-medium px-3 py-1.5 text-white rounded-lg disabled:opacity-50 ${classes.save}`}
             >
               {updateClaimMut.isPending ? 'Saving…' : 'Save'}
             </button>
             <button
               onClick={handleCancel}
-              className="text-xs font-medium px-3 py-1.5 bg-white border border-amber-300 text-amber-700 rounded-lg"
+              className={`text-xs font-medium px-3 py-1.5 bg-white border rounded-lg ${classes.cancel}`}
             >
               Cancel
             </button>
           </div>
         </div>
       ) : (
-        <p className="text-sm text-amber-900 whitespace-pre-wrap">
-          {claim.internal_notes || <span className="text-amber-400 italic">No notes yet</span>}
+        <p className={`text-sm whitespace-pre-wrap ${classes.body}`}>
+          {currentValue || <span className={`${classes.empty} italic`}>{emptyText}</span>}
         </p>
       )}
     </div>
@@ -1827,6 +1866,7 @@ const EVENT_LABELS = {
   claim_created: 'Claim created',
   claim_updated: 'Claim updated',
   internal_notes_updated: 'Internal notes updated',
+  treasurer_notes_updated: 'Treasurer notes updated',
   submitted_for_review: 'Submitted for review',
   review_rejected: 'Review rejected',
   email_sent: 'Email sent',
@@ -2446,19 +2486,21 @@ export default function ClaimDetailPage() {
               {/* Description */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Description</label>
-                <textarea
-                  rows={3}
+                <input
                   value={editFields.claim_description}
                   onChange={(e) =>
                     setEditFields((f) => ({ ...f, claim_description: e.target.value }))
                   }
+                  placeholder="e.g. Camp supplies"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
+                <p className="mt-1 text-xs text-gray-400">Keep this short, 5 words.</p>
               </div>
 
               {/* Remarks */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Remarks</label>
+                <p className="mb-1 text-xs text-gray-400">Format each line as: - remark</p>
                 <textarea
                   rows={2}
                   value={editFields.remarks}
@@ -2595,9 +2637,33 @@ export default function ClaimDetailPage() {
           />
         )}
 
+        {/* ── Treasurer Notes ── */}
+        {(isTreasurer || claim.treasurer_notes) && (
+          <ClaimNotesCard
+            claim={claim}
+            claimId={id}
+            field="treasurer_notes"
+            title="Treasurer Notes"
+            description="Visible to the CCA treasurer, finance team, and finance director."
+            placeholder="Optional context for finance..."
+            emptyText="No treasurer notes yet"
+            canEdit={isTreasurer}
+            tone="blue"
+          />
+        )}
+
         {/* ── Internal Notes (finance team only) ── */}
         {isFinanceTeam && (
-          <InternalNotesCard claim={claim} claimId={id} />
+          <ClaimNotesCard
+            claim={claim}
+            claimId={id}
+            field="internal_notes"
+            title="Internal Notes"
+            description="Visible only to finance team and finance director."
+            placeholder="Notes visible only to finance team..."
+            canEdit
+            tone="amber"
+          />
         )}
 
         <PayerBreakdownCard claim={claim} />

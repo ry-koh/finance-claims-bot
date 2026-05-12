@@ -18,6 +18,7 @@ os.environ.setdefault("GOOGLE_DRIVE_PARENT_FOLDER_ID", "folder")
 pytest.importorskip("fastapi")
 from fastapi import HTTPException
 
+from app.routers import claims
 from app.routers import receipts
 from app.services import image_access
 
@@ -96,3 +97,25 @@ def test_image_access_returns_404_when_path_is_not_referenced(monkeypatch):
         image_access.assert_can_view_path(Db({}), "missing/path.jpg", {"id": "user-1"})
 
     assert exc.value.status_code == 404
+
+
+def test_treasurer_notes_only_update_does_not_require_draft_claim():
+    assert claims._claim_update_requires_treasurer_draft({"treasurer_notes": "Treasurer context"}) is False
+
+
+def test_mixed_treasurer_notes_update_still_requires_draft_claim():
+    assert claims._claim_update_requires_treasurer_draft({
+        "treasurer_notes": "Treasurer context",
+        "claim_description": "Camp",
+    }) is True
+
+
+def test_status_group_filter_normalises_distinct_statuses():
+    assert claims._normalise_statuses("submitted,reimbursed,submitted") == ["submitted", "reimbursed"]
+
+
+def test_status_group_filter_rejects_unknown_status():
+    with pytest.raises(HTTPException) as exc:
+        claims._normalise_statuses("submitted,unknown")
+
+    assert exc.value.status_code == 422

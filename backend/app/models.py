@@ -244,6 +244,7 @@ class Claim(BaseModel):
     wbs_account: WBSAccount
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
+    treasurer_notes: Optional[str] = None
     status: ClaimStatus
     error_message: Optional[str] = None
     transport_form_needed: bool
@@ -266,6 +267,7 @@ class ClaimCreate(BaseModel):
     wbs_account: WBSAccount
     wbs_no: Optional[str] = None
     remarks: Optional[str] = None
+    treasurer_notes: Optional[str] = None
     transport_form_needed: bool = False
     is_partial: bool = False
 
@@ -292,6 +294,7 @@ class ClaimUpdate(BaseModel):
     mf_approval_drive_id: Optional[str] = None
     client_updated_at: Optional[str] = None
     internal_notes: Optional[str] = None
+    treasurer_notes: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

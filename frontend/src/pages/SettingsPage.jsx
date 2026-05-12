@@ -6,11 +6,13 @@ export default function SettingsPage() {
   const { data, isLoading } = useSettings()
   const updateMutation = useUpdateSettings()
   const updateTestingModeMutation = useUpdateTestingMode()
-  const { refreshTestingMode, setPreviewRole } = useAuth()
+  const { refreshTestingMode, setPreviewRole, setUser } = useAuth()
 
   const [academicYear, setAcademicYear] = useState('')
   const [accountName, setAccountName] = useState('')
   const [accountEmail, setAccountEmail] = useState('')
+  const [accountMatricNumber, setAccountMatricNumber] = useState('')
+  const [accountPhoneNumber, setAccountPhoneNumber] = useState('')
   const [fdName, setFdName] = useState('')
   const [fdPhone, setFdPhone] = useState('')
   const [fdMatricNo, setFdMatricNo] = useState('')
@@ -28,6 +30,8 @@ export default function SettingsPage() {
       setAcademicYear(data.academic_year || '')
       setAccountName(data.account_name || '')
       setAccountEmail(data.account_email || '')
+      setAccountMatricNumber(data.account_matric_number || '')
+      setAccountPhoneNumber(data.account_phone_number || '')
       setFdName(data.fd_name || '')
       setFdPhone(data.fd_phone || '')
       setFdMatricNo(data.fd_matric_no || '')
@@ -47,6 +51,8 @@ export default function SettingsPage() {
         academic_year: academicYear,
         account_name: accountName,
         account_email: accountEmail,
+        account_matric_number: accountMatricNumber,
+        account_phone_number: accountPhoneNumber,
         fd_name: fdName,
         fd_phone: fdPhone,
         fd_matric_no: fdMatricNo,
@@ -59,6 +65,17 @@ export default function SettingsPage() {
       },
       {
         onSuccess: async () => {
+          setUser((current) =>
+            current
+              ? {
+                  ...current,
+                  name: accountName,
+                  email: accountEmail,
+                  matric_number: accountMatricNumber,
+                  phone_number: accountPhoneNumber,
+                }
+              : current
+          )
           setSaved(true)
           if (!testingModeEnabled) setPreviewRole('director')
           await refreshTestingMode()
@@ -120,7 +137,9 @@ export default function SettingsPage() {
 
         <div className="ui-card p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Your App Identity</h2>
-          <p className="text-xs text-gray-400 mb-3">Used for audit timeline names and your director account identity.</p>
+          <p className="text-xs text-gray-400 mb-3">
+            Used for the left drawer and audit timeline identity. This is separate from the document and email Finance Director profile below.
+          </p>
           <label className="block text-xs text-gray-500 mb-1">Your Name</label>
           <input
             type="text"
@@ -137,6 +156,28 @@ export default function SettingsPage() {
             placeholder="e.g. e0596601@u.nus.edu"
             className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Your Matric Number</label>
+              <input
+                type="text"
+                value={accountMatricNumber}
+                onChange={(e) => setAccountMatricNumber(e.target.value)}
+                placeholder="e.g. A0123456B"
+                className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Your Phone Number</label>
+              <input
+                type="text"
+                value={accountPhoneNumber}
+                onChange={(e) => setAccountPhoneNumber(e.target.value)}
+                placeholder="e.g. 91234567"
+                className="toolbar-field w-full px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="ui-card p-4">

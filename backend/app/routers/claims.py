@@ -68,6 +68,10 @@ STALE_TRIGGER_FIELDS = {
 }
 
 
+def _claim_update_requires_treasurer_draft(update_data: dict) -> bool:
+    return set(update_data.keys()) != {"treasurer_notes"}
+
+
 def _slug(text: str) -> str:
     """Upper-case and remove spaces."""
     return text.upper().replace(" ", "")
@@ -114,6 +118,22 @@ def _normalise_claim_ids(claim_ids: list[str]) -> list[str]:
             ids.append(claim_id)
             seen.add(claim_id)
     return ids
+
+
+def _normalise_statuses(statuses: str | None) -> list[str]:
+    if not statuses:
+        return []
+    allowed = {status.value for status in ClaimStatus}
+    result: list[str] = []
+    for raw in statuses.split(","):
+        status = raw.strip()
+        if not status:
+            continue
+        if status not in allowed:
+            raise HTTPException(status_code=422, detail=f"Invalid claim status: {status}")
+        if status not in result:
+            result.append(status)
+    return result
 
 
 def _money(value) -> float:
@@ -352,6 +372,7 @@ def _attach_readiness_summaries(db: Client, claims: list[dict]) -> None:
 @router.get("", response_model=ClaimsListResponse)
 async def list_claims(
     status: Optional[str] = Query(default=None),
+    statuses: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     date_from: Optional[str] = Query(default=None),
     date_to: Optional[str] = Query(default=None),
@@ -380,8 +401,13 @@ async def list_claims(
             # Include row if: no filled_by, OR filled_by is not a treasurer, OR status is not draft
             query = query.or_(f"filled_by.is.null,filled_by.not.in.({id_list}),status.neq.draft")
 
+    status_list = _normalise_statuses(statuses)
+    if status and status_list:
+        raise HTTPException(status_code=422, detail="Use either status or statuses, not both")
     if status:
         query = query.eq("status", status)
+    elif status_list:
+        query = query.in_("status", status_list)
 
     if search and search.strip():
         s = search.strip()
@@ -434,6 +460,7 @@ async def list_claims(
 @router.get("/export")
 async def export_claims(
     status: Optional[str] = Query(default=None),
+    statuses: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     date_from: Optional[str] = Query(default=None),
     date_to: Optional[str] = Query(default=None),
@@ -463,8 +490,13 @@ async def export_claims(
             id_list = ",".join(treasurer_ids)
             query = query.or_(f"filled_by.is.null,filled_by.not.in.({id_list}),status.neq.draft")
 
+    status_list = _normalise_statuses(statuses)
+    if status and status_list:
+        raise HTTPException(status_code=422, detail="Use either status or statuses, not both")
     if status:
         query = query.eq("status", status)
+    elif status_list:
+        query = query.in_("status", status_list)
 
     if search and search.strip():
         s = search.strip()
@@ -867,6 +899,10 @@ async def create_claim(
         claim_data["wbs_no"] = payload.wbs_no
     if payload.remarks is not None:
         claim_data["remarks"] = payload.remarks
+    if payload.treasurer_notes is not None and _member.get("role") != "treasurer":
+        raise HTTPException(status_code=403, detail="Only the CCA treasurer can add treasurer notes")
+    if payload.treasurer_notes is not None:
+        claim_data["treasurer_notes"] = payload.treasurer_notes.strip()
     create_resp = db.table("claims").insert(claim_data).execute()
     if not create_resp.data:
         raise HTTPException(status_code=500, detail="Failed to create claim")
@@ -1036,8 +1072,6 @@ async def update_claim(
     _member: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    claim = get_claim_for_member(db, claim_id, _member, require_treasurer_draft=True)
-
     # Build update dict from only provided fields, excluding immutable/meta fields
     # wbs_no is GENERATED ALWAYS (computed from wbs_account) and cannot be set directly
     immutable = {"reference_code", "claim_number", "created_at", "client_updated_at", "wbs_no"}
@@ -1055,8 +1089,17 @@ async def update_claim(
 
     if not update_data:
         raise HTTPException(status_code=422, detail="No updatable fields provided")
+
+    claim = get_claim_for_member(
+        db,
+        claim_id,
+        _member,
+        require_treasurer_draft=_claim_update_requires_treasurer_draft(update_data),
+    )
     if _member.get("role") == "treasurer" and "status" in update_data:
         raise HTTPException(status_code=403, detail="Treasurers cannot change claim status directly")
+    if _member.get("role") != "treasurer" and "treasurer_notes" in update_data:
+        raise HTTPException(status_code=403, detail="Only the CCA treasurer can update treasurer notes")
 
     # Convert Decimal to string for JSON serialisation
     for k, v in update_data.items():
@@ -1107,12 +1150,23 @@ async def update_claim(
 
     updated_fields = sorted(update_data.keys())
     internal_notes_only = updated_fields == ["internal_notes"]
-    event_type = "internal_notes_updated" if internal_notes_only else "claim_updated"
+    treasurer_notes_only = updated_fields == ["treasurer_notes"]
+    event_type = (
+        "internal_notes_updated"
+        if internal_notes_only
+        else "treasurer_notes_updated"
+        if treasurer_notes_only
+        else "claim_updated"
+    )
     event_message = (
         "Internal notes cleared"
         if internal_notes_only and not update_data.get("internal_notes")
         else "Internal notes updated"
         if internal_notes_only
+        else "Treasurer notes cleared"
+        if treasurer_notes_only and not update_data.get("treasurer_notes")
+        else "Treasurer notes updated"
+        if treasurer_notes_only
         else "Claim details updated"
     )
     log_claim_event(

@@ -24,6 +24,8 @@ class SettingsResponse(BaseModel):
     academic_year: str
     account_name: str
     account_email: str
+    account_matric_number: str
+    account_phone_number: str
     fd_name: str
     fd_phone: str
     fd_matric_no: str
@@ -40,6 +42,8 @@ class SettingsUpdate(BaseModel):
     academic_year: Optional[str] = None
     account_name: Optional[str] = None
     account_email: Optional[str] = None
+    account_matric_number: Optional[str] = None
+    account_phone_number: Optional[str] = None
     fd_name: Optional[str] = None
     fd_phone: Optional[str] = None
     fd_matric_no: Optional[str] = None
@@ -71,6 +75,8 @@ async def get_settings(
         "academic_year": ay,
         "account_name": _director.get("name") or "",
         "account_email": _director.get("email") or "",
+        "account_matric_number": _director.get("matric_number") or "",
+        "account_phone_number": _director.get("phone_number") or "",
         "fd_name": fd.get("name") or "",
         "fd_phone": fd.get("phone") or "",
         "fd_matric_no": fd.get("matric_no") or "",
@@ -115,6 +121,10 @@ async def update_settings(
         db.table("finance_team").update({"name": payload.account_name.strip()}).eq("id", director["id"]).execute()
     if payload.account_email is not None:
         db.table("finance_team").update({"email": payload.account_email.strip()}).eq("id", director["id"]).execute()
+    if payload.account_matric_number is not None:
+        db.table("finance_team").update({"matric_number": payload.account_matric_number.strip().upper()}).eq("id", director["id"]).execute()
+    if payload.account_phone_number is not None:
+        db.table("finance_team").update({"phone_number": payload.account_phone_number.strip()}).eq("id", director["id"]).execute()
 
     fd_settings: dict[str, str] = {}
     if payload.fd_name is not None:

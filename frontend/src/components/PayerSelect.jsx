@@ -75,7 +75,7 @@ export default function PayerSelect({
     const name = newName.trim()
     const email = cleanEmail(newEmail)
     if (!name || !email || !email.includes('@')) {
-      setLocalError('Enter payer name and email.')
+      setLocalError('Enter the invoice name and their email.')
       return
     }
     setLocalError('')
@@ -102,7 +102,7 @@ export default function PayerSelect({
     const name = editName.trim()
     const email = cleanEmail(editEmail)
     if (!name || !email || !email.includes('@')) {
-      setLocalError('Enter payer name and email.')
+      setLocalError('Enter the invoice name and their email.')
       return
     }
     try {
@@ -130,8 +130,11 @@ export default function PayerSelect({
     <div className="space-y-2">
       <div>
         <label className="mb-1 block text-xs font-semibold text-gray-700">
-          Paid by <span className="text-red-500">*</span>
+          Name on invoice <span className="text-red-500">*</span>
         </label>
+        <p className="mb-1 text-xs text-gray-400">
+          If another person appears on the invoice, add their name and email here. This is the email stored in the database for reimbursement records.
+        </p>
         <select
           value={selectedKey}
           disabled={disabled || loading || normalizedOptions.length === 0}
@@ -142,7 +145,7 @@ export default function PayerSelect({
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-400"
         >
           <option value="" disabled>
-            {loading ? 'Loading payers...' : 'Select payer'}
+            {loading ? 'Loading people...' : 'Select invoice person'}
           </option>
           {normalizedOptions.map((option) => (
             <option key={optionKey(option)} value={optionKey(option)}>
@@ -164,7 +167,7 @@ export default function PayerSelect({
         disabled={disabled}
         className="text-xs font-medium text-blue-600 disabled:text-gray-400"
       >
-        {showAdd ? 'Cancel payer entry' : '+ Add payer'}
+        {showAdd ? 'Cancel entry' : '+ Add invoice person'}
       </button>
 
       {showAdd && (
@@ -173,14 +176,14 @@ export default function PayerSelect({
             <input
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
-              placeholder="Payer name"
+              placeholder="Name on invoice"
               className="rounded-lg border border-blue-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
             <input
               type="email"
               value={newEmail}
               onChange={(event) => setNewEmail(event.target.value)}
-              placeholder="Payer email"
+              placeholder="Email to record"
               className="rounded-lg border border-blue-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
@@ -189,7 +192,7 @@ export default function PayerSelect({
             onClick={handleAdd}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
           >
-            Save payer
+            Save person
           </button>
         </div>
       )}
@@ -197,7 +200,7 @@ export default function PayerSelect({
       {canManageSaved && savedOptions.length > 0 && (
         <div className="space-y-1 rounded-xl border border-gray-100 bg-white p-2">
           <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-            Saved payers
+            Saved invoice people
           </p>
           {savedOptions.map((option) => (
             <div key={option.id} className="rounded-lg bg-gray-50 px-2 py-1.5">

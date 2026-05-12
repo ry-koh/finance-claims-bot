@@ -9,9 +9,10 @@ export const CLAIM_KEYS = {
 }
 
 // Raw API calls
-export const fetchClaims = ({ status, page, page_size, search, date_from, date_to } = {}) => {
+export const fetchClaims = ({ status, statuses, page, page_size, search, date_from, date_to } = {}) => {
   const params = {}
   if (status) params.status = status
+  if (statuses?.length) params.statuses = Array.isArray(statuses) ? statuses.join(',') : statuses
   if (page !== undefined) params.page = page
   if (page_size !== undefined) params.page_size = page_size
   if (search) params.search = search
@@ -33,9 +34,10 @@ export const fetchClaimCounts = () =>
     return r.data
   })
 
-export const exportClaims = async ({ status, search, date_from, date_to } = {}) => {
+export const exportClaims = async ({ status, statuses, search, date_from, date_to } = {}) => {
   const params = {}
   if (status) params.status = status
+  if (statuses?.length) params.statuses = Array.isArray(statuses) ? statuses.join(',') : statuses
   if (search) params.search = search
   if (date_from) params.date_from = date_from
   if (date_to) params.date_to = date_to
