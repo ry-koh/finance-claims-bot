@@ -11,7 +11,7 @@ from telegram.request import HTTPXRequest
 from app.auth import require_director
 from app.config import settings
 from app.database import get_supabase
-from app.services.manual_rfp import ManualRfpCreate, build_rfp_generation_inputs
+from app.services.manual_rfp import ManualRfpCreate, ManualRfpUpdate, build_rfp_generation_inputs, build_rfp_update_fields
 from app.services import pdf as pdf_service
 from app.services.pdf import DriveAuthError
 from app.services.storage import insert_file_row
@@ -29,6 +29,13 @@ def _drive_url(file_id: str | None) -> str | None:
 
 def _format_rfp(row: dict) -> dict:
     return {**row, "drive_url": _drive_url(row.get("drive_file_id"))}
+
+
+def _get_rfp_or_404(db: Client, rfp_id: str) -> dict:
+    resp = db.table("manual_rfp_documents").select("*").eq("id", rfp_id).single().execute()
+    if not resp.data:
+        raise HTTPException(404, "RFP not found")
+    return resp.data
 
 
 def _stored_line_items(payload: ManualRfpCreate, generated_line_items: list[dict]) -> list[dict]:
@@ -83,7 +90,8 @@ async def create_manual_rfp(
         "reference_code": claim["reference_code"],
         "payee_name": payload.payee_name,
         "payee_matric_no": payee["matric_no"],
-        "wbs_no": payload.wbs_no,
+        "wbs_account": payload.wbs_account,
+        "wbs_no": claim["wbs_no"],
         "total_amount": claim["total_amount"],
         "line_items": _stored_line_items(payload, line_items),
         "drive_file_id": drive_file_id,
@@ -99,16 +107,14 @@ async def download_manual_rfp(
     _director: dict = Depends(require_director),
     db: Client = Depends(get_supabase),
 ):
-    resp = db.table("manual_rfp_documents").select("*").eq("id", rfp_id).single().execute()
-    if not resp.data:
-        raise HTTPException(404, "RFP not found")
+    row = _get_rfp_or_404(db, rfp_id)
 
     try:
-        file_bytes = pdf_service.download_drive_file(resp.data["drive_file_id"])
+        file_bytes = pdf_service.download_drive_file(row["drive_file_id"])
     except Exception as exc:
         raise HTTPException(502, "Could not download RFP from Drive") from exc
 
-    filename = f"RFP - {resp.data['reference_code']}.pdf"
+    filename = f"RFP - {row['reference_code']}.pdf"
     return StreamingResponse(
         io.BytesIO(file_bytes),
         media_type="application/pdf",
@@ -127,11 +133,7 @@ async def send_manual_rfp_to_telegram(
     if not telegram_id:
         raise HTTPException(400, "Your account has no Telegram ID linked.")
 
-    resp = db.table("manual_rfp_documents").select("*").eq("id", rfp_id).single().execute()
-    if not resp.data:
-        raise HTTPException(404, "RFP not found")
-
-    row = resp.data
+    row = _get_rfp_or_404(db, rfp_id)
     try:
         file_bytes = pdf_service.download_drive_file(row["drive_file_id"])
         bot = Bot(
@@ -153,4 +155,44 @@ async def send_manual_rfp_to_telegram(
     db.table("manual_rfp_documents").update({
         "sent_to_telegram_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", rfp_id).execute()
+    return {"success": True}
+
+
+@router.patch("/{rfp_id}")
+async def update_manual_rfp(
+    rfp_id: str,
+    payload: ManualRfpUpdate,
+    director: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    guard(f"manual-rfp:update:{director['id']}", max_calls=30, window_seconds=300)
+    _get_rfp_or_404(db, rfp_id)
+    fields = build_rfp_update_fields(payload)
+    if not fields:
+        return _format_rfp(_get_rfp_or_404(db, rfp_id))
+
+    resp = db.table("manual_rfp_documents").update(fields).eq("id", rfp_id).execute()
+    if not resp.data:
+        return _format_rfp(_get_rfp_or_404(db, rfp_id))
+    return _format_rfp(resp.data[0])
+
+
+@router.delete("/{rfp_id}")
+async def delete_manual_rfp(
+    rfp_id: str,
+    director: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    guard(f"manual-rfp:delete:{director['id']}", max_calls=15, window_seconds=300)
+    row = _get_rfp_or_404(db, rfp_id)
+
+    try:
+        pdf_service.delete_drive_file(row["drive_file_id"])
+    except DriveAuthError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("Failed to delete manual RFP %s from Drive: %s", rfp_id, exc)
+        raise HTTPException(502, "Failed to delete RFP from Drive") from exc
+
+    db.table("manual_rfp_documents").delete().eq("id", rfp_id).execute()
     return {"success": True}

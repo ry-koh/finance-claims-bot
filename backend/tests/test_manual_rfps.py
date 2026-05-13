@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -52,3 +53,38 @@ def test_manual_rfp_generation_inputs_use_custom_payee_and_category_codes():
         {"category_code": "7500106", "total_amount": 12.30, "gst_code": "IE", "dr_cr": "DR"},
         {"category_code": "7654321", "total_amount": 4.55, "gst_code": "I9", "dr_cr": "CR"},
     ]
+
+
+def test_manual_rfp_generation_inputs_autofills_wbs_from_account():
+    payload = manual_rfp.ManualRfpCreate(
+        title="Master Fund payment",
+        payee_name="Jane Tan",
+        payee_matric_no="a1234567b",
+        wbs_account="MF",
+        wbs_no="",
+        line_items=[
+            manual_rfp.ManualRfpLineItem(
+                category="Professional fees",
+                amount=100,
+            ),
+        ],
+    )
+
+    claim, _line_items, _payee = manual_rfp.build_rfp_generation_inputs(payload)
+
+    assert claim["wbs_no"] == "E-404-10-0001-01"
+
+
+def test_manual_rfp_update_fields_trim_notes_and_mark_completed():
+    now = datetime(2026, 5, 13, 12, 30, tzinfo=timezone.utc)
+    payload = manual_rfp.ManualRfpUpdate(
+        internal_notes="  Confirmed with OSL.  ",
+        completed=True,
+    )
+
+    fields = manual_rfp.build_rfp_update_fields(payload, now=now)
+
+    assert fields == {
+        "internal_notes": "Confirmed with OSL.",
+        "completed_at": "2026-05-13T12:30:00+00:00",
+    }

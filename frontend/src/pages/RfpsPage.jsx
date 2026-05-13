@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
-import { CATEGORIES, DR_CR_OPTIONS, GST_CODES } from '../constants/claimConstants'
-import { useCreateRfp, useRfps, useSendRfpToTelegram } from '../api/rfps'
+import { useEffect, useMemo, useState } from 'react'
+import { CATEGORIES, DR_CR_OPTIONS, GST_CODES, RFP_WBS_ACCOUNTS, WBS_NUMBERS_BY_ACCOUNT } from '../constants/claimConstants'
+import { useCreateRfp, useDeleteRfp, useRfps, useSendRfpToTelegram, useUpdateRfp } from '../api/rfps'
+import { useAuth } from '../context/AuthContext'
 
 const CATEGORY_OPTIONS = CATEGORIES.filter((category) => category !== 'N/A')
 const EMPTY_LINE = { category: 'Meals & Refreshments', category_code: '', amount: '', gst_code: 'IE', dr_cr: 'DR' }
@@ -118,7 +119,25 @@ function LineItemEditor({ item, index, canRemove, onChange, onRemove }) {
   )
 }
 
-function RfpRow({ rfp, onSend, sending, disabled }) {
+function RfpRow({
+  rfp,
+  onSend,
+  onDelete,
+  onSaveNotes,
+  onToggleComplete,
+  sending,
+  deleting,
+  savingNotes,
+  togglingComplete,
+  disabled,
+}) {
+  const [notes, setNotes] = useState(rfp.internal_notes || '')
+  const completed = Boolean(rfp.completed_at)
+
+  useEffect(() => {
+    setNotes(rfp.internal_notes || '')
+  }, [rfp.internal_notes])
+
   return (
     <div className={MINI_PANEL_CLS}>
       <div className="flex items-start justify-between gap-3">
@@ -126,10 +145,23 @@ function RfpRow({ rfp, onSend, sending, disabled }) {
           <p className={`truncate text-sm font-bold ${STRONG_TEXT_CLS}`}>{rfp.title}</p>
           <p className={`mt-0.5 text-xs ${MUTED_TEXT_CLS}`}>{rfp.reference_code} - {formatDate(rfp.created_at)}</p>
           <p className={`mt-1 truncate text-xs ${MUTED_TEXT_CLS}`}>{rfp.payee_name} - {rfp.payee_matric_no}</p>
+          <p className={`mt-1 truncate text-xs ${MUTED_TEXT_CLS}`}>{rfp.wbs_account || 'WBS'} - {rfp.wbs_no}</p>
+          {completed && (
+            <p className="mt-1 text-[11px] font-bold text-[var(--color-success)]">Completed {formatDate(rfp.completed_at)}</p>
+          )}
         </div>
         <p className={`shrink-0 text-sm font-bold ${STRONG_TEXT_CLS}`}>{formatAmount(rfp.total_amount)}</p>
       </div>
-      <div className="mt-3 flex gap-2">
+      <label className="mt-3 block">
+        <span className={LABEL_CLS}>Internal notes</span>
+        <textarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          className={`${textInputCls('min-h-[4.5rem] resize-none py-2')}`}
+          placeholder="Add follow-up notes"
+        />
+      </label>
+      <div className="mt-3 grid grid-cols-2 gap-2">
         {rfp.drive_url && (
           <a
             href={rfp.drive_url}
@@ -150,6 +182,33 @@ function RfpRow({ rfp, onSend, sending, disabled }) {
           <span className="material-symbols-outlined text-base">send</span>
           {sending ? 'Sending...' : 'Send to me'}
         </button>
+        <button
+          type="button"
+          onClick={() => onSaveNotes(rfp.id, notes)}
+          disabled={disabled}
+          className="ui-button ui-button-secondary flex-1 text-xs disabled:opacity-50"
+        >
+          <span className="material-symbols-outlined text-base">save</span>
+          {savingNotes ? 'Saving...' : 'Save notes'}
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleComplete(rfp.id, !completed)}
+          disabled={disabled}
+          className="ui-button ui-button-secondary flex-1 text-xs disabled:opacity-50"
+        >
+          <span className="material-symbols-outlined text-base">{completed ? 'undo' : 'check_circle'}</span>
+          {togglingComplete ? 'Saving...' : completed ? 'Reopen' : 'Complete'}
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(rfp.id, rfp.reference_code)}
+          disabled={disabled}
+          className="ui-button ui-button-danger flex-1 text-xs disabled:opacity-50"
+        >
+          <span className="material-symbols-outlined text-base">delete</span>
+          {deleting ? 'Deleting...' : 'Delete'}
+        </button>
       </div>
       {rfp.sent_to_telegram_at && (
         <p className="mt-2 text-[11px] font-medium text-[var(--color-success)]">Sent {formatDate(rfp.sent_to_telegram_at)}</p>
@@ -159,19 +218,26 @@ function RfpRow({ rfp, onSend, sending, disabled }) {
 }
 
 export default function RfpsPage() {
+  const { user } = useAuth()
   const { data: rfps = [], isLoading, isError } = useRfps()
   const createMutation = useCreateRfp()
   const sendMutation = useSendRfpToTelegram()
+  const updateMutation = useUpdateRfp()
+  const deleteMutation = useDeleteRfp()
 
   const [title, setTitle] = useState('')
   const [referenceCode, setReferenceCode] = useState('')
   const [payeeName, setPayeeName] = useState('')
   const [payeeMatricNo, setPayeeMatricNo] = useState('')
-  const [wbsNo, setWbsNo] = useState('')
+  const [wbsAccount, setWbsAccount] = useState('SA')
+  const [wbsNo, setWbsNo] = useState(WBS_NUMBERS_BY_ACCOUNT.SA)
   const [lineItems, setLineItems] = useState([{ ...EMPTY_LINE }])
   const [notice, setNotice] = useState(null)
   const [error, setError] = useState(null)
   const [sendingId, setSendingId] = useState(null)
+  const [savingNotesId, setSavingNotesId] = useState(null)
+  const [togglingCompleteId, setTogglingCompleteId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
   const total = useMemo(
     () => lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0),
@@ -191,8 +257,23 @@ export default function RfpsPage() {
     setReferenceCode('')
     setPayeeName('')
     setPayeeMatricNo('')
-    setWbsNo('')
+    setWbsAccount('SA')
+    setWbsNo(WBS_NUMBERS_BY_ACCOUNT.SA)
     setLineItems([{ ...EMPTY_LINE }])
+  }
+
+  function selectWbsAccount(account) {
+    setWbsAccount(account)
+    setWbsNo(WBS_NUMBERS_BY_ACCOUNT[account] || '')
+  }
+
+  function useDirectorAsPayee() {
+    const name = user?.name || ''
+    const matric = user?.matric_number || ''
+    setPayeeName(name)
+    setPayeeMatricNo(matric)
+    setNotice(null)
+    setError(matric ? null : 'Your account is missing a matric number in Settings.')
   }
 
   function validateForm() {
@@ -220,6 +301,7 @@ export default function RfpsPage() {
         reference_code: referenceCode.trim() || undefined,
         payee_name: payeeName.trim(),
         payee_matric_no: payeeMatricNo.trim(),
+        wbs_account: wbsAccount,
         wbs_no: wbsNo.trim(),
         line_items: lineItems.map((item) => ({
           category: item.category,
@@ -248,6 +330,47 @@ export default function RfpsPage() {
       onError: (err) => setError(apiErrorMessage(err, 'Failed to send RFP.')),
       onSettled: () => setSendingId(null),
     })
+  }
+
+  function deleteStoredRfp(rfpId, referenceCodeForPrompt) {
+    const confirmed = window.confirm(`Delete ${referenceCodeForPrompt || 'this RFP'}? This will also trash the Drive PDF.`)
+    if (!confirmed) return
+    setNotice(null)
+    setError(null)
+    setDeletingId(rfpId)
+    deleteMutation.mutate(rfpId, {
+      onSuccess: () => setNotice('RFP deleted.'),
+      onError: (err) => setError(apiErrorMessage(err, 'Failed to delete RFP.')),
+      onSettled: () => setDeletingId(null),
+    })
+  }
+
+  function saveNotes(rfpId, internalNotes) {
+    setNotice(null)
+    setError(null)
+    setSavingNotesId(rfpId)
+    updateMutation.mutate(
+      { rfpId, payload: { internal_notes: internalNotes } },
+      {
+        onSuccess: () => setNotice('RFP notes saved.'),
+        onError: (err) => setError(apiErrorMessage(err, 'Failed to save RFP notes.')),
+        onSettled: () => setSavingNotesId(null),
+      }
+    )
+  }
+
+  function toggleComplete(rfpId, completed) {
+    setNotice(null)
+    setError(null)
+    setTogglingCompleteId(rfpId)
+    updateMutation.mutate(
+      { rfpId, payload: { completed } },
+      {
+        onSuccess: () => setNotice(completed ? 'RFP marked completed.' : 'RFP reopened.'),
+        onError: (err) => setError(apiErrorMessage(err, 'Failed to update RFP status.')),
+        onSettled: () => setTogglingCompleteId(null),
+      }
+    )
   }
 
   return (
@@ -282,6 +405,14 @@ export default function RfpsPage() {
               <input value={referenceCode} onChange={(event) => setReferenceCode(event.target.value)} className={textInputCls()} placeholder="Auto if blank" />
             </label>
             <label>
+              <span className={LABEL_CLS}>WBS account</span>
+              <select value={wbsAccount} onChange={(event) => selectWbsAccount(event.target.value)} className={textInputCls()}>
+                {RFP_WBS_ACCOUNTS.map((account) => (
+                  <option key={account} value={account}>{account}</option>
+                ))}
+              </select>
+            </label>
+            <label>
               <span className={LABEL_CLS}>WBS number</span>
               <input value={wbsNo} onChange={(event) => setWbsNo(event.target.value)} className={textInputCls()} placeholder="WBS shown on RFP" />
             </label>
@@ -289,7 +420,17 @@ export default function RfpsPage() {
         </section>
 
         <section className={PANEL_CLS}>
-          <h2 className={`text-sm font-bold ${STRONG_TEXT_CLS}`}>Payment recipient</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className={`text-sm font-bold ${STRONG_TEXT_CLS}`}>Payment recipient</h2>
+            <button
+              type="button"
+              onClick={useDirectorAsPayee}
+              className="ui-button ui-button-secondary min-h-0 px-3 py-1.5 text-xs"
+            >
+              <span className="material-symbols-outlined text-base">person</span>
+              Use me
+            </button>
+          </div>
           <p className={`mt-1 text-xs ${MUTED_TEXT_CLS}`}>Use the person or place the payment should go to.</p>
           <div className="mt-3 grid gap-3">
             <label>
@@ -354,8 +495,14 @@ export default function RfpsPage() {
             key={rfp.id}
             rfp={rfp}
             onSend={sendToMe}
+            onDelete={deleteStoredRfp}
+            onSaveNotes={saveNotes}
+            onToggleComplete={toggleComplete}
             sending={sendMutation.isPending && sendingId === rfp.id}
-            disabled={sendMutation.isPending}
+            savingNotes={updateMutation.isPending && savingNotesId === rfp.id}
+            togglingComplete={updateMutation.isPending && togglingCompleteId === rfp.id}
+            deleting={deleteMutation.isPending && deletingId === rfp.id}
+            disabled={sendMutation.isPending || updateMutation.isPending || deleteMutation.isPending}
           />
         ))}
       </section>

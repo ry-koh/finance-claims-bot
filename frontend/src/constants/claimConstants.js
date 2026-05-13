@@ -1,4 +1,11 @@
 export const WBS_ACCOUNTS = ['SA', 'MBH', 'MF', 'OTHERS']
+export const RFP_WBS_ACCOUNTS = ['SA', 'MF', 'MBH']
+
+export const WBS_NUMBERS_BY_ACCOUNT = {
+  SA: 'H-404-00-000003',
+  MBH: 'H-404-00-000004',
+  MF: 'E-404-10-0001-01',
+}
 
 export const CATEGORIES = [
   'Office Supplies', 'Consumables', 'Sports & Cultural Materials',
