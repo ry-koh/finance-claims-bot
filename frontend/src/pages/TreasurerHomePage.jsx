@@ -14,6 +14,7 @@ const SECTIONS = [
   { key: 'needs_action', title: 'Needs Action' },
   { key: 'draft', title: 'Not Submitted' },
   { key: 'in_review', title: 'In Review' },
+  { key: 'send_email', title: 'Send Email' },
   { key: 'awaiting_submission', title: 'Awaiting Submission' },
   { key: 'submitted', title: 'Submitted' },
   { key: 'reimbursed', title: 'Reimbursed' },
@@ -48,7 +49,7 @@ function ClaimCard({ claim, onClick, revealDelay = 0 }) {
   const statusKey = getTreasurerStatusKey(claim)
   const meta = getTreasurerStatusMeta(claim)
   const progressMessage = getTreasurerProgressMessage(claim)
-  const isAction = statusKey === 'needs_action'
+  const isAction = statusKey === 'needs_action' || statusKey === 'send_email'
   const claimTitle = claim.claim_description || claim.reference_code || `Claim #${claim.id.slice(0, 8)}`
 
   return (
@@ -114,7 +115,7 @@ export default function TreasurerHomePage() {
     return buckets
   }, [claims])
 
-  const needsActionCount = grouped.needs_action.length
+  const needsActionCount = grouped.needs_action.length + grouped.send_email.length
   const inReviewCount = grouped.in_review.length + grouped.awaiting_submission.length
   const submittedCount = grouped.submitted.length
   const reimbursedCount = grouped.reimbursed.length

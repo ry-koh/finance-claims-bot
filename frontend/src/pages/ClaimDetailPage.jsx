@@ -330,7 +330,7 @@ function TreasurerProgressPanel({ claim, onAction }) {
   const blockingIssue = readiness.missing.find((check) =>
     ['evidence', 'receipt-images', 'bank-images', 'fx-screenshots'].includes(check.id)
   )
-  const flow = ['draft', 'in_review', 'awaiting_submission', 'submitted', 'reimbursed']
+  const flow = ['draft', 'in_review', 'send_email', 'awaiting_submission', 'submitted', 'reimbursed']
   const flowKey = statusKey === 'needs_action' ? 'draft' : statusKey
   const currentIndex = Math.max(0, flow.indexOf(flowKey))
 

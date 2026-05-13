@@ -1,9 +1,10 @@
-import { getClaimReadiness } from './claimReadiness'
+import { getClaimReadiness } from './claimReadiness.js'
 
 export const TREASURER_STATUS_ORDER = [
   'needs_action',
   'draft',
   'in_review',
+  'send_email',
   'awaiting_submission',
   'submitted',
   'reimbursed',
@@ -27,6 +28,12 @@ export const TREASURER_STATUS_META = {
     badge: 'treasurer-status-badge bg-blue-100 text-blue-800',
     border: 'border-l-blue-500',
     panel: 'treasurer-status-panel bg-blue-50 border-blue-200 text-blue-800',
+  },
+  send_email: {
+    label: 'Send Email',
+    badge: 'treasurer-status-badge bg-orange-100 text-orange-800',
+    border: 'border-l-orange-500',
+    panel: 'treasurer-status-panel bg-orange-50 border-orange-200 text-orange-800',
   },
   awaiting_submission: {
     label: 'Awaiting Submission',
@@ -62,11 +69,14 @@ function firstTreasurerBlockingIssue(claim) {
 
 const IN_REVIEW_STATUSES = new Set([
   'pending_review',
-  'email_sent',
-  'screenshot_pending',
   'screenshot_uploaded',
   'docs_generated',
   'attachment_uploaded',
+])
+
+const SEND_EMAIL_STATUSES = new Set([
+  'email_sent',
+  'screenshot_pending',
 ])
 
 export function getTreasurerStatusKey(claim) {
@@ -75,6 +85,7 @@ export function getTreasurerStatusKey(claim) {
   if (claim.status === 'submitted') return 'submitted'
   if (claim.status === 'compiled') return 'awaiting_submission'
   if (claim.status === 'attachment_requested' || claim.status === 'error') return 'needs_action'
+  if (SEND_EMAIL_STATUSES.has(claim.status)) return 'send_email'
   if (IN_REVIEW_STATUSES.has(claim.status)) return 'in_review'
 
   if (claim.status === 'draft') {
@@ -104,6 +115,7 @@ export function getTreasurerProgressMessage(claim) {
   }
   if (key === 'draft') return 'This claim has not been sent to finance yet. Submit it for review when ready.'
   if (key === 'in_review') return 'Finance is checking this claim.'
+  if (key === 'send_email') return 'Finance approved this claim. Send the email, then upload the sent-email screenshot.'
   if (key === 'awaiting_submission') return 'Finance has compiled the claim and is preparing submission.'
   if (key === 'submitted') return 'Submitted for reimbursement processing.'
   if (key === 'reimbursed') return 'Reimbursement completed.'
