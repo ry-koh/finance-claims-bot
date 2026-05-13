@@ -198,6 +198,22 @@ CREATE TABLE claim_documents (
   created_at    timestamptz DEFAULT now()
 );
 
+CREATE TABLE manual_rfp_documents (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by          uuid NOT NULL REFERENCES finance_team(id) ON DELETE CASCADE,
+  title               text NOT NULL,
+  reference_code      text NOT NULL,
+  payee_name          text NOT NULL,
+  payee_matric_no     text NOT NULL,
+  wbs_no              text NOT NULL,
+  total_amount        numeric(12,2) NOT NULL,
+  line_items          jsonb NOT NULL DEFAULT '[]'::jsonb,
+  drive_file_id       text NOT NULL,
+  file_size_bytes     integer,
+  sent_to_telegram_at timestamptz,
+  created_at          timestamptz DEFAULT now()
+);
+
 CREATE TABLE claim_attachment_requests (
   id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   claim_id        uuid NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
@@ -265,6 +281,7 @@ CREATE UNIQUE INDEX idx_treasurer_payers_owner_email_active ON treasurer_payers(
 CREATE INDEX idx_line_items_claim    ON claim_line_items(claim_id);
 CREATE INDEX idx_documents_claim     ON claim_documents(claim_id);
 CREATE INDEX idx_documents_current   ON claim_documents(claim_id, type) WHERE is_current = true;
+CREATE INDEX idx_manual_rfps_created ON manual_rfp_documents(created_at DESC);
 CREATE INDEX idx_ccas_portfolio      ON ccas(portfolio_id);
 CREATE INDEX idx_finance_team_telegram ON finance_team(telegram_id);
 CREATE INDEX idx_receipt_images_receipt  ON receipt_images(receipt_id);

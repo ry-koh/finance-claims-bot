@@ -524,6 +524,31 @@ CREATE TRIGGER trg_treasurer_payers_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 ```
 
+### Add manual RFP documents
+
+This powers the Finance Director-only RFP generator page for standalone RFPs that are not tied to a normal claim.
+
+```sql
+CREATE TABLE IF NOT EXISTS manual_rfp_documents (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by          uuid NOT NULL REFERENCES finance_team(id) ON DELETE CASCADE,
+  title               text NOT NULL,
+  reference_code      text NOT NULL,
+  payee_name          text NOT NULL,
+  payee_matric_no     text NOT NULL,
+  wbs_no              text NOT NULL,
+  total_amount        numeric(12,2) NOT NULL,
+  line_items          jsonb NOT NULL DEFAULT '[]'::jsonb,
+  drive_file_id       text NOT NULL,
+  file_size_bytes     integer,
+  sent_to_telegram_at timestamptz,
+  created_at          timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_manual_rfps_created
+  ON manual_rfp_documents(created_at DESC);
+```
+
 ---
 
 ## If the Bot Stops Responding

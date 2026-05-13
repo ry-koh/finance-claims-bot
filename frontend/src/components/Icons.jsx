@@ -203,7 +203,7 @@ export function IconX({ className = 'w-4 h-4' }) {
   )
 }
 
-export function IconFileText({ className = 'w-8 h-8' }) {
+export function IconFileText({ className = 'w-5 h-5' }) {
   return (
     <svg {...BASE} className={className}>
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />

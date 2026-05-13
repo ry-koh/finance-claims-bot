@@ -14,39 +14,11 @@ from app.config import settings
 from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
 from app.services import r2, image
+from app.services.categories import CATEGORY_CODES
 from app.services.storage import insert_file_row
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/receipts", tags=["receipts"])
-
-# ---------------------------------------------------------------------------
-# Category → category_code mapping
-# ---------------------------------------------------------------------------
-
-CATEGORY_CODES = {
-    "Office Supplies": "7100101",
-    "Consumables": "7100103",
-    "Sports & Cultural Materials": "7100104",
-    "Other fees (Others)": "7200108",
-    "Professional fees": "7200201",
-    "Bank Charges": "7200213",
-    "Licensing/Subscription": "7200402",
-    "Postage & Telecommunication Charges": "7200412",
-    "Maintenance (Equipment)": "7400112",
-    "Lease expense (premises)": "7400301",
-    "Lease expense (rental of equipment)": "7400301",
-    "Furniture": "7400401",
-    "Equipment Purchase": "7400401",
-    "Publications": "7500104",
-    "Meals & Refreshments": "7500106",
-    "Local Travel": "7600105",
-    "Student awards/prizes": "7650119",
-    "Donation/Sponsorship": "7700101",
-    "Miscellaneous Expense": "7700701",
-    "Other Services": "7700715",
-    "Fund Transfer": "7800201",
-    "N/A": "",
-}
 
 MAX_CATEGORIES = 5
 

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import bot, claims, documents, email as email_router, images as images_router, payers, portfolios, receipts
+from app.routers import bot, claims, documents, email as email_router, images as images_router, payers, portfolios, receipts, rfps
 from app.routers import bank_transactions as bank_transactions_router
 from app.routers import registration as registration_router
 from app.routers import admin as admin_router
@@ -133,6 +133,7 @@ app.include_router(claims.router)
 app.include_router(receipts.router)
 app.include_router(payers.router)
 app.include_router(documents.router)
+app.include_router(rfps.router)
 app.include_router(portfolios.router)
 app.include_router(bot.router)
 app.include_router(email_router.router)

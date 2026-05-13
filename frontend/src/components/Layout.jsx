@@ -7,12 +7,14 @@ import DirectorTestingBar from './DirectorTestingBar'
 import {
   IconHome, IconPlus, IconUsers, IconChat, IconMail, IconHelp, IconBookOpen,
   IconBarChart, IconUserCheck, IconShield, IconSettings, IconLayers, IconAlertTriangle,
+  IconFileText,
 } from './Icons'
 
 const PAGE_TITLES = {
   '/': 'Home',
   '/claims/new': 'New Claim',
   '/analytics': 'Analytics',
+  '/rfps': 'RFPs',
   '/pending-registrations': 'Approvals',
   '/team': 'Finance Team',
   '/cca-treasurers': 'CCA Treasurers',
@@ -49,6 +51,7 @@ const DIRECTOR_NAV = [
     label: 'Admin',
     items: [
       { to: '/analytics', label: 'Analytics', icon: <IconBarChart /> },
+      { to: '/rfps', label: 'RFPs', icon: <IconFileText /> },
       { to: '/team', label: 'Finance Team', icon: <IconShield /> },
       { to: '/ccas', label: 'Portfolios & CCAs', icon: <IconLayers /> },
       { to: '/settings', label: 'Settings', icon: <IconSettings /> },
@@ -108,7 +111,7 @@ const DIRECTOR_BOTTOM_NAV = [
   { to: '/', label: 'Claims', icon: 'receipt_long', end: true, matches: ['/'] },
   { to: '/claims/new', label: 'New', icon: 'add_circle', matches: ['/claims/new'] },
   { to: '/pending-registrations', label: 'Review', icon: 'fact_check', matches: ['/pending-registrations'] },
-  { to: '/analytics', label: 'Admin', icon: 'admin_panel_settings', matches: ['/analytics', '/team', '/settings', '/ccas', '/system-status', '/reimbursements'] },
+  { to: '/analytics', label: 'Admin', icon: 'admin_panel_settings', matches: ['/analytics', '/team', '/settings', '/ccas', '/system-status', '/reimbursements', '/rfps'] },
 ]
 
 const MEMBER_BOTTOM_NAV = [

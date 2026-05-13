@@ -84,6 +84,7 @@ STORAGE_SOURCES = [
     ("bank_transaction_refunds", "Refund images", "r2"),
     ("claim_attachment_files", "Attachment files", "r2"),
     ("claim_documents", "Claim documents", "drive"),
+    ("manual_rfp_documents", "Manual RFP documents", "drive"),
 ]
 
 
