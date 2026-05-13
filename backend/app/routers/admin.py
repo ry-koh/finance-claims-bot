@@ -54,19 +54,23 @@ def _approved_treasurer_message(ccas: list[dict]) -> str:
     app_url = (settings.MINI_APP_URL or "").strip()
     cca_names = ", ".join(c.get("name", "") for c in ccas if c.get("name")) or "your assigned CCA"
     lines = [
-        f"Your CCA Treasurer account has been approved for {cca_names}.",
+        f"Hi, your CCA Treasurer access has been approved for {cca_names}.",
         "",
-        "How to use the Finance Claims App:",
-        "1. Submit each claim within 3 days after all receipt screenshots and proof of payment are ready; pending payment is not enough.",
-        "2. Track every claim status in the app, from draft and Finance Team review to email, submitted, and reimbursed.",
-        "3. Upload receipt screenshots and the matching proof-of-payment or bank transaction screenshots. Match each receipt to the corresponding bank transaction.",
-        "4. Use payer and splitting details to show who should be reimbursed. Add the payer email shown on the invoice if it is not your own reimbursement.",
-        "5. Keep the claim description short, around 5 words. For remarks, use one line per point in this format: - remark",
-        "6. Add treasurer notes when Finance Team needs context. These notes stay attached to the claim and are visible to you, Finance Team, and Finance Director.",
-        "7. Submit for Finance Team review and wait for approval.",
-        "8. After Finance Team sends you the confirmation email, copy the email block into a new email, send it, then send the sent-email screenshot back to Finance Team.",
-        "9. If Finance Team rejects the claim, edit the claim based on the feedback and submit it again.",
-        "10. Use Help to ask claim questions or report app issues, and check SOP for reimbursement rules.",
+        "Quick guide for submitting claims:",
+        "1. Choose the correct CCA for the claim. If you manage multiple CCAs, the app will ask which CCA each claim is for.",
+        "2. Please submit within 3 days after all receipt screenshots, completed bank transactions, and proof of payment are ready. Bank transactions cannot still be pending.",
+        "3. Upload the receipt screenshots together with the matching proof-of-payment or bank transaction screenshots. Please match each receipt to the corresponding bank transaction.",
+        "4. Fill in the payer and reimbursement split details clearly so we know who to reimburse. If the invoice is under someone else's name, add that person's email.",
+        "5. Keep the claim description short, around 5 words. For remarks, use one line per point like this: - remark",
+        "6. Submit for Finance Team review, then wait for it to be approved.",
+        "7. After Finance Team sends you the confirmation email, copy the email block into a new email, send it, then send the sent-email screenshot back to Finance Team.",
+        "8. If Finance Team rejects the claim, update it based on the feedback and submit it again.",
+        "",
+        "Things you can use in the app:",
+        "- Track where each claim is at: draft, Finance Team review, email, submitted, and reimbursed.",
+        "- Use treasurer notes for your own reminders, to-do items, or anything you need to remember about the claim.",
+        "- Use Help if you need to ask a claim question or report an app issue.",
+        "- Check SOP if you are unsure about reimbursement rules.",
     ]
     if app_url:
         lines.insert(2, f"Open the app: {app_url}")
