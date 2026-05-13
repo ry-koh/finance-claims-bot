@@ -14,8 +14,10 @@ test('treasurer sees email-sent claims as needing email action', () => {
   assert.equal(getTreasurerStatusLabel(claim), 'Send Email')
   assert.equal(
     getTreasurerProgressMessage(claim),
-    'Finance approved this claim. Send the email, then upload the sent-email screenshot.'
+    'Finance approved this claim. Send the confirmation email.'
   )
+  assert.doesNotMatch(getTreasurerProgressMessage(claim), /upload/i)
+  assert.doesNotMatch(getTreasurerProgressMessage(claim), /screenshot/i)
 })
 
 test('treasurer sees screenshot-pending claims as needing email action', () => {

@@ -63,7 +63,7 @@ def _approved_treasurer_message(ccas: list[dict]) -> str:
         "4. Fill in the payer and reimbursement split details clearly so we know who to reimburse. If the invoice is under someone else's name, add that person's email.",
         "5. Keep the claim description short, around 5 words. For remarks, use one line per point like this: - remark",
         "6. Submit for Finance Team review, then wait for it to be approved.",
-        "7. After Finance Team sends you the confirmation email, copy the email block into a new email, send it, then send the sent-email screenshot back to Finance Team.",
+        "7. After Finance Team sends you the confirmation email, copy the email block into a new email and send it.",
         "8. If Finance Team rejects the claim, update it based on the feedback and submit it again.",
         "",
         "Things you can use in the app:",

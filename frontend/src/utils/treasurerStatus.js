@@ -115,7 +115,7 @@ export function getTreasurerProgressMessage(claim) {
   }
   if (key === 'draft') return 'This claim has not been sent to finance yet. Submit it for review when ready.'
   if (key === 'in_review') return 'Finance is checking this claim.'
-  if (key === 'send_email') return 'Finance approved this claim. Send the email, then upload the sent-email screenshot.'
+  if (key === 'send_email') return 'Finance approved this claim. Send the confirmation email.'
   if (key === 'awaiting_submission') return 'Finance has compiled the claim and is preparing submission.'
   if (key === 'submitted') return 'Submitted for reimbursement processing.'
   if (key === 'reimbursed') return 'Reimbursement completed.'

@@ -106,13 +106,12 @@ def _email_send_reminder_message(claim: dict) -> str:
         "2. Copy everything below the line into a new email.",
         "3. Check the To, CC, and Subject fields.",
         "4. Send the email.",
-        "5. Send the sent-email screenshot back to Finance so we can continue processing the claim.",
     ])
 
 
 def _email_send_bulk_reminder_message(claims: list[dict]) -> str:
     lines = [
-        "Reminder: please send the confirmation email screenshot for the claim(s) below.",
+        "Reminder: please send the confirmation email for the claim(s) below.",
         "",
         "Waiting claims:",
     ]
@@ -127,7 +126,6 @@ def _email_send_bulk_reminder_message(claims: list[dict]) -> str:
         "2. Copy everything below the line into a new email.",
         "3. Check the To, CC, and Subject fields.",
         "4. Send the email.",
-        "5. Send the sent-email screenshot back to Finance so we can continue processing the claim.",
     ])
     return "\n".join(lines)
 
