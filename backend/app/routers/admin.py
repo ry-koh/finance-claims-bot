@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from supabase import Client
@@ -6,6 +8,7 @@ from typing import Optional
 from app.auth import require_auth, require_director, require_finance_team
 from app.config import settings
 from app.database import get_supabase
+from app.routers.bot import send_bot_notification
 from app.services.pdf import DriveAuthError, check_drive_credentials
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -45,6 +48,27 @@ def _drive_auth_status() -> dict:
         return {"status": "error", "error": str(exc)[:300]}
     except Exception as exc:
         return {"status": "error", "error": str(exc)[:300]}
+
+
+def _approved_treasurer_message(ccas: list[dict]) -> str:
+    app_url = (settings.MINI_APP_URL or "").strip()
+    cca_names = ", ".join(c.get("name", "") for c in ccas if c.get("name")) or "your assigned CCA"
+    lines = [
+        f"Your CCA Treasurer account has been approved for {cca_names}.",
+        "",
+        "How to use the Finance Claims App:",
+        "1. Create a claim only when the receipt screenshots and bank transaction screenshots are ready.",
+        "2. Keep the claim description short, around 5 words.",
+        "3. For remarks, use one line per point in this format: - remark",
+        "4. Add the payer email shown on the invoice if it is not your own reimbursement.",
+        "5. Submit the claim for Finance review and wait for approval.",
+        "6. After Finance sends you the confirmation email, copy the email block into a new email, send it, then send the sent-email screenshot back to Finance.",
+        "7. If Finance rejects the claim, edit the claim based on the feedback and submit it again.",
+    ]
+    if app_url:
+        lines.insert(2, f"Open the app: {app_url}")
+        lines.insert(3, "")
+    return "\n".join(lines)
 
 
 STORAGE_SOURCES = [
@@ -327,7 +351,17 @@ async def approve_registration(
     if not resp.data:
         raise HTTPException(404, "Pending registration not found")
 
+    member = resp.data[0]
     db.table("finance_team").update({"status": "active"}).eq("id", member_id).execute()
+    if member.get("role") == "treasurer" and member.get("telegram_id"):
+        cca_resp = (
+            db.table("treasurer_ccas")
+            .select("cca_id, ccas(id, name)")
+            .eq("finance_team_id", member_id)
+            .execute()
+        )
+        ccas = [row["ccas"] for row in (cca_resp.data or []) if row.get("ccas")]
+        asyncio.create_task(send_bot_notification(member["telegram_id"], _approved_treasurer_message(ccas)))
     return {"success": True}
 
 

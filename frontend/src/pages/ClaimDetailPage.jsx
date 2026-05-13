@@ -2,7 +2,7 @@ import { useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useClaim, useClaimEvents, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, CLAIM_KEYS } from '../api/claims'
+import { useClaim, useClaimEvents, useUpdateClaim, useDeleteClaim, useSubmitForReview, useRejectReview, useSubmitClaim, useReimburseClaim, useRemindTreasurerEmail, CLAIM_KEYS } from '../api/claims'
 import { useGenerateDocuments, useCompileDocuments, useUploadScreenshot, useUploadMfApproval, submitTransportData } from '../api/documents'
 import { useSendEmail, useResendEmail } from '../api/email'
 import { useCreateReceipt, useUpdateReceipt, useDeleteReceipt, uploadReceiptImage } from '../api/receipts'
@@ -22,7 +22,7 @@ import {
   deleteBankTransactionImage, deleteBtRefund, updateBtRefundFile,
   useDeleteBankTransaction,
 } from '../api/bankTransactions'
-import { useIsFinanceTeam, useIsTreasurer } from '../context/AuthContext'
+import { useIsDirector, useIsFinanceTeam, useIsTreasurer } from '../context/AuthContext'
 import { WBS_ACCOUNTS, CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import ReceiptUploader from '../components/ReceiptUploader'
 import DragDropZone from '../components/DragDropZone'
@@ -391,7 +391,7 @@ function TreasurerProgressPanel({ claim, onAction }) {
 }
 
 // Vertical stepper pipeline
-function StatusPipeline({ claim, onAction, isTreasurer }) {
+function StatusPipeline({ claim, onAction, isTreasurer, isDirector }) {
   const displayStatus =
     claim.status === 'error'
       ? 'screenshot_uploaded'
@@ -445,6 +445,11 @@ function StatusPipeline({ claim, onAction, isTreasurer }) {
           {!isTreasurer && isDone && (
             <ActionButton variant="secondary" onClick={() => onAction('resend')} loading={onAction.loading?.resend}>
               Resend
+            </ActionButton>
+          )}
+          {isDirector && ['email_sent', 'screenshot_pending'].includes(displayStatus) && (
+            <ActionButton variant="secondary" onClick={() => onAction('remindEmail')} loading={onAction.loading?.remindEmail}>
+              Bump Treasurer
             </ActionButton>
           )}
         </div>
@@ -1871,6 +1876,7 @@ const EVENT_LABELS = {
   review_rejected: 'Review rejected',
   email_sent: 'Email sent',
   email_resent: 'Email resent',
+  email_send_reminder_sent: 'Treasurer reminder sent',
   email_failed: 'Email failed',
   email_screenshot_uploaded: 'Email screenshot uploaded',
   documents_generated: 'Documents generated',
@@ -1946,6 +1952,7 @@ export default function ClaimDetailPage() {
 
   // Role
   const isTreasurer = useIsTreasurer()
+  const isDirector = useIsDirector()
   const isFinanceTeam = useIsFinanceTeam()
 
   // Mutations
@@ -1959,6 +1966,7 @@ export default function ClaimDetailPage() {
   const updateClaimMut = useUpdateClaim()
   const submitClaimMut = useSubmitClaim()
   const reimburseClaimMut = useReimburseClaim()
+  const remindEmailMut = useRemindTreasurerEmail()
   const deleteClaimMut = useDeleteClaim()
   const createReceiptMut = useCreateReceipt()
   const updateReceiptMut = useUpdateReceipt()
@@ -1975,6 +1983,7 @@ export default function ClaimDetailPage() {
   const [errorDismissed, setErrorDismissed] = useState(false)
   const [staleDocsWarning, setStaleDocsWarning] = useState(false)
   const [actionError, setActionError] = useState(null)
+  const [actionNotice, setActionNotice] = useState(null)
 
   // BT + receipt UX state
   const [expandedBtId, setExpandedBtId] = useState(null)
@@ -2041,6 +2050,7 @@ export default function ClaimDetailPage() {
     compile: compileDocsMut.isPending,
     submit: submitClaimMut.isPending,
     reimburse: reimburseClaimMut.isPending,
+    remindEmail: remindEmailMut.isPending,
     submitForReview: submitForReviewMut.isPending,
   }
 
@@ -2053,6 +2063,7 @@ export default function ClaimDetailPage() {
   function handleAction(type, payload) {
     if (Object.values(loadingMap).some(Boolean)) return
     setActionError(null)
+    setActionNotice(null)
 
     const errHandler = (err) => {
       const detail = err?.response?.data?.detail
@@ -2092,6 +2103,14 @@ export default function ClaimDetailPage() {
       submitClaimMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
     } else if (type === 'reimburse') {
       reimburseClaimMut.mutate(id, { onSuccess: invalidateClaim, onError: errHandler })
+    } else if (type === 'remindEmail') {
+      remindEmailMut.mutate(id, {
+        onSuccess: () => {
+          setActionNotice('Treasurer reminder sent.')
+          invalidateClaim()
+        },
+        onError: errHandler,
+      })
     }
   }
 
@@ -2688,7 +2707,7 @@ export default function ClaimDetailPage() {
           {isTreasurer ? (
             <TreasurerProgressPanel claim={claim} onAction={handleAction} />
           ) : (
-            <StatusPipeline claim={claim} onAction={handleAction} isTreasurer={isTreasurer} />
+            <StatusPipeline claim={claim} onAction={handleAction} isTreasurer={isTreasurer} isDirector={isDirector} />
           )}
         </div>
 
@@ -2880,6 +2899,18 @@ export default function ClaimDetailPage() {
             aria-label="Dismiss"
           >
             ×
+          </button>
+        </div>
+      )}
+      {actionNotice && (
+        <div className="fixed bottom-4 left-4 right-4 z-50 bg-green-600 text-white rounded-xl px-4 py-3 shadow-xl flex items-start gap-3">
+          <p className="flex-1 text-sm leading-snug">{actionNotice}</p>
+          <button
+            onClick={() => setActionNotice(null)}
+            className="shrink-0 text-white/70 hover:text-white text-xl leading-none mt-0.5"
+            aria-label="Dismiss"
+          >
+            Ã—
           </button>
         </div>
       )}

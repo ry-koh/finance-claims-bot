@@ -156,6 +156,9 @@ export const submitClaim = (claimId) =>
 export const reimburseClaim = (claimId) =>
   api.post(`/claims/${claimId}/reimburse`).then((r) => r.data)
 
+export const remindTreasurerEmail = (claimId) =>
+  api.post(`/claims/${claimId}/email-reminder`).then((r) => r.data)
+
 export function useSubmitClaim(options = {}) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -170,6 +173,13 @@ export function useReimburseClaim(options = {}) {
   return useMutation({
     mutationFn: reimburseClaim,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.all }),
+    ...options,
+  })
+}
+
+export function useRemindTreasurerEmail(options = {}) {
+  return useMutation({
+    mutationFn: remindTreasurerEmail,
     ...options,
   })
 }

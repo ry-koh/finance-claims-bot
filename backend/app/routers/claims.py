@@ -51,6 +51,9 @@ class BulkStatusResponse(PydanticBaseModel):
     updated: int
     skipped: int
 
+
+EMAIL_REMINDER_STATUSES = {"email_sent", "screenshot_pending"}
+
 router = APIRouter(prefix="/claims", tags=["claims"])
 logger = logging.getLogger(__name__)
 
@@ -88,6 +91,23 @@ def _get_claim_or_404(db: Client, claim_id: str) -> dict:
     if not resp.data:
         raise HTTPException(status_code=404, detail="Claim not found")
     return resp.data[0]
+
+
+def _email_send_reminder_message(claim: dict) -> str:
+    ref = claim.get("reference_code") or f"claim {claim.get('id')}"
+    description = claim.get("claim_description") or "your claim"
+    return "\n".join([
+        f"Reminder: please send the confirmation email for {ref}.",
+        "",
+        f"Claim: {description}",
+        "",
+        "Steps:",
+        "1. Open the confirmation email from Finance.",
+        "2. Copy everything below the line into a new email.",
+        "3. Check the To, CC, and Subject fields.",
+        "4. Send the email.",
+        "5. Send the sent-email screenshot back to Finance so we can continue processing the claim.",
+    ])
 
 
 def _add_file_ref(r2_paths: set[str], drive_file_ids: set[str], file_id: str | None) -> None:
@@ -1406,6 +1426,50 @@ async def mark_reimbursed(
             ))
     log_claim_event(db, claim_id, _member.get("id"), "marked_reimbursed", "Marked as reimbursed")
     return {"success": True, "status": "reimbursed"}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/{claim_id}/email-reminder  (director only)
+# ---------------------------------------------------------------------------
+
+@router.post("/{claim_id}/email-reminder")
+async def remind_treasurer_to_send_email(
+    claim_id: str,
+    member: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    """Send a Telegram reminder to the treasurer when the claim is waiting on the sent email."""
+    guard(f"email-reminder:{claim_id}", max_calls=3, window_seconds=300)
+    claim = get_claim_for_member(db, claim_id, member)
+    if claim.get("status") not in EMAIL_REMINDER_STATUSES:
+        raise HTTPException(409, "Claim is not waiting for the treasurer to send the confirmation email")
+
+    filled_by_id = claim.get("filled_by")
+    if not filled_by_id:
+        raise HTTPException(400, "This claim has no assigned treasurer to remind")
+
+    ft = (
+        db.table("finance_team")
+        .select("telegram_id, name")
+        .eq("id", filled_by_id)
+        .execute()
+    )
+    if not ft.data or not ft.data[0].get("telegram_id"):
+        raise HTTPException(400, "Treasurer has no Telegram ID linked")
+
+    sent = await send_bot_notification(ft.data[0]["telegram_id"], _email_send_reminder_message(claim))
+    if not sent:
+        raise HTTPException(502, "Telegram reminder failed to send")
+
+    log_claim_event(
+        db,
+        claim_id,
+        member.get("id"),
+        "email_send_reminder_sent",
+        "Treasurer reminded to send confirmation email",
+        {"treasurer_id": filled_by_id},
+    )
+    return {"success": True, "sent_to": ft.data[0].get("name")}
 
 
 # ---------------------------------------------------------------------------
