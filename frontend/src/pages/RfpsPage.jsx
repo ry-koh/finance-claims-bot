@@ -238,6 +238,7 @@ export default function RfpsPage() {
   const [savingNotesId, setSavingNotesId] = useState(null)
   const [togglingCompleteId, setTogglingCompleteId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  const wbsNumberEditable = wbsAccount === 'CUSTOM'
 
   const total = useMemo(
     () => lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0),
@@ -264,7 +265,7 @@ export default function RfpsPage() {
 
   function selectWbsAccount(account) {
     setWbsAccount(account)
-    setWbsNo(WBS_NUMBERS_BY_ACCOUNT[account] || '')
+    setWbsNo(account === 'CUSTOM' ? '' : WBS_NUMBERS_BY_ACCOUNT[account] || '')
   }
 
   function useDirectorAsPayee() {
@@ -408,13 +409,19 @@ export default function RfpsPage() {
               <span className={LABEL_CLS}>WBS account</span>
               <select value={wbsAccount} onChange={(event) => selectWbsAccount(event.target.value)} className={textInputCls()}>
                 {RFP_WBS_ACCOUNTS.map((account) => (
-                  <option key={account} value={account}>{account}</option>
+                  <option key={account} value={account}>{account === 'CUSTOM' ? 'Custom WBS' : account}</option>
                 ))}
               </select>
             </label>
             <label>
               <span className={LABEL_CLS}>WBS number</span>
-              <input value={wbsNo} onChange={(event) => setWbsNo(event.target.value)} className={textInputCls()} placeholder="WBS shown on RFP" />
+              <input
+                value={wbsNo}
+                onChange={(event) => setWbsNo(event.target.value)}
+                className={textInputCls('disabled:bg-[var(--color-surface-muted)] disabled:text-[var(--color-muted)]')}
+                placeholder={wbsNumberEditable ? 'Enter custom WBS' : 'WBS shown on RFP'}
+                disabled={!wbsNumberEditable}
+              />
             </label>
           </div>
         </section>

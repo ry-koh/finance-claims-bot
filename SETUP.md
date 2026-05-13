@@ -536,7 +536,7 @@ CREATE TABLE IF NOT EXISTS manual_rfp_documents (
   reference_code      text NOT NULL,
   payee_name          text NOT NULL,
   payee_matric_no     text NOT NULL,
-  wbs_account         text NOT NULL DEFAULT 'SA' CHECK (wbs_account IN ('SA', 'MBH', 'MF')),
+  wbs_account         text NOT NULL DEFAULT 'SA' CHECK (wbs_account IN ('SA', 'MBH', 'MF', 'CUSTOM')),
   wbs_no              text NOT NULL,
   total_amount        numeric(12,2) NOT NULL,
   line_items          jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -565,7 +565,7 @@ ALTER TABLE manual_rfp_documents
 
 ALTER TABLE manual_rfp_documents
   ADD CONSTRAINT manual_rfp_documents_wbs_account_check
-  CHECK (wbs_account IN ('SA', 'MBH', 'MF'));
+  CHECK (wbs_account IN ('SA', 'MBH', 'MF', 'CUSTOM'));
 ```
 
 ---

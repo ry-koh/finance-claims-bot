@@ -33,7 +33,7 @@ class ManualRfpCreate(BaseModel):
     reference_code: Optional[str] = Field(default=None, max_length=60)
     payee_name: str = Field(min_length=1, max_length=120)
     payee_matric_no: str = Field(min_length=1, max_length=40)
-    wbs_account: Literal["SA", "MBH", "MF"] = "SA"
+    wbs_account: Literal["SA", "MBH", "MF", "CUSTOM"] = "SA"
     wbs_no: Optional[str] = Field(default=None, max_length=80)
     line_items: list[ManualRfpLineItem] = Field(min_length=1, max_length=5)
 
@@ -49,6 +49,8 @@ class ManualRfpCreate(BaseModel):
         for item in self.line_items:
             if not item.category_code and not CATEGORY_CODES.get(item.category):
                 raise ValueError(f"Missing GL code for {item.category or 'line item'}")
+        if self.wbs_account == "CUSTOM" and not (self.wbs_no or "").strip():
+            raise ValueError("Custom WBS requires a WBS number")
         return self
 
 

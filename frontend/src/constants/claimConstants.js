@@ -1,5 +1,5 @@
 export const WBS_ACCOUNTS = ['SA', 'MBH', 'MF', 'OTHERS']
-export const RFP_WBS_ACCOUNTS = ['SA', 'MF', 'MBH']
+export const RFP_WBS_ACCOUNTS = ['SA', 'MF', 'MBH', 'CUSTOM']
 
 export const WBS_NUMBERS_BY_ACCOUNT = {
   SA: 'H-404-00-000003',

@@ -88,3 +88,23 @@ def test_manual_rfp_update_fields_trim_notes_and_mark_completed():
         "internal_notes": "Confirmed with OSL.",
         "completed_at": "2026-05-13T12:30:00+00:00",
     }
+
+
+def test_manual_rfp_generation_inputs_supports_custom_wbs_account():
+    payload = manual_rfp.ManualRfpCreate(
+        title="Custom WBS payment",
+        payee_name="Jane Tan",
+        payee_matric_no="a1234567b",
+        wbs_account="CUSTOM",
+        wbs_no="Z-123-45",
+        line_items=[
+            manual_rfp.ManualRfpLineItem(
+                category="Professional fees",
+                amount=100,
+            ),
+        ],
+    )
+
+    claim, _line_items, _payee = manual_rfp.build_rfp_generation_inputs(payload)
+
+    assert claim["wbs_no"] == "Z-123-45"
