@@ -57,13 +57,16 @@ def _approved_treasurer_message(ccas: list[dict]) -> str:
         f"Your CCA Treasurer account has been approved for {cca_names}.",
         "",
         "How to use the Finance Claims App:",
-        "1. Submit within 3 days after all receipt screenshots and proof of payment are ready; pending payment is not enough.",
-        "2. Keep the claim description short, around 5 words.",
-        "3. For remarks, use one line per point in this format: - remark",
-        "4. Add the payer email shown on the invoice if it is not your own reimbursement.",
-        "5. Submit the claim for Finance review and wait for approval.",
-        "6. After Finance Team sends you the confirmation email, copy the email block into a new email, send it, then send the sent-email screenshot back to Finance Team.",
-        "7. If Finance Team rejects the claim, edit the claim based on the feedback and submit it again.",
+        "1. Submit each claim within 3 days after all receipt screenshots and proof of payment are ready; pending payment is not enough.",
+        "2. Track every claim status in the app, from draft and Finance Team review to email, submitted, and reimbursed.",
+        "3. Upload receipt screenshots and the matching proof-of-payment or bank transaction screenshots. Match each receipt to the corresponding bank transaction.",
+        "4. Use payer and splitting details to show who should be reimbursed. Add the payer email shown on the invoice if it is not your own reimbursement.",
+        "5. Keep the claim description short, around 5 words. For remarks, use one line per point in this format: - remark",
+        "6. Add treasurer notes when Finance Team needs context. These notes stay attached to the claim and are visible to you, Finance Team, and Finance Director.",
+        "7. Submit for Finance Team review and wait for approval.",
+        "8. After Finance Team sends you the confirmation email, copy the email block into a new email, send it, then send the sent-email screenshot back to Finance Team.",
+        "9. If Finance Team rejects the claim, edit the claim based on the feedback and submit it again.",
+        "10. Use Help to ask claim questions or report app issues, and check SOP for reimbursement rules.",
     ]
     if app_url:
         lines.insert(2, f"Open the app: {app_url}")

@@ -196,14 +196,14 @@ function DateFilters({ dateFrom, dateTo, setDateFrom, setDateTo }) {
   const hasDate = Boolean(dateFrom || dateTo)
 
   return (
-    <div className="grid min-w-0 grid-cols-2 gap-2">
+    <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
       <label className="min-w-0">
         <span className="mb-1 block text-xs font-medium text-gray-500">From</span>
         <input
           type="date"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
-          className="toolbar-field w-full min-w-0 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="toolbar-field box-border min-h-[44px] w-full min-w-0 max-w-full px-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-300 sm:text-sm"
         />
       </label>
       <label className="min-w-0">
@@ -212,14 +212,14 @@ function DateFilters({ dateFrom, dateTo, setDateFrom, setDateTo }) {
           type="date"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
-          className="toolbar-field w-full min-w-0 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="toolbar-field box-border min-h-[44px] w-full min-w-0 max-w-full px-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-300 sm:text-sm"
         />
       </label>
       {hasDate && (
         <button
           type="button"
           onClick={() => { setDateFrom(''); setDateTo('') }}
-          className="col-span-2 rounded-lg border border-gray-200 bg-white py-2 text-xs font-bold text-gray-600 active:bg-gray-50"
+          className="rounded-lg border border-gray-200 bg-white py-2 text-xs font-bold text-gray-600 active:bg-gray-50 sm:col-span-2"
         >
           Clear Date Range
         </button>
