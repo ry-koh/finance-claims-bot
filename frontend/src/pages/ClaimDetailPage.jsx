@@ -2510,10 +2510,10 @@ export default function ClaimDetailPage() {
                   onChange={(e) =>
                     setEditFields((f) => ({ ...f, claim_description: e.target.value }))
                   }
-                  placeholder="e.g. Camp supplies"
+                  placeholder="e.g. Master's Gift to Bryan Ong"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
-                <p className="mt-1 text-xs text-gray-400">Keep it short, max 5 words.</p>
+                <p className="mt-1 text-xs text-gray-400">Keep it short, max 5 words. Use proper names and title case.</p>
               </div>
 
               {/* Remarks */}

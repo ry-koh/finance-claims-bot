@@ -119,3 +119,17 @@ def test_status_group_filter_rejects_unknown_status():
         claims._normalise_statuses("submitted,unknown")
 
     assert exc.value.status_code == 422
+
+
+def test_bulk_email_reminder_treasurer_filter_normalises_distinct_ids():
+    first = "11111111-1111-1111-1111-111111111111"
+    second = "22222222-2222-2222-2222-222222222222"
+
+    assert claims._normalise_treasurer_ids([first, first, second]) == [first, second]
+
+
+def test_bulk_email_reminder_treasurer_filter_rejects_invalid_id():
+    with pytest.raises(HTTPException) as exc:
+        claims._normalise_treasurer_ids(["not-a-uuid"])
+
+    assert exc.value.status_code == 422

@@ -52,6 +52,10 @@ class BulkStatusResponse(PydanticBaseModel):
     skipped: int
 
 
+class EmailReminderBulkRequest(PydanticBaseModel):
+    treasurer_ids: Optional[list[str]] = None
+
+
 EMAIL_REMINDER_STATUSES = {"email_sent", "screenshot_pending"}
 
 router = APIRouter(prefix="/claims", tags=["claims"])
@@ -157,6 +161,22 @@ def _normalise_claim_ids(claim_ids: list[str]) -> list[str]:
         if claim_id not in seen:
             ids.append(claim_id)
             seen.add(claim_id)
+    return ids
+
+
+def _normalise_treasurer_ids(treasurer_ids: list[str] | None) -> list[str]:
+    if not treasurer_ids:
+        return []
+    ids: list[str] = []
+    seen: set[str] = set()
+    for raw in treasurer_ids:
+        try:
+            treasurer_id = str(uuid_lib.UUID(str(raw).strip()))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid treasurer ID: {raw}") from exc
+        if treasurer_id not in seen:
+            ids.append(treasurer_id)
+            seen.add(treasurer_id)
     return ids
 
 
@@ -423,7 +443,11 @@ async def list_claims(
 ):
     query = (
         db.table("claims")
-        .select("*, claimer:finance_team!claims_claimer_id_fkey(id, name)", count="exact")
+        .select(
+            "*, claimer:finance_team!claims_claimer_id_fkey(id, name), "
+            "filled_by_member:finance_team!claims_filled_by_fkey(id, name)",
+            count="exact",
+        )
         .is_("deleted_at", "null")
         .order("created_at", desc=True)
     )
@@ -1498,24 +1522,30 @@ async def remind_treasurer_to_send_email(
 
 @router.post("/email-reminders")
 async def remind_all_treasurers_to_send_email(
+    payload: EmailReminderBulkRequest | None = None,
     member: dict = Depends(require_director),
     db: Client = Depends(get_supabase),
 ):
-    """Send one reminder per treasurer for claims waiting on sent-email screenshots."""
+    """Send one reminder per treasurer for claims waiting on confirmation email sending."""
     guard("email-reminder:bulk", max_calls=2, window_seconds=300)
-    claims_resp = (
+    target_treasurer_ids = _normalise_treasurer_ids(payload.treasurer_ids if payload else None)
+
+    claims_query = (
         db.table("claims")
         .select("id, reference_code, claim_description, filled_by, status")
         .in_("status", sorted(EMAIL_REMINDER_STATUSES))
         .is_("deleted_at", "null")
         .limit(500)
-        .execute()
     )
+    if target_treasurer_ids:
+        claims_query = claims_query.in_("filled_by", target_treasurer_ids)
+    claims_resp = claims_query.execute()
     waiting_claims = claims_resp.data or []
     if not waiting_claims:
         return {
             "success": True,
             "matched": 0,
+            "targeted_treasurers": len(target_treasurer_ids),
             "sent_treasurers": 0,
             "sent_claims": 0,
             "skipped_claims": 0,
@@ -1578,6 +1608,7 @@ async def remind_all_treasurers_to_send_email(
     return {
         "success": failed_treasurers == 0,
         "matched": len(waiting_claims),
+        "targeted_treasurers": len(target_treasurer_ids),
         "sent_treasurers": sent_treasurers,
         "sent_claims": sent_claims,
         "skipped_claims": skipped_claims,

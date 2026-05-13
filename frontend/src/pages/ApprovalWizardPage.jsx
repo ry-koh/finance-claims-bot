@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useClaim, rejectReview, CLAIM_KEYS } from '../api/claims'
+import { useClaim, rejectReview, updateClaim, CLAIM_KEYS } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
 import { updateReceipt, uploadReceiptImageById, deleteReceiptImage } from '../api/receipts'
@@ -76,6 +76,13 @@ function bankImages(bt) {
 function compactName(claim) {
   return claim?.one_off_name || claim?.claimer?.name || 'Unknown claimer'
 }
+
+const WBS_OPTIONS = [
+  { value: 'SA', label: 'Student Account' },
+  { value: 'MF', label: 'Master Fund' },
+  { value: 'MBH', label: 'MBH' },
+  { value: 'OTHERS', label: 'Others' },
+]
 
 function InfoRow({ label, value, bold = false }) {
   return (
@@ -359,20 +366,343 @@ function EvidenceImageGrid({ title, images, emptyText, onCropped, replacingImage
   )
 }
 
-function ReceiptInfoPanel({ receipt }) {
+function ClaimDetailsPanel({ claim, claimTotal, claimerName, ccaName, portfolioName, onSave, saving }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState({
+    claim_description: claim.claim_description || '',
+    date: claim.date || '',
+    wbs_account: claim.wbs_account || 'SA',
+    remarks: claim.remarks || '',
+  })
+
+  useEffect(() => {
+    if (editing) return
+    setDraft({
+      claim_description: claim.claim_description || '',
+      date: claim.date || '',
+      wbs_account: claim.wbs_account || 'SA',
+      remarks: claim.remarks || '',
+    })
+  }, [claim.claim_description, claim.date, claim.wbs_account, claim.remarks, editing])
+
+  async function handleSave() {
+    const description = draft.claim_description.trim()
+    if (!description) {
+      alert('Claim description is required.')
+      return
+    }
+    if (!draft.date) {
+      alert('Claim date is required.')
+      return
+    }
+    const saved = await onSave({
+      claim_description: description,
+      date: draft.date,
+      wbs_account: draft.wbs_account,
+      remarks: draft.remarks,
+    })
+    if (saved !== false) setEditing(false)
+  }
+
   return (
-    <SectionBlock title="Receipt Information" subtitle={receipt.receipt_no || 'No receipt no.'}>
-      <div className="flex flex-col gap-2">
-        <InfoRow label="Description" value={receipt.description} bold />
-        <InfoRow label="Company" value={receipt.company} />
-        <InfoRow label="Date" value={formatDate(receipt.date)} />
-        <InfoRow label="Receipt No." value={receipt.receipt_no} />
-        <InfoRow label="Receipt Amount" value={formatAmount(receiptSpendAmount(receipt))} bold />
-        {receipt.claimed_amount != null && (
-          <InfoRow label="Claimed Amount" value={`${formatAmount(receiptClaimedAmount(receipt))} claimed`} bold />
+    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Claim details</p>
+          <h1 className="mt-1 text-lg font-bold leading-tight text-gray-900">{claim.claim_description || 'No claim description'}</h1>
+          <p className="mt-1 text-xs text-gray-500">
+            {claimerName} - {ccaName}{portfolioName ? ` / ${portfolioName}` : ''}
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            Use a clear title in title case, e.g. Master's Gift to Bryan Ong.
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-lg font-bold tabular-nums text-gray-900">{formatAmount(claimTotal)}</p>
+          <button
+            type="button"
+            onClick={() => setEditing((open) => !open)}
+            className="mt-2 text-xs font-bold text-blue-600"
+          >
+            {editing ? 'Close' : 'Edit'}
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="mt-4 space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Claim description</label>
+            <input
+              value={draft.claim_description}
+              onChange={(e) => setDraft((prev) => ({ ...prev, claim_description: e.target.value }))}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="Master's Gift to Bryan Ong"
+            />
+            <p className="mt-1 text-xs text-gray-500">Keep it short, max 5 words. Use proper names and title case.</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">Claim date</label>
+              <input
+                type="date"
+                value={draft.date || ''}
+                onChange={(e) => setDraft((prev) => ({ ...prev, date: e.target.value }))}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">Fund</label>
+              <select
+                value={draft.wbs_account || 'SA'}
+                onChange={(e) => setDraft((prev) => ({ ...prev, wbs_account: e.target.value }))}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              >
+                {WBS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Remarks</label>
+            <textarea
+              rows={2}
+              value={draft.remarks}
+              onChange={(e) => setDraft((prev) => ({ ...prev, remarks: e.target.value }))}
+              className="w-full resize-none rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="- Optional remark"
+            />
+            <p className="mt-1 text-xs text-gray-500">Format each line as: - remark</p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+              className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save details'}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ReceiptInfoPanel({ receipt, onSave, saving }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState({
+    description: receipt.description || '',
+    company: receipt.company || '',
+    date: receipt.date || '',
+    receipt_no: receipt.receipt_no || '',
+    amount: String(receipt.amount ?? ''),
+    claimed_amount: receipt.claimed_amount == null ? '' : String(receipt.claimed_amount),
+    payer_name: receipt.payer_name || '',
+    payer_email: receipt.payer_email || '',
+  })
+
+  useEffect(() => {
+    if (editing) return
+    setDraft({
+      description: receipt.description || '',
+      company: receipt.company || '',
+      date: receipt.date || '',
+      receipt_no: receipt.receipt_no || '',
+      amount: String(receipt.amount ?? ''),
+      claimed_amount: receipt.claimed_amount == null ? '' : String(receipt.claimed_amount),
+      payer_name: receipt.payer_name || '',
+      payer_email: receipt.payer_email || '',
+    })
+  }, [
+    receipt.description,
+    receipt.company,
+    receipt.date,
+    receipt.receipt_no,
+    receipt.amount,
+    receipt.claimed_amount,
+    receipt.payer_name,
+    receipt.payer_email,
+    editing,
+  ])
+
+  async function handleSave() {
+    const amount = Number(draft.amount)
+    const claimedRaw = draft.claimed_amount.trim()
+    const claimedAmount = claimedRaw ? Number(claimedRaw) : null
+    if (!draft.description.trim()) {
+      alert('Receipt description is required.')
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Enter a valid receipt amount.')
+      return
+    }
+    if (claimedRaw && (!Number.isFinite(claimedAmount) || claimedAmount <= 0)) {
+      alert('Enter a valid claimed amount, or leave it blank.')
+      return
+    }
+    const saved = await onSave({
+      description: draft.description.trim(),
+      company: draft.company.trim(),
+      date: draft.date,
+      receipt_no: draft.receipt_no.trim(),
+      amount,
+      claimed_amount: claimedAmount,
+      payer_name: draft.payer_name.trim(),
+      payer_email: draft.payer_email.trim(),
+    })
+    if (saved !== false) setEditing(false)
+  }
+
+  return (
+    <SectionBlock title="Receipt Details" subtitle={receipt.receipt_no || 'No receipt no.'}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-xs text-gray-500">
+            Check the receipt details before attachments. Keep descriptions proper and readable.
+          </p>
+          <button type="button" onClick={() => setEditing((open) => !open)} className="shrink-0 text-xs font-bold text-blue-600">
+            {editing ? 'Close' : 'Edit'}
+          </button>
+        </div>
+
+        {editing ? (
+          <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">Receipt description</label>
+              <input
+                value={draft.description}
+                onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                placeholder="Master's Gift to Bryan Ong"
+              />
+              <p className="mt-1 text-xs text-gray-500">Use title case and proper names.</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Company</label>
+                <input
+                  value={draft.company}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, company: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="Company / vendor"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Receipt no.</label>
+                <input
+                  value={draft.receipt_no}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, receipt_no: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="Receipt number"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Date</label>
+                <input
+                  type="date"
+                  value={draft.date || ''}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, date: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Receipt amount</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={draft.amount}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, amount: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Claimed amount</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={draft.claimed_amount}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, claimed_amount: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="Full amount"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Invoice name</label>
+                <input
+                  value={draft.payer_name}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, payer_name: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="Name on invoice"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Invoice email</label>
+                <input
+                  type="email"
+                  value={draft.payer_email}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, payer_email: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="person@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save receipt'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <InfoRow label="Description" value={receipt.description} bold />
+            <InfoRow label="Company" value={receipt.company} />
+            <InfoRow label="Date" value={formatDate(receipt.date)} />
+            <InfoRow label="Receipt No." value={receipt.receipt_no} />
+            <InfoRow label="Receipt Amount" value={formatAmount(receiptSpendAmount(receipt))} bold />
+            {receipt.claimed_amount != null && (
+              <InfoRow label="Claimed Amount" value={`${formatAmount(receiptClaimedAmount(receipt))} claimed`} bold />
+            )}
+            <InfoRow label="Payer" value={receipt.payer_name} />
+            <InfoRow label="Payer Email" value={receipt.payer_email} />
+          </div>
         )}
-        <InfoRow label="Payer" value={receipt.payer_name} />
-        <InfoRow label="Payer Email" value={receipt.payer_email} />
       </div>
     </SectionBlock>
   )
@@ -612,6 +942,8 @@ function ReceiptReviewCard({
   selection,
   allSelections,
   onUpdate,
+  onSaveReceiptDetails,
+  savingReceiptDetails,
   onReplaceReceiptImage,
   onReplaceBtImage,
   onReplaceRefundImage,
@@ -654,7 +986,11 @@ function ReceiptReviewCard({
       </div>
 
       <div className="space-y-3 bg-gray-50 p-3">
-        <AmountCheck receipt={receipt} linkedBt={linkedBt} allReceipts={allReceipts} />
+        <ReceiptInfoPanel
+          receipt={receipt}
+          onSave={(patch) => onSaveReceiptDetails?.(receipt.id, patch)}
+          saving={savingReceiptDetails}
+        />
         <EvidenceImageGrid
           title="Receipt Screenshot"
           images={images}
@@ -669,8 +1005,8 @@ function ReceiptReviewCard({
           onReplaceRefundImage={onReplaceRefundImage}
           replacingImages={replacingImages}
         />
-        <ReceiptInfoPanel receipt={receipt} />
         <FxEvidencePanel receipt={receipt} />
+        <AmountCheck receipt={receipt} linkedBt={linkedBt} allReceipts={allReceipts} />
         <FinanceFields
           receipt={receipt}
           selection={selection}
@@ -712,6 +1048,10 @@ function ApprovalWorkspace({
   bankTransactions,
   selections,
   onUpdateSelection,
+  onSaveClaimDetails,
+  savingClaimDetails,
+  onSaveReceiptDetails,
+  savingReceiptDetails,
   onApprove,
   onBack,
   onReject,
@@ -758,18 +1098,18 @@ function ApprovalWorkspace({
       </div>
 
       <main className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-4">
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Claim description</p>
-              <h1 className="mt-1 text-lg font-bold leading-tight text-gray-900">{claim.claim_description || 'No claim description'}</h1>
-              <p className="mt-1 text-xs text-gray-500">
-                {claimerName} - {ccaName}{portfolioName ? ` / ${portfolioName}` : ''}
-              </p>
-            </div>
-            <p className="shrink-0 text-lg font-bold tabular-nums text-gray-900">{formatAmount(claimTotal)}</p>
-          </div>
+        <ClaimDetailsPanel
+          claim={claim}
+          claimTotal={claimTotal}
+          claimerName={claimerName}
+          ccaName={ccaName}
+          portfolioName={portfolioName}
+          onSave={onSaveClaimDetails}
+          saving={savingClaimDetails}
+        />
 
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Review checks</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <MobileStat label="Claim total" value={formatAmount(claimTotal)} />
             <MobileStat label="Receipt spend" value={formatAmount(totalReceiptSpend)} />
@@ -852,6 +1192,8 @@ function ApprovalWorkspace({
               selection={selections[receipt.id]}
               allSelections={selections}
               onUpdate={(patch) => onUpdateSelection(receipt.id, patch)}
+              onSaveReceiptDetails={onSaveReceiptDetails}
+              savingReceiptDetails={Boolean(savingReceiptDetails?.[receipt.id])}
               onReplaceReceiptImage={onReplaceReceiptImage}
               onReplaceBtImage={onReplaceBtImage}
               onReplaceRefundImage={onReplaceRefundImage}
@@ -1389,6 +1731,8 @@ export default function ApprovalWizardPage() {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejecting, setRejecting] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [savingClaimDetails, setSavingClaimDetails] = useState(false)
+  const [savingReceiptDetails, setSavingReceiptDetails] = useState({})
   const [replacingImages, setReplacingImages] = useState({})
   const initializedRef = useRef(false)
 
@@ -1452,6 +1796,48 @@ export default function ApprovalWizardPage() {
       alert('Failed to update image. Please try again.')
     } finally {
       setReplacingImages((prev) => ({ ...prev, [ref.id]: false }))
+    }
+  }
+
+  async function handleSaveClaimDetails(patch) {
+    setSavingClaimDetails(true)
+    try {
+      await updateClaim({ id, ...patch })
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+      return true
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      const msg = typeof detail === 'string' ? detail : err?.message || 'Unknown error'
+      alert(`Claim update failed: ${msg}`)
+      return false
+    } finally {
+      setSavingClaimDetails(false)
+    }
+  }
+
+  async function handleSaveReceiptDetails(receiptId, patch) {
+    setSavingReceiptDetails((prev) => ({ ...prev, [receiptId]: true }))
+    try {
+      await updateReceipt({ id: receiptId, confirm_category_change: true, ...patch })
+      if ('amount' in patch || 'claimed_amount' in patch) {
+        const updatedReceipts = (claim.receipts ?? []).map((receipt) =>
+          receipt.id === receiptId ? { ...receipt, ...patch } : receipt
+        )
+        const total = updatedReceipts.reduce(
+          (sum, receipt) => sum + Number(receipt.claimed_amount ?? receipt.amount ?? 0),
+          0
+        )
+        await updateClaim({ id, total_amount: total })
+      }
+      queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
+      return true
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      const msg = typeof detail === 'string' ? detail : err?.message || 'Unknown error'
+      alert(`Receipt update failed: ${msg}`)
+      return false
+    } finally {
+      setSavingReceiptDetails((prev) => ({ ...prev, [receiptId]: false }))
     }
   }
 
@@ -1534,6 +1920,10 @@ export default function ApprovalWizardPage() {
         bankTransactions={bankTransactions}
         selections={selections}
         onUpdateSelection={updateSelection}
+        onSaveClaimDetails={handleSaveClaimDetails}
+        savingClaimDetails={savingClaimDetails}
+        onSaveReceiptDetails={handleSaveReceiptDetails}
+        savingReceiptDetails={savingReceiptDetails}
         onApprove={handleApprove}
         onBack={() => navigate(`/claims/${id}`)}
         onReject={() => setShowRejectModal(true)}

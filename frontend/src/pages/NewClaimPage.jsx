@@ -376,11 +376,11 @@ function Step2({ data, onChange, isTreasurer }) {
         <Input
           value={data.claimDescription}
           onChange={(v) => onChange({ claimDescription: v })}
-          placeholder="e.g. Camp supplies"
+          placeholder="e.g. Master's Gift to Bryan Ong"
           className="max-w-full"
         />
         <p className="mt-1 text-xs text-gray-400">
-          Keep it short, max 5 words.
+          Keep it short, max 5 words. Use proper names and title case.
         </p>
       </div>
 
@@ -638,8 +638,9 @@ function ReceiptForm({
         <Input
           value={form.description}
           onChange={(v) => set('description', v)}
-          placeholder="Receipt description…"
+          placeholder="Master's Gift to Bryan Ong"
         />
+        <p className="mt-1 text-xs text-gray-400">Use proper names and title case.</p>
         {errors.description && <p className="text-xs text-red-500 mt-0.5">{errors.description}</p>}
       </div>
 
@@ -845,8 +846,9 @@ function BankOnlyClaimItemForm({
             className={inputCls}
             value={item.description || ''}
             onChange={(e) => set('description', e.target.value)}
-            placeholder={`Bank transaction ${btIndex} claim item`}
+            placeholder="Master's Gift to Bryan Ong"
           />
+          <p className="mt-1 text-xs text-gray-400">Use proper names and title case.</p>
         </div>
 
         <div className="grid grid-cols-1 gap-2">

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useClaims, useClaimCounts, useBulkUpdateStatus, useRemindAllTreasurerEmails, exportClaims } from '../api/claims'
+import { useClaims, useClaimCounts, useBulkUpdateStatus, useRemindAllTreasurerEmails, useEmailReminderClaims, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
 import { useIsDirector } from '../context/AuthContext'
 import { getClaimReadiness } from '../utils/claimReadiness'
+import { EMAIL_REMINDER_STATUS_VALUES, buildEmailReminderTargets, countSelectedReminderClaims } from '../utils/emailReminderTargets'
 import { IconPencil } from '../components/Icons'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 
@@ -35,8 +36,6 @@ const DASHBOARD_FILTERS = [
   { key: 'done', label: 'Done', statuses: ['submitted', 'reimbursed'] },
   { key: 'errors', label: 'Errors', statuses: ['error'] },
 ]
-
-const EMAIL_REMINDER_STATUS_VALUES = ['email_sent', 'screenshot_pending']
 
 function isCountsMap(value) {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -213,6 +212,8 @@ export default function HomePage() {
   const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
   const [actionResult, setActionResult] = useState(null)
   const [actionResultTone, setActionResultTone] = useState('success')
+  const [reminderPickerOpen, setReminderPickerOpen] = useState(false)
+  const [selectedReminderTreasurerIds, setSelectedReminderTreasurerIds] = useState(new Set())
 
   const debouncedSearch = useDebounce(search, 300)
   const activeFilter = DASHBOARD_FILTERS.find((filter) => filter.key === activeFilterKey) || DASHBOARD_FILTERS[0]
@@ -226,6 +227,7 @@ export default function HomePage() {
 
   // Global per-status counts (not filtered by search/date)
   const { data: countsData } = useClaimCounts()
+  const { data: reminderClaimsData, isLoading: reminderTargetsLoading } = useEmailReminderClaims(isDirector)
 
   // Paginated, server-side filtered fetch
   const queryParams = {
@@ -312,10 +314,31 @@ export default function HomePage() {
     count: countStatuses(counts, filter.statuses, filter.key === 'all' || filter.key === activeFilterKey ? total : 0),
   }))
   const emailReminderCount = countStatuses(counts, EMAIL_REMINDER_STATUS_VALUES, 0)
+  const reminderTargets = buildEmailReminderTargets(reminderClaimsData?.items ?? [])
+  const selectedReminderClaimCount = countSelectedReminderClaims(reminderTargets, selectedReminderTreasurerIds)
 
-  async function handleBumpAllTreasurers() {
+  useEffect(() => {
+    setSelectedReminderTreasurerIds((prev) => {
+      const available = new Set(reminderTargets.map((target) => target.treasurerId))
+      const next = new Set([...prev].filter((id) => available.has(id)))
+      if (next.size === 0 && reminderTargets.length > 0) {
+        return new Set(reminderTargets.map((target) => target.treasurerId))
+      }
+      return next
+    })
+  }, [reminderTargets.map((target) => target.treasurerId).join('|')])
+
+  function toggleReminderTreasurer(treasurerId) {
+    setSelectedReminderTreasurerIds((prev) => {
+      const next = new Set(prev)
+      next.has(treasurerId) ? next.delete(treasurerId) : next.add(treasurerId)
+      return next
+    })
+  }
+
+  async function handleBumpTreasurers(treasurerIds = []) {
     try {
-      const result = await remindAllEmailMutation.mutateAsync()
+      const result = await remindAllEmailMutation.mutateAsync({ treasurerIds })
       const sentTreasurers = Number(result.sent_treasurers || 0)
       const sentClaims = Number(result.sent_claims || 0)
       const skippedClaims = Number(result.skipped_claims || 0)
@@ -337,6 +360,16 @@ export default function HomePage() {
       setActionResultTone('error')
       setActionResult(`Failed to bump treasurers: ${apiErrorMessage(err)}`)
     }
+  }
+
+  function handleBumpSelectedTreasurers() {
+    const treasurerIds = [...selectedReminderTreasurerIds]
+    if (treasurerIds.length === 0) {
+      setActionResultTone('warning')
+      setActionResult('Select at least one treasurer to bump.')
+      return
+    }
+    handleBumpTreasurers(treasurerIds)
   }
 
   return (
@@ -431,16 +464,78 @@ export default function HomePage() {
               </div>
             </div>
             {isDirector && emailReminderCount > 0 && (
-              <button
-                type="button"
-                disabled={remindAllEmailMutation.isPending}
-                onClick={handleBumpAllTreasurers}
-                className="mt-3 w-full rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-xs font-bold text-amber-800 active:bg-amber-100 disabled:opacity-50"
-              >
-                {remindAllEmailMutation.isPending
-                  ? 'Bumping treasurers...'
-                  : `Bump all treasurers waiting for screenshot (${emailReminderCount})`}
-              </button>
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <button
+                  type="button"
+                  onClick={() => setReminderPickerOpen((open) => !open)}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <span>
+                    <span className="block text-xs font-bold text-amber-900">Treasurers waiting to send email</span>
+                    <span className="mt-0.5 block text-[11px] font-medium text-amber-700">
+                      {reminderTargetsLoading
+                        ? 'Loading treasurers...'
+                        : `${reminderTargets.length} treasurer${reminderTargets.length !== 1 ? 's' : ''}, ${emailReminderCount} claim${emailReminderCount !== 1 ? 's' : ''}`}
+                    </span>
+                  </span>
+                  <span className="material-symbols-outlined text-[1.2rem] text-amber-700">
+                    {reminderPickerOpen ? 'expand_less' : 'expand_more'}
+                  </span>
+                </button>
+
+                {reminderPickerOpen && (
+                  <div className="mt-3 space-y-3">
+                    {reminderTargets.length === 0 ? (
+                      <p className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-gray-500">
+                        No treasurers with waiting email claims found yet.
+                      </p>
+                    ) : (
+                      <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                        {reminderTargets.map((target) => (
+                          <label
+                            key={target.treasurerId}
+                            className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedReminderTreasurerIds.has(target.treasurerId)}
+                              onChange={() => toggleReminderTreasurer(target.treasurerId)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-300"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-gray-900">{target.name}</span>
+                              <span className="block text-xs text-gray-500">
+                                {target.claimCount} waiting claim{target.claimCount !== 1 ? 's' : ''}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={remindAllEmailMutation.isPending || selectedReminderTreasurerIds.size === 0}
+                        onClick={handleBumpSelectedTreasurers}
+                        className="rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        {remindAllEmailMutation.isPending
+                          ? 'Bumping...'
+                          : `Bump selected (${selectedReminderClaimCount})`}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={remindAllEmailMutation.isPending || reminderTargets.length === 0}
+                        onClick={() => handleBumpTreasurers()}
+                        className="rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-xs font-bold text-amber-800 disabled:opacity-50"
+                      >
+                        Bump all
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}

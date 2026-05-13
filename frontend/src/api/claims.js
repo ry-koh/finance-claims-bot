@@ -77,6 +77,20 @@ export function useClaims(params = {}) {
   })
 }
 
+export function useEmailReminderClaims(enabled = true) {
+  const params = {
+    statuses: ['email_sent', 'screenshot_pending'],
+    page: 1,
+    page_size: 500,
+  }
+  return useQuery({
+    queryKey: [...CLAIM_KEYS.all, 'email-reminder-targets'],
+    queryFn: () => fetchClaims(params),
+    enabled,
+    refetchInterval: 30_000,
+  })
+}
+
 export function useClaimCounts() {
   return useQuery({
     queryKey: [...CLAIM_KEYS.all, 'counts'],
@@ -159,8 +173,10 @@ export const reimburseClaim = (claimId) =>
 export const remindTreasurerEmail = (claimId) =>
   api.post(`/claims/${claimId}/email-reminder`).then((r) => r.data)
 
-export const remindAllTreasurerEmails = () =>
-  api.post('/claims/email-reminders').then((r) => r.data)
+export const remindAllTreasurerEmails = ({ treasurerIds } = {}) => {
+  const body = treasurerIds?.length ? { treasurer_ids: treasurerIds } : undefined
+  return api.post('/claims/email-reminders', body).then((r) => r.data)
+}
 
 export function useSubmitClaim(options = {}) {
   const queryClient = useQueryClient()
