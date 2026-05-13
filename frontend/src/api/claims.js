@@ -159,6 +159,9 @@ export const reimburseClaim = (claimId) =>
 export const remindTreasurerEmail = (claimId) =>
   api.post(`/claims/${claimId}/email-reminder`).then((r) => r.data)
 
+export const remindAllTreasurerEmails = () =>
+  api.post('/claims/email-reminders').then((r) => r.data)
+
 export function useSubmitClaim(options = {}) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -180,6 +183,13 @@ export function useReimburseClaim(options = {}) {
 export function useRemindTreasurerEmail(options = {}) {
   return useMutation({
     mutationFn: remindTreasurerEmail,
+    ...options,
+  })
+}
+
+export function useRemindAllTreasurerEmails(options = {}) {
+  return useMutation({
+    mutationFn: remindAllTreasurerEmails,
     ...options,
   })
 }

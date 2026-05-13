@@ -110,6 +110,28 @@ def _email_send_reminder_message(claim: dict) -> str:
     ])
 
 
+def _email_send_bulk_reminder_message(claims: list[dict]) -> str:
+    lines = [
+        "Reminder: please send the confirmation email screenshot for the claim(s) below.",
+        "",
+        "Waiting claims:",
+    ]
+    for claim in claims:
+        ref = claim.get("reference_code") or f"claim {claim.get('id')}"
+        description = claim.get("claim_description") or "your claim"
+        lines.append(f"- {ref}: {description}")
+    lines.extend([
+        "",
+        "Steps:",
+        "1. Open the confirmation email from Finance.",
+        "2. Copy everything below the line into a new email.",
+        "3. Check the To, CC, and Subject fields.",
+        "4. Send the email.",
+        "5. Send the sent-email screenshot back to Finance so we can continue processing the claim.",
+    ])
+    return "\n".join(lines)
+
+
 def _add_file_ref(r2_paths: set[str], drive_file_ids: set[str], file_id: str | None) -> None:
     """Split stored file IDs into R2 object names and Google Drive IDs."""
     if not file_id:
@@ -1470,6 +1492,99 @@ async def remind_treasurer_to_send_email(
         {"treasurer_id": filled_by_id},
     )
     return {"success": True, "sent_to": ft.data[0].get("name")}
+
+
+# ---------------------------------------------------------------------------
+# POST /claims/email-reminders  (director only)
+# ---------------------------------------------------------------------------
+
+@router.post("/email-reminders")
+async def remind_all_treasurers_to_send_email(
+    member: dict = Depends(require_director),
+    db: Client = Depends(get_supabase),
+):
+    """Send one reminder per treasurer for claims waiting on sent-email screenshots."""
+    guard("email-reminder:bulk", max_calls=2, window_seconds=300)
+    claims_resp = (
+        db.table("claims")
+        .select("id, reference_code, claim_description, filled_by, status")
+        .in_("status", sorted(EMAIL_REMINDER_STATUSES))
+        .is_("deleted_at", "null")
+        .limit(500)
+        .execute()
+    )
+    waiting_claims = claims_resp.data or []
+    if not waiting_claims:
+        return {
+            "success": True,
+            "matched": 0,
+            "sent_treasurers": 0,
+            "sent_claims": 0,
+            "skipped_claims": 0,
+            "failed_treasurers": 0,
+        }
+
+    claims_by_treasurer: dict[str, list[dict]] = {}
+    skipped_claims = 0
+    for claim in waiting_claims:
+        treasurer_id = claim.get("filled_by")
+        if not treasurer_id:
+            skipped_claims += 1
+            continue
+        claims_by_treasurer.setdefault(str(treasurer_id), []).append(claim)
+
+    treasurer_ids = list(claims_by_treasurer.keys())
+    treasurers_resp = (
+        db.table("finance_team")
+        .select("id, telegram_id, name")
+        .in_("id", treasurer_ids)
+        .execute()
+        if treasurer_ids
+        else None
+    )
+    treasurers = {
+        str(row["id"]): row
+        for row in ((treasurers_resp.data if treasurers_resp else None) or [])
+    }
+
+    sent_treasurers = 0
+    sent_claims = 0
+    failed_treasurers = 0
+    for treasurer_id, claims_for_treasurer in claims_by_treasurer.items():
+        treasurer = treasurers.get(treasurer_id)
+        telegram_id = treasurer.get("telegram_id") if treasurer else None
+        if not telegram_id:
+            skipped_claims += len(claims_for_treasurer)
+            continue
+
+        sent = await send_bot_notification(
+            telegram_id,
+            _email_send_bulk_reminder_message(claims_for_treasurer),
+        )
+        if not sent:
+            failed_treasurers += 1
+            continue
+
+        sent_treasurers += 1
+        sent_claims += len(claims_for_treasurer)
+        for claim in claims_for_treasurer:
+            log_claim_event(
+                db,
+                claim["id"],
+                member.get("id"),
+                "email_send_reminder_sent",
+                "Treasurer reminded to send confirmation email",
+                {"treasurer_id": treasurer_id, "bulk": True},
+            )
+
+    return {
+        "success": failed_treasurers == 0,
+        "matched": len(waiting_claims),
+        "sent_treasurers": sent_treasurers,
+        "sent_claims": sent_claims,
+        "skipped_claims": skipped_claims,
+        "failed_treasurers": failed_treasurers,
+    }
 
 
 # ---------------------------------------------------------------------------

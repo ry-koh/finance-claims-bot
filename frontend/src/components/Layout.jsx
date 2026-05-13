@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth, useIsDirector, useIsTreasurer } from '../context/AuthContext'
 import { usePendingCount } from '../api/admin'
@@ -172,6 +172,7 @@ export default function Layout() {
   const isDirector = useIsDirector()
   const isTreasurer = useIsTreasurer()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [fabVisible, setFabVisible] = useState(true)
   const location = useLocation()
   const { data: pendingCount = 0 } = usePendingCount(isDirector)
 
@@ -184,6 +185,14 @@ export default function Layout() {
   const navGroups = isDirector ? DIRECTOR_NAV : isTreasurer ? TREASURER_NAV : MEMBER_NAV
   const bottomNav = isDirector ? DIRECTOR_BOTTOM_NAV : isTreasurer ? TREASURER_BOTTOM_NAV : MEMBER_BOTTOM_NAV
   const showFab = location.pathname !== '/claims/new'
+
+  useEffect(() => {
+    setFabVisible(true)
+  }, [location.pathname])
+
+  function handleMainScroll(event) {
+    setFabVisible(event.currentTarget.scrollTop < 80)
+  }
 
   return (
     <div className="app-shell flex flex-col h-screen">
@@ -210,12 +219,16 @@ export default function Layout() {
           </button>
         </div>
       </header>
-      <main className="app-main flex-1 overflow-y-auto pt-14">
+      <main className="app-main flex-1 overflow-y-auto pt-14" onScroll={handleMainScroll}>
         <DirectorTestingBar />
         <Outlet />
       </main>
       {showFab && (
-        <NavLink to="/claims/new" className="bottom-nav-fab" aria-label="Create new claim">
+        <NavLink
+          to="/claims/new"
+          className={`bottom-nav-fab ${fabVisible ? '' : 'bottom-nav-fab-hidden'}`}
+          aria-label="Create new claim"
+        >
           <span className="material-symbols-outlined text-[2rem]">add</span>
         </NavLink>
       )}

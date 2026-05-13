@@ -550,6 +550,18 @@ a.ui-card:active {
   background: var(--color-accent);
   color: #ffffff;
   box-shadow: 0 14px 28px rgba(37, 99, 235, 0.22);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.bottom-nav-fab-hidden {
+  opacity: 0;
+  transform: translateY(1rem) scale(0.92);
+  pointer-events: none;
 }
 
 .toolbar-field {

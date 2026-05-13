@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useClaims, useClaimCounts, useBulkUpdateStatus, exportClaims } from '../api/claims'
+import { useClaims, useClaimCounts, useBulkUpdateStatus, useRemindAllTreasurerEmails, exportClaims } from '../api/claims'
 import { useSendToTelegram } from '../api/documents'
+import { useIsDirector } from '../context/AuthContext'
 import { getClaimReadiness } from '../utils/claimReadiness'
 import { IconPencil } from '../components/Icons'
 import { useScrollReveal } from '../hooks/useScrollReveal'
@@ -34,6 +35,8 @@ const DASHBOARD_FILTERS = [
   { key: 'done', label: 'Done', statuses: ['submitted', 'reimbursed'] },
   { key: 'errors', label: 'Errors', statuses: ['error'] },
 ]
+
+const EMAIL_REMINDER_STATUS_VALUES = ['email_sent', 'screenshot_pending']
 
 function isCountsMap(value) {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -194,6 +197,7 @@ function ClaimCard({ claim, onClick, selectMode, selected, onToggle, revealDelay
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const isDirector = useIsDirector()
   const [activeFilterKey, setActiveFilterKey] = useState('all')
 
   const [search, setSearch] = useState('')
@@ -218,6 +222,7 @@ export default function HomePage() {
 
   const sendMutation = useSendToTelegram()
   const bulkStatusMutation = useBulkUpdateStatus()
+  const remindAllEmailMutation = useRemindAllTreasurerEmails()
 
   // Global per-status counts (not filtered by search/date)
   const { data: countsData } = useClaimCounts()
@@ -306,6 +311,33 @@ export default function HomePage() {
     ...filter,
     count: countStatuses(counts, filter.statuses, filter.key === 'all' || filter.key === activeFilterKey ? total : 0),
   }))
+  const emailReminderCount = countStatuses(counts, EMAIL_REMINDER_STATUS_VALUES, 0)
+
+  async function handleBumpAllTreasurers() {
+    try {
+      const result = await remindAllEmailMutation.mutateAsync()
+      const sentTreasurers = Number(result.sent_treasurers || 0)
+      const sentClaims = Number(result.sent_claims || 0)
+      const skippedClaims = Number(result.skipped_claims || 0)
+      const failedTreasurers = Number(result.failed_treasurers || 0)
+
+      if (sentTreasurers === 0) {
+        setActionResultTone(skippedClaims || failedTreasurers ? 'warning' : 'success')
+        setActionResult('No treasurer reminders were sent.')
+        return
+      }
+
+      setActionResultTone(failedTreasurers ? 'warning' : 'success')
+      setActionResult(
+        `Bumped ${sentTreasurers} treasurer${sentTreasurers !== 1 ? 's' : ''} for ${sentClaims} waiting claim${sentClaims !== 1 ? 's' : ''}` +
+        `${skippedClaims ? `. ${skippedClaims} claim${skippedClaims !== 1 ? 's' : ''} skipped.` : ''}` +
+        `${failedTreasurers ? ` ${failedTreasurers} treasurer${failedTreasurers !== 1 ? 's' : ''} failed.` : ''}`
+      )
+    } catch (err) {
+      setActionResultTone('error')
+      setActionResult(`Failed to bump treasurers: ${apiErrorMessage(err)}`)
+    }
+  }
 
   return (
     <div className="mobile-page flex min-h-full flex-col">
@@ -398,6 +430,18 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
+            {isDirector && emailReminderCount > 0 && (
+              <button
+                type="button"
+                disabled={remindAllEmailMutation.isPending}
+                onClick={handleBumpAllTreasurers}
+                className="mt-3 w-full rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-xs font-bold text-amber-800 active:bg-amber-100 disabled:opacity-50"
+              >
+                {remindAllEmailMutation.isPending
+                  ? 'Bumping treasurers...'
+                  : `Bump all treasurers waiting for screenshot (${emailReminderCount})`}
+              </button>
+            )}
           </>
         )}
 
