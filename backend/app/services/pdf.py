@@ -23,6 +23,10 @@ class DriveAuthError(RuntimeError):
     """Raised when Google Drive/Docs/Sheets OAuth credentials need attention."""
 
 
+class EvidenceUnavailableError(RuntimeError):
+    """Raised when an attached claim evidence file cannot be embedded in a generated PDF."""
+
+
 DRIVE_AUTH_ERROR_MESSAGE = (
     "Google Drive authorization failed. Regenerate DRIVE_REFRESH_TOKEN, "
     "update the GitHub Actions secret, and redeploy Cloud Run."
@@ -68,7 +72,7 @@ def get_drive_file_size(file_id: str) -> int:
 
 
 
-def _add_image_page(pdf, drive_id: str, header_label: str) -> None:
+def _add_image_page(pdf, drive_id: str, header_label: str, *, required: bool = False) -> None:
     """Download an R2 image and embed it on a new PDF page.
 
     EXIF orientation is corrected, then the image is scaled to fill the A4
@@ -119,6 +123,9 @@ def _add_image_page(pdf, drive_id: str, header_label: str) -> None:
                 pass
 
     except Exception as exc:
+        message = f"Attached evidence could not be loaded: {header_label} ({drive_id})"
+        if required:
+            raise EvidenceUnavailableError(message) from exc
         logger.warning("Failed to embed R2 image %s: %s", drive_id, exc)
         pdf.add_page()
         pdf.set_font("Helvetica", style="I", size=10)
@@ -166,46 +173,46 @@ def generate_loa(claim: dict, receipts: list, bank_transactions: list = None, re
     approval_ids = mf_approval_drive_ids or ([mf_approval_drive_id] if mf_approval_drive_id else [])
     for aid in approval_ids:
         if aid:
-            _add_image_page(pdf, aid, "[Master's Fund Approval]")
+            _add_image_page(pdf, aid, "[Master's Fund Approval]", required=True)
 
     # For each BT: linked receipt images first, then BT images, then refund images
     for bt in bank_transactions:
         for receipt in receipts_by_bt.get(bt["id"], []):
             for img in (receipt.get("images") or []):
                 if img.get("drive_file_id"):
-                    _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
+                    _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt), required=True)
             # FX screenshots stored as extra drive IDs on the receipt row
             for fxid in (receipt.get("exchange_rate_screenshot_drive_ids") or []):
                 if fxid:
-                    _add_image_page(pdf, fxid, f"[Exchange Rate - {_receipt_header(receipt)}]")
+                    _add_image_page(pdf, fxid, f"[Exchange Rate - {_receipt_header(receipt)}]", required=True)
             if not (receipt.get("exchange_rate_screenshot_drive_ids")):
                 fxid_single = receipt.get("exchange_rate_screenshot_drive_id")
                 if fxid_single:
-                    _add_image_page(pdf, fxid_single, f"[Exchange Rate - {_receipt_header(receipt)}]")
+                    _add_image_page(pdf, fxid_single, f"[Exchange Rate - {_receipt_header(receipt)}]", required=True)
         for img in (bt.get("images") or []):
             if img.get("drive_file_id"):
-                _add_image_page(pdf, img["drive_file_id"], "[Bank Transaction]")
+                _add_image_page(pdf, img["drive_file_id"], "[Bank Transaction]", required=True)
         for refund in (bt.get("refunds") or []):
             if refund.get("drive_file_id"):
                 amt = float(refund.get("amount") or 0)
                 label = f"[Refund ${amt:.2f}]"
-                _add_image_page(pdf, refund["drive_file_id"], label)
+                _add_image_page(pdf, refund["drive_file_id"], label, required=True)
                 for extra in (refund.get("extra_drive_file_ids") or []):
                     if extra:
-                        _add_image_page(pdf, extra, label)
+                        _add_image_page(pdf, extra, label, required=True)
 
     # Unlinked receipts at the end
     for receipt in unlinked_receipts:
         for img in (receipt.get("images") or []):
             if img.get("drive_file_id"):
-                _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt))
+                _add_image_page(pdf, img["drive_file_id"], _receipt_header(receipt), required=True)
         for fxid in (receipt.get("exchange_rate_screenshot_drive_ids") or []):
             if fxid:
-                _add_image_page(pdf, fxid, f"[Exchange Rate - {_receipt_header(receipt)}]")
+                _add_image_page(pdf, fxid, f"[Exchange Rate - {_receipt_header(receipt)}]", required=True)
         if not (receipt.get("exchange_rate_screenshot_drive_ids")):
             fxid_single = receipt.get("exchange_rate_screenshot_drive_id")
             if fxid_single:
-                _add_image_page(pdf, fxid_single, f"[Exchange Rate - {_receipt_header(receipt)}]")
+                _add_image_page(pdf, fxid_single, f"[Exchange Rate - {_receipt_header(receipt)}]", required=True)
 
     # Ensure at least one page so pypdf can read the file
     if pdf.page == 0:

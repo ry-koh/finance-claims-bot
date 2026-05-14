@@ -357,8 +357,10 @@ def _do_generate(claim_id: str, db) -> dict:
     except ValueError:
         return {"success": True, "documents": generated, "claim_status": fallback_status}
     except Exception as e:
+        message = f"Auto-compile failed: {e}"
         logger.exception("Auto-compile failed for claim %s: %s", claim_id, e)
-        return {"success": True, "documents": generated, "claim_status": fallback_status}
+        db.table("claims").update({"status": "error", "error_message": message}).eq("id", claim_id).execute()
+        raise HTTPException(500, message)
 
 
 def _do_screenshot_and_generate(claim_id: str, files_data: list, db) -> None:
@@ -436,8 +438,10 @@ def _do_screenshot_and_generate(claim_id: str, files_data: list, db) -> None:
                 result = _do_compile(claim_id, claim["reference_code"], db)
                 return {"success": True, "claim_status": "compiled", "page_count": result["page_count"]}
             except Exception as e:
-                logger.warning("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
-                return {"success": True, "claim_status": "screenshot_uploaded"}
+                message = f"Compile after screenshot upload failed: {e}"
+                logger.exception("Compile after screenshot upload failed for claim %s: %s", claim_id, e)
+                db.table("claims").update({"status": "error", "error_message": message}).eq("id", claim_id).execute()
+                raise HTTPException(500, message)
         else:
             return _do_generate(claim_id, db)
 

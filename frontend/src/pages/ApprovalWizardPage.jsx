@@ -74,6 +74,10 @@ function isBankOnlyReceipt(receipt) {
   return /^BT\d+$/i.test(receipt?.receipt_no || '') && Boolean(receipt?.bank_transaction_id)
 }
 
+function isTextEntryTarget(target) {
+  return Boolean(target?.closest?.('input, textarea, select, [contenteditable="true"]'))
+}
+
 function bankImages(bt) {
   return (bt?.images ?? []).filter((img) => img?.drive_file_id)
 }
@@ -1066,6 +1070,7 @@ function ApprovalWorkspace({
   onReplaceRefundImage,
   replacingImages,
 }) {
+  const [fieldFocused, setFieldFocused] = useState(false)
   const readiness = getClaimReadiness({ ...claim, receipts, bank_transactions: bankTransactions })
   const missingCategories = receipts.filter((receipt) => !selections[receipt.id]?.category)
   const missingReceiptImages = receipts.filter((receipt) => !isBankOnlyReceipt(receipt) && receiptImages(receipt).length === 0)
@@ -1085,9 +1090,21 @@ function ApprovalWorkspace({
   const claimerName = compactName(claim)
   const ccaName = claim.cca?.name || 'No CCA'
   const portfolioName = claim.cca?.portfolio?.name
+  const showActionBar = !fieldFocused
 
   return (
-    <div className="mobile-page min-h-screen bg-gray-50 pb-28">
+    <div
+      className={`mobile-page min-h-screen bg-gray-50 ${showActionBar ? 'pb-28' : 'pb-4'}`}
+      onFocusCapture={(event) => {
+        if (isTextEntryTarget(event.target)) setFieldFocused(true)
+      }}
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget
+        if (!nextTarget || !event.currentTarget.contains(nextTarget) || !isTextEntryTarget(nextTarget)) {
+          setFieldFocused(false)
+        }
+      }}
+    >
       <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-lg items-center gap-2">
           <button type="button" onClick={onBack} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 active:bg-gray-100">
@@ -1246,30 +1263,32 @@ function ApprovalWorkspace({
         )}
       </main>
 
-      <div
-        className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white px-4 pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]"
-        style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}
-      >
-        <div className="mx-auto flex max-w-lg items-center gap-3">
-          <button type="button" onClick={onReject} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 active:bg-red-50">
-            Reject
-          </button>
-          <button
-            type="button"
-            onClick={onApprove}
-            disabled={!canApprove || approving}
-            className="min-w-0 flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white active:bg-green-700 disabled:bg-gray-300 disabled:text-gray-500"
-          >
-            {approving
-              ? 'Approving...'
-              : readiness.blockers.length
-              ? `Fix ${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? '' : 's'}`
-              : canApprove
-              ? 'Approve & Send Email'
-              : `Fill ${missingCategories.length} category`}
-          </button>
+      {showActionBar && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white px-4 pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]"
+          style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div className="mx-auto flex max-w-lg items-center gap-3">
+            <button type="button" onClick={onReject} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 active:bg-red-50">
+              Reject
+            </button>
+            <button
+              type="button"
+              onClick={onApprove}
+              disabled={!canApprove || approving}
+              className="min-w-0 flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white active:bg-green-700 disabled:bg-gray-300 disabled:text-gray-500"
+            >
+              {approving
+                ? 'Approving...'
+                : readiness.blockers.length
+                ? `Fix ${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? '' : 's'}`
+                : canApprove
+                ? 'Approve & Send Email'
+                : `Fill ${missingCategories.length} category`}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -1899,20 +1918,20 @@ export default function ApprovalWizardPage() {
   }
 
   async function handleApprove() {
+    const readiness = getClaimReadiness({ ...claim, receipts, bank_transactions: bankTransactions })
+    if (readiness.blockers.length > 0) {
+      alert(readiness.blockers.map((issue) => issue.issue).join('\n'))
+      return
+    }
+    const missingCategories = receipts.filter((r) => !selections[r.id]?.category)
+    if (missingCategories.length > 0) {
+      alert(`Fill category for ${missingCategories.length} receipt(s) before approving.`)
+      return
+    }
+    if (!window.confirm('Approve this claim and send the confirmation email?')) return
+
     setApproving(true)
     try {
-      const readiness = getClaimReadiness({ ...claim, receipts, bank_transactions: bankTransactions })
-      if (readiness.blockers.length > 0) {
-        alert(readiness.blockers.map((issue) => issue.issue).join('\n'))
-        setApproving(false)
-        return
-      }
-      const missingCategories = receipts.filter((r) => !selections[r.id]?.category)
-      if (missingCategories.length > 0) {
-        alert(`Fill category for ${missingCategories.length} receipt(s) before approving.`)
-        setApproving(false)
-        return
-      }
       for (const receipt of receipts) {
         const sel = selections[receipt.id]
         if (!sel?.category) continue
