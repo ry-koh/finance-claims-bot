@@ -6,6 +6,7 @@ from app.routers.bot import send_bot_notification
 from app.services.events import log_claim_event
 from app.services import gmail as gmail_service
 from app.services import pdf as pdf_service
+from app.services.claim_readiness import evaluate_claim_readiness, format_blocking_issues
 from app.services.app_settings import get_claim_email_settings, get_document_finance_director
 from app.utils.rate_limit import guard
 
@@ -125,6 +126,13 @@ async def send_claim_email(
                 f"Allowed statuses: {sorted(allowed_statuses)}"
             ),
         )
+    if current_status != "email_sent":
+        readiness = evaluate_claim_readiness(claim, receipts, bank_transactions)
+        if not readiness["can_approve"]:
+            raise HTTPException(
+                status_code=422,
+                detail=format_blocking_issues(readiness, "approve and send this claim"),
+            )
 
     try:
         # 6. Build email

@@ -1066,6 +1066,7 @@ function NewBtDraftModal({ initial, onSave, onClose }) {
 
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-1">Bank Screenshots</p>
+          <p className="mb-2 text-xs text-gray-500">Upload the completed transaction. Pending transactions cannot be claimed yet.</p>
           {files.length > 0 && (
             <div className="flex flex-wrap gap-3 mb-2">
               {files.map((file, i) => (
@@ -1162,7 +1163,7 @@ function BtDraftCard({
   payerOptions, onCreatePayer, onUpdatePayer, onDeletePayer, canManagePayers, payersLoading,
 }) {
   const [showReceiptForm, setShowReceiptForm] = useState(false)
-  const receiptSum = linkedReceipts.reduce((s, r) => s + (r.claimed_amount ?? r.amount), 0)
+  const receiptSum = linkedReceipts.reduce((s, r) => s + Number(r.amount || 0), 0)
   const hasLinkedReceipts = linkedReceipts.length > 0
   const netAmount = bt.refunds?.length > 0
     ? bt.amount - bt.refunds.reduce((s, r) => s + Number(r.amount || 0), 0)
@@ -1262,7 +1263,12 @@ function BtDraftCard({
                   })}
                   className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600"
                 />
-                <span>No separate receipt is attached to this bank transaction</span>
+                <span>
+                  No separate receipt is attached to this bank transaction
+                  <span className="mt-0.5 block font-medium text-amber-800/80">
+                    Add a remark explaining why the supplier did not give one.
+                  </span>
+                </span>
               </label>
               {bt.noReceiptAttached && (
                 <BankOnlyClaimItemForm
@@ -1473,6 +1479,9 @@ function buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPa
   if (incompleteBankOnly > 0) {
     blockers.push(`${incompleteBankOnly} bank transaction-only item${incompleteBankOnly === 1 ? '' : 's'} missing description, date, invoice name/email${isTreasurer ? '' : ', or category'}.`)
   }
+  if (bankOnlyDrafts.length > 0 && !step2.remarks.trim()) {
+    blockers.push('Add a remark explaining why the supplier did not provide a receipt.')
+  }
   const uniqueCategories = new Set(
     [...receipts, ...bankOnlyDrafts]
       .map((item) => item.category || (isTreasurer ? 'N/A' : ''))
@@ -1521,7 +1530,7 @@ function buildClaimReview({ step1, step2, receipts, bankTransactions, fallbackPa
   const mismatchedTransactions = bankTransactions.filter((bt) => {
     const linked = receipts.filter((receipt) => receipt.btLocalId === bt.localId)
     if (linked.length === 0) return false
-    const linkedTotal = linked.reduce((sum, receipt) => sum + Number(receipt.claimed_amount ?? receipt.amount ?? 0), 0)
+    const linkedTotal = linked.reduce((sum, receipt) => sum + Number(receipt.amount ?? 0), 0)
     const refundTotal = (bt.refunds ?? []).reduce((sum, refund) => sum + Number(refund.amount || 0), 0)
     const net = Number(bt.amount || 0) - refundTotal
     return Math.abs(linkedTotal - net) > 0.01

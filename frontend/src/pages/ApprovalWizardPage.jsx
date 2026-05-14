@@ -11,6 +11,7 @@ import { sendEmail } from '../api/email'
 import ImageCropModal from '../components/ImageCropModal'
 import CroppableThumb from '../components/CroppableThumb'
 import { imageUrl } from '../api/images'
+import { getClaimReadiness } from '../utils/claimReadiness'
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,10 @@ function amountDifference(a, b) {
 
 function receiptImages(receipt) {
   return (receipt?.images ?? []).filter((img) => img?.drive_file_id)
+}
+
+function isBankOnlyReceipt(receipt) {
+  return /^BT\d+$/i.test(receipt?.receipt_no || '') && Boolean(receipt?.bank_transaction_id)
 }
 
 function bankImages(bt) {
@@ -1061,8 +1066,9 @@ function ApprovalWorkspace({
   onReplaceRefundImage,
   replacingImages,
 }) {
+  const readiness = getClaimReadiness({ ...claim, receipts, bank_transactions: bankTransactions })
   const missingCategories = receipts.filter((receipt) => !selections[receipt.id]?.category)
-  const missingReceiptImages = receipts.filter((receipt) => receiptImages(receipt).length === 0)
+  const missingReceiptImages = receipts.filter((receipt) => !isBankOnlyReceipt(receipt) && receiptImages(receipt).length === 0)
   const bankTransactionsMissingImages = bankTransactions.filter((bt) => bankImages(bt).length === 0)
   const amountMismatches = bankTransactions.filter((bt) => {
     const linked = linkedReceipts(bt, receipts)
@@ -1075,7 +1081,7 @@ function ApprovalWorkspace({
   const totalBankNet = bankTransactions.reduce((sum, bt) => sum + bankTransactionNetAmount(bt), 0)
   const bankOnlyTransactions = bankTransactions.filter((bt) => linkedReceipts(bt, receipts).length === 0)
   const claimTotal = toAmount(claim.total_amount ?? totalClaimed)
-  const canApprove = missingCategories.length === 0
+  const canApprove = missingCategories.length === 0 && readiness.blockers.length === 0
   const claimerName = compactName(claim)
   const ccaName = claim.cca?.name || 'No CCA'
   const portfolioName = claim.cca?.portfolio?.name
@@ -1118,6 +1124,12 @@ function ApprovalWorkspace({
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
+            {readiness.blockers.length > 0 && (
+              <ReviewPill tone="bad">{readiness.blockers.length} blocker{readiness.blockers.length === 1 ? '' : 's'}</ReviewPill>
+            )}
+            {readiness.warnings.length > 0 && (
+              <ReviewPill tone="warn">{readiness.warnings.length} review warning{readiness.warnings.length === 1 ? '' : 's'}</ReviewPill>
+            )}
             <ReviewPill tone={missingReceiptImages.length ? 'bad' : 'good'}>
               {missingReceiptImages.length ? `${missingReceiptImages.length} receipt proof missing` : 'Receipt proof ready'}
             </ReviewPill>
@@ -1128,6 +1140,17 @@ function ApprovalWorkspace({
               {amountMismatches.length ? `${amountMismatches.length} amount mismatch` : 'Amounts tally'}
             </ReviewPill>
           </div>
+
+          {(readiness.blockers.length > 0 || readiness.warnings.length > 0) && (
+            <div className="mt-3 space-y-1.5 rounded-xl border border-gray-100 bg-gray-50 p-3">
+              {readiness.blockers.map((issue) => (
+                <p key={issue.id} className="text-xs font-semibold text-red-700">{issue.issue}</p>
+              ))}
+              {readiness.warnings.map((issue) => (
+                <p key={issue.id} className="text-xs font-medium text-amber-800">{issue.issue}</p>
+              ))}
+            </div>
+          )}
 
           {(claim.remarks || claim.treasurer_notes) && (
             <div className="mt-3 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
@@ -1237,7 +1260,13 @@ function ApprovalWorkspace({
             disabled={!canApprove || approving}
             className="min-w-0 flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white active:bg-green-700 disabled:bg-gray-300 disabled:text-gray-500"
           >
-            {approving ? 'Approving...' : canApprove ? 'Approve & Send Email' : `Fill ${missingCategories.length} category`}
+            {approving
+              ? 'Approving...'
+              : readiness.blockers.length
+              ? `Fix ${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? '' : 's'}`
+              : canApprove
+              ? 'Approve & Send Email'
+              : `Fill ${missingCategories.length} category`}
           </button>
         </div>
       </div>
@@ -1872,6 +1901,12 @@ export default function ApprovalWizardPage() {
   async function handleApprove() {
     setApproving(true)
     try {
+      const readiness = getClaimReadiness({ ...claim, receipts, bank_transactions: bankTransactions })
+      if (readiness.blockers.length > 0) {
+        alert(readiness.blockers.map((issue) => issue.issue).join('\n'))
+        setApproving(false)
+        return
+      }
       const missingCategories = receipts.filter((r) => !selections[r.id]?.category)
       if (missingCategories.length > 0) {
         alert(`Fill category for ${missingCategories.length} receipt(s) before approving.`)

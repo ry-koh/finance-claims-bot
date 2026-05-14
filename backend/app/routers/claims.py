@@ -18,6 +18,7 @@ from app.database import get_supabase
 from app.models import ClaimCreate, ClaimStatus, ClaimUpdate, WBSAccount
 from app.routers.bot import send_bot_notification
 from app.services import r2 as r2_service
+from app.services.claim_readiness import evaluate_claim_readiness, fetch_claim_evidence, format_blocking_issues
 from app.services.events import log_claim_event
 from app.services.storage import insert_file_row
 from app.utils.rate_limit import guard
@@ -1363,6 +1364,13 @@ async def submit_for_review(
     claim = get_claim_for_member(db, claim_id, member)
     if str(claim.get("filled_by")) != str(member["id"]):
         raise HTTPException(403, "You can only submit your own claims")
+    receipts, bank_transactions = fetch_claim_evidence(db, claim_id)
+    readiness = evaluate_claim_readiness(claim, receipts, bank_transactions)
+    if not readiness["can_submit"]:
+        raise HTTPException(
+            status_code=422,
+            detail=format_blocking_issues(readiness, "submit this claim"),
+        )
     # Atomic: only update if still in draft — catches concurrent double-submit
     resp = db.table("claims").update({
         "status": ClaimStatus.PENDING_REVIEW.value,

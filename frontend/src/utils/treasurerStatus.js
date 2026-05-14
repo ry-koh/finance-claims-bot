@@ -55,16 +55,9 @@ export const TREASURER_STATUS_META = {
   },
 }
 
-const TREASURER_BLOCKING_CHECK_IDS = new Set([
-  'evidence',
-  'receipt-images',
-  'bank-images',
-  'fx-screenshots',
-])
-
 function firstTreasurerBlockingIssue(claim) {
   const readiness = getClaimReadiness(claim)
-  return readiness.missing.find((check) => TREASURER_BLOCKING_CHECK_IDS.has(check.id)) ?? null
+  return readiness.blockers?.[0] ?? null
 }
 
 const IN_REVIEW_STATUSES = new Set([

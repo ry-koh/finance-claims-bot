@@ -327,9 +327,7 @@ function TreasurerProgressPanel({ claim, onAction }) {
   const meta = getTreasurerStatusMeta(claim)
   const message = getTreasurerProgressMessage(claim)
   const readiness = getClaimReadiness(claim)
-  const blockingIssue = readiness.missing.find((check) =>
-    ['evidence', 'receipt-images', 'bank-images', 'fx-screenshots'].includes(check.id)
-  )
+  const blockingIssue = readiness.firstBlocker
   const flow = ['draft', 'in_review', 'send_email', 'awaiting_submission', 'submitted', 'reimbursed']
   const flowKey = statusKey === 'needs_action' ? 'draft' : statusKey
   const currentIndex = Math.max(0, flow.indexOf(flowKey))
@@ -381,7 +379,11 @@ function TreasurerProgressPanel({ claim, onAction }) {
               {blockingIssue.issue}
             </p>
           )}
-          <ActionButton onClick={() => onAction('submitForReview')} loading={onAction.loading?.submitForReview}>
+          <ActionButton
+            onClick={() => onAction('submitForReview')}
+            loading={onAction.loading?.submitForReview}
+            disabled={Boolean(blockingIssue)}
+          >
             Submit for Review
           </ActionButton>
         </div>
@@ -402,6 +404,7 @@ function StatusPipeline({ claim, onAction, isTreasurer, isDirector }) {
 
   const screenshotUploading = onAction.loading?.screenshot
   const isGeneratingOnServer = claim.error_message === '__generating__'
+  const treasurerSubmitBlocker = isTreasurer ? getClaimReadiness(claim).firstBlocker : null
   // Docs are processing if: actively uploading screenshot, OR server sentinel is set
   const docsProcessing = screenshotUploading || isGeneratingOnServer
 
@@ -415,7 +418,11 @@ function StatusPipeline({ claim, onAction, isTreasurer, isDirector }) {
         if (!isTreasurer) return null
         if (isCurrent && displayStatus === 'draft') {
           return (
-            <ActionButton onClick={() => onAction('submitForReview')} loading={onAction.loading?.submitForReview}>
+            <ActionButton
+              onClick={() => onAction('submitForReview')}
+              loading={onAction.loading?.submitForReview}
+              disabled={Boolean(treasurerSubmitBlocker)}
+            >
               Submit for Review
             </ActionButton>
           )
@@ -2318,6 +2325,9 @@ export default function ClaimDetailPage() {
   const showErrorBanner = claim.status === 'error' && !errorDismissed
   const unlinked = (claim.receipts ?? []).filter(r => !r.bank_transaction_id)
   const canEdit = !isTreasurer || claim.status === 'draft'
+  const treasurerSubmitBlocker = isTreasurer && claim.status === 'draft'
+    ? getClaimReadiness(claim).firstBlocker
+    : null
 
   return (
     <div className="mobile-page flex min-h-full flex-col pb-6">
@@ -2454,11 +2464,17 @@ export default function ClaimDetailPage() {
               <ActionButton
                 onClick={() => handleAction('submitForReview')}
                 loading={handleAction.loading?.submitForReview}
+                disabled={Boolean(treasurerSubmitBlocker)}
                 className="w-full justify-center sm:w-auto"
               >
                 Submit for Review
               </ActionButton>
             </div>
+            {treasurerSubmitBlocker && (
+              <p className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-blue-800">
+                {treasurerSubmitBlocker.issue}
+              </p>
+            )}
           </div>
         )}
 
