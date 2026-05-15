@@ -74,11 +74,12 @@ def test_start_replies_even_when_member_lookup_fails():
     message = recording_bot.messages[0]
     assert message["chat_id"] == 123
     assert "Claims App" in message["text"]
-    assert "456" in message["text"]
+    assert "register" in message["text"].lower()
+    assert "456" not in message["text"]
     assert message["reply_markup"] is not None
 
 
-def test_start_for_unregistered_user_includes_telegram_id():
+def test_start_for_unregistered_user_does_not_include_telegram_id():
     recording_bot = RecordingBot()
 
     asyncio.run(
@@ -94,4 +95,5 @@ def test_start_for_unregistered_user_includes_telegram_id():
     assert len(recording_bot.messages) == 1
     message = recording_bot.messages[0]
     assert "Claims App" in message["text"]
-    assert "456" in message["text"]
+    assert "register" in message["text"].lower()
+    assert "456" not in message["text"]

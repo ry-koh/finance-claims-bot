@@ -86,8 +86,7 @@ async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> N
         await _send_message(
             bot,
             chat_id,
-            "Welcome! Tap below to open the Claims App and complete your registration.\n\n"
-            f"Your Telegram ID: {telegram_id}\n\n"
+            "Welcome! Tap the button below to open the Claims App and register.\n\n"
             "💡 Tip: Pin this message so you can easily open the app anytime.",
             reply_markup=keyboard,
         )
@@ -147,7 +146,8 @@ async def _handle_register_director(
         "Use the button below to open the Claims App.\n\n"
         "To add team members:\n"
         "1. Have them send /start to this bot.\n"
-        "2. Run /confirm_member with their Telegram ID.",
+        "2. Ask them to tap Open Claims App and submit a Finance Member registration.\n"
+        "3. Approve them from Pending Registrations.",
         reply_markup=keyboard,
     )
 
@@ -164,12 +164,8 @@ async def _handle_addmember(bot, db, chat_id: int, sender_id: int) -> None:
         chat_id,
         "To add a new member:\n\n"
         "1. Have the new member send /start to this bot.\n"
-        "   They will receive their Telegram ID in the reply.\n\n"
-        "2. Once you have their ID, run:\n"
-        "<code>/confirm_member &lt;telegram_id&gt; &lt;name&gt; &lt;email&gt; &lt;role&gt;</code>\n\n"
-        "Example:\n"
-        "<code>/confirm_member 123456789 Jane Doe jane@example.com member</code>\n\n"
-        "Valid roles: <b>member</b>, <b>director</b>",
+        "2. Ask them to tap <b>Open Claims App</b> and submit a Finance Member registration.\n"
+        "3. Approve them from <b>Pending Registrations</b> in the app.",
         parse_mode="HTML",
     )
 

@@ -255,7 +255,7 @@ It uses the `APP_URL` secret you added in Step 8 — no further action needed. Y
 ## Step 10 — Register Yourself as Finance Director
 
 1. Open Telegram, find your bot, send `/start`
-2. The bot won't recognise you yet — it replies with your Telegram ID
+2. The bot won't recognise you yet — it replies with an **Open Claims App** button
 3. Send:
    ```
    /register_director Your Name your@email.com
@@ -288,12 +288,9 @@ These settings are stored in `app_settings` except your app identity, which upda
 
 ### Finance team members
 
-1. Have the new member open your bot and send `/start` — the bot replies with their Telegram ID
-2. From your account, send:
-   ```
-   /confirm_member <their_telegram_id> Their Name their@email.com member
-   ```
-   Example: `/confirm_member 123456789 John Lim john@u.nus.edu member`
+1. Have the new member open your bot, send `/start`, and tap **Open Claims App**
+2. They register as a Finance Member with their name, NUS email, and Telegram username
+3. Open **Pending Registrations** in the app to approve or reject the request
 
 ### CCA treasurers
 
