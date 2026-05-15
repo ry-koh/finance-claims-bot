@@ -15,6 +15,7 @@ from app.database import get_supabase
 from app.models import ReceiptCreate, ReceiptUpdate
 from app.services import r2, image
 from app.services.categories import CATEGORY_CODES
+from app.services.evidence_files import normalise_file_ids, remove_file_id, replace_file_id
 from app.services.storage import insert_file_row
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,27 @@ def _delete_line_item_if_empty(db: Client, line_item_id: str) -> None:
 def _assert_claim_editable(db: Client, claim_id: str, member: dict) -> None:
     """Raise 403 if a treasurer is trying to mutate a claim that is no longer in draft."""
     get_claim_for_member(db, claim_id, member, require_treasurer_draft=True)
+
+
+def _receipt_update_has_related_updates(payload: ReceiptUpdate) -> bool:
+    return (
+        payload.receipt_image_drive_ids is not None
+        or payload.clear_bank_transaction
+        or payload.bank_transaction_drive_ids is not None
+        or payload.bank_transaction_id is not None
+    )
+
+
+async def _upload_receipt_evidence_file(reference_code: str, image_type: str, file: UploadFile) -> tuple[str, int]:
+    raw_bytes = await file.read()
+    try:
+        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    object_name = r2.make_object_name(reference_code, image_type, timestamp)
+    return r2.upload_file(processed, object_name), len(processed)
 
 
 def _assert_bank_transaction_for_claim(
@@ -347,22 +369,13 @@ async def upload_receipt_image(
             f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} receipt images per receipt.",
         )
 
-    raw_bytes = await file.read()
-    try:
-        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-
-    from datetime import datetime as _datetime
-    timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
-    object_name = r2.make_object_name(reference_code, "receipt", timestamp)
-    drive_file_id = r2.upload_file(processed, object_name)
+    drive_file_id, file_size = await _upload_receipt_evidence_file(reference_code, "receipt", file)
 
     try:
         img_resp = insert_file_row(db, "receipt_images", {
             "receipt_id": receipt_id,
             "drive_file_id": drive_file_id,
-            "file_size_bytes": len(processed),
+            "file_size_bytes": file_size,
         })
         if not img_resp.data:
             raise RuntimeError("No receipt image row returned")
@@ -398,16 +411,7 @@ async def upload_receipt_fx_image(
             f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} exchange-rate screenshots per receipt.",
         )
 
-    raw_bytes = await file.read()
-    try:
-        processed = image.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-
-    from datetime import datetime as _datetime
-    timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
-    object_name = r2.make_object_name(reference_code, "exchange_rate", timestamp)
-    drive_file_id = r2.upload_file(processed, object_name)
+    drive_file_id, file_size = await _upload_receipt_evidence_file(reference_code, "exchange_rate", file)
     next_ids = existing_ids + [drive_file_id]
 
     try:
@@ -431,7 +435,7 @@ async def upload_receipt_fx_image(
     return {
         "drive_file_id": drive_file_id,
         "exchange_rate_screenshot_drive_ids": next_ids,
-        "file_size_bytes": len(processed),
+        "file_size_bytes": file_size,
     }
 
 
@@ -442,14 +446,140 @@ async def delete_receipt_image(
     _auth: dict = Depends(require_auth),
     db: Client = Depends(get_supabase),
 ):
-    resp = db.table("receipt_images").select("*, receipt:receipts(claim_id)").eq("id", image_id).eq("receipt_id", receipt_id).execute()
+    resp = db.table("receipt_images").select("id, drive_file_id, receipt:receipts(claim_id)").eq("id", image_id).eq("receipt_id", receipt_id).execute()
     if not resp.data:
         raise HTTPException(404, "Image not found")
     claim_id = (resp.data[0].get("receipt") or {}).get("claim_id", "")
     if claim_id:
         _assert_claim_editable(db, claim_id, _auth)
+    file_id = resp.data[0].get("drive_file_id")
     db.table("receipt_images").delete().eq("id", image_id).execute()
+    if file_id:
+        r2.delete_file(file_id)
     return {"deleted": True}
+
+
+@router.patch("/{receipt_id}/images/{image_id}")
+async def replace_receipt_image(
+    receipt_id: str,
+    image_id: str,
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    receipt_resp = db.table("receipts").select("*, claim:claims(reference_code, status, filled_by)").eq("id", receipt_id).execute()
+    if not receipt_resp.data:
+        raise HTTPException(404, "Receipt not found")
+    receipt = receipt_resp.data[0]
+    _assert_claim_editable(db, receipt["claim_id"], _auth)
+
+    img_resp = db.table("receipt_images").select("id, drive_file_id").eq("id", image_id).eq("receipt_id", receipt_id).execute()
+    if not img_resp.data:
+        raise HTTPException(404, "Image not found")
+    old_file_id = img_resp.data[0].get("drive_file_id")
+
+    reference_code = receipt.get("claim", {}).get("reference_code", receipt["claim_id"])
+    new_file_id, file_size = await _upload_receipt_evidence_file(reference_code, "receipt", file)
+    try:
+        update_resp = db.table("receipt_images").update({
+            "drive_file_id": new_file_id,
+            "file_size_bytes": file_size,
+        }).eq("id", image_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No receipt image row returned")
+    except Exception as exc:
+        r2.delete_file(new_file_id)
+        logger.exception("Failed to replace receipt image %s: %s", image_id, exc)
+        raise HTTPException(500, "Failed to replace receipt image")
+
+    if old_file_id:
+        try:
+            r2.delete_file(old_file_id)
+        except Exception as exc:
+            logger.warning("Failed to delete old receipt image %s: %s", old_file_id, exc)
+    return update_resp.data[0]
+
+
+@router.patch("/{receipt_id}/fx-images")
+async def replace_receipt_fx_image(
+    receipt_id: str,
+    old_file_id: str = Form(...),
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    receipt_resp = db.table("receipts").select("*, claim:claims(reference_code, status, filled_by)").eq("id", receipt_id).execute()
+    if not receipt_resp.data:
+        raise HTTPException(404, "Receipt not found")
+    receipt = receipt_resp.data[0]
+    _assert_claim_editable(db, receipt["claim_id"], _auth)
+
+    existing_ids = normalise_file_ids(
+        receipt.get("exchange_rate_screenshot_drive_ids"),
+        receipt.get("exchange_rate_screenshot_drive_id"),
+    )
+    try:
+        next_ids = replace_file_id(existing_ids, old_file_id, "__pending__")
+    except ValueError:
+        raise HTTPException(404, "Exchange-rate screenshot not found")
+
+    reference_code = receipt.get("claim", {}).get("reference_code", receipt["claim_id"])
+    new_file_id, _file_size = await _upload_receipt_evidence_file(reference_code, "exchange_rate", file)
+    next_ids = [new_file_id if file_id == "__pending__" else file_id for file_id in next_ids]
+    try:
+        update_resp = db.table("receipts").update({
+            "exchange_rate_screenshot_drive_id": next_ids[0] if next_ids else None,
+            "exchange_rate_screenshot_drive_ids": next_ids,
+            "is_foreign_currency": True,
+        }).eq("id", receipt_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No receipt row returned")
+    except Exception as exc:
+        r2.delete_file(new_file_id)
+        logger.exception("Failed to replace FX screenshot for receipt %s: %s", receipt_id, exc)
+        raise HTTPException(500, "Failed to replace exchange-rate screenshot")
+
+    try:
+        r2.delete_file(old_file_id)
+    except Exception as exc:
+        logger.warning("Failed to delete old FX screenshot %s: %s", old_file_id, exc)
+    return {"drive_file_id": new_file_id, "exchange_rate_screenshot_drive_ids": next_ids}
+
+
+@router.delete("/{receipt_id}/fx-images")
+async def delete_receipt_fx_image(
+    receipt_id: str,
+    file_id: str = Query(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    receipt_resp = db.table("receipts").select("id, claim_id, exchange_rate_screenshot_drive_id, exchange_rate_screenshot_drive_ids").eq("id", receipt_id).execute()
+    if not receipt_resp.data:
+        raise HTTPException(404, "Receipt not found")
+    receipt = receipt_resp.data[0]
+    _assert_claim_editable(db, receipt["claim_id"], _auth)
+
+    existing_ids = normalise_file_ids(
+        receipt.get("exchange_rate_screenshot_drive_ids"),
+        receipt.get("exchange_rate_screenshot_drive_id"),
+    )
+    try:
+        next_ids, next_legacy_id = remove_file_id(existing_ids, file_id)
+    except ValueError:
+        raise HTTPException(404, "Exchange-rate screenshot not found")
+
+    update_resp = db.table("receipts").update({
+        "exchange_rate_screenshot_drive_id": next_legacy_id,
+        "exchange_rate_screenshot_drive_ids": next_ids,
+    }).eq("id", receipt_id).execute()
+    if not update_resp.data:
+        raise HTTPException(500, "Failed to delete exchange-rate screenshot")
+
+    try:
+        r2.delete_file(file_id)
+    except Exception as exc:
+        logger.warning("Failed to delete FX screenshot %s: %s", file_id, exc)
+    return {"deleted": True, "exchange_rate_screenshot_drive_ids": next_ids}
 
 
 # ---------------------------------------------------------------------------
@@ -728,6 +858,17 @@ async def update_receipt(
         update_data["exchange_rate_screenshot_drive_id"] = payload.exchange_rate_screenshot_drive_id
     if payload.exchange_rate_screenshot_drive_ids is not None:
         update_data["exchange_rate_screenshot_drive_ids"] = payload.exchange_rate_screenshot_drive_ids
+    fx_files_to_delete: list[str] = []
+    if payload.exchange_rate_screenshot_drive_ids is not None:
+        old_fx_ids = normalise_file_ids(
+            receipt.get("exchange_rate_screenshot_drive_ids"),
+            receipt.get("exchange_rate_screenshot_drive_id"),
+        )
+        new_fx_ids = normalise_file_ids(
+            payload.exchange_rate_screenshot_drive_ids,
+            payload.exchange_rate_screenshot_drive_id,
+        )
+        fx_files_to_delete = [file_id for file_id in old_fx_ids if file_id not in new_fx_ids]
     if {"payer_id", "payer_name", "payer_email"} & payload.model_fields_set:
         update_data.update(
             _resolve_payer_snapshot(
@@ -774,20 +915,29 @@ async def update_receipt(
             if li_update:
                 db.table("claim_line_items").update(li_update).eq("id", old_line_item_id).execute()
 
-    if not update_data:
+    has_related_updates = _receipt_update_has_related_updates(payload)
+    if not update_data and not has_related_updates:
         # Nothing to update on the receipt row — return it as-is
         return receipt
 
-    resp = (
-        db.table("receipts")
-        .update(update_data)
-        .eq("id", receipt_id)
-        .execute()
-    )
-    if not resp.data:
-        raise HTTPException(status_code=500, detail="Failed to update receipt")
+    if update_data:
+        resp = (
+            db.table("receipts")
+            .update(update_data)
+            .eq("id", receipt_id)
+            .execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=500, detail="Failed to update receipt")
+        updated_receipt = resp.data[0]
+    else:
+        updated_receipt = receipt
 
-    updated_receipt = resp.data[0]
+    for file_id in fx_files_to_delete:
+        try:
+            r2.delete_file(file_id)
+        except Exception as exc:
+            logger.warning("Failed to delete removed FX screenshot %s: %s", file_id, exc)
 
     # Clean up old line item if it has no remaining receipts after the move
     if old_line_item_id and "line_item_id" in update_data and old_line_item_id != update_data["line_item_id"]:
@@ -800,9 +950,18 @@ async def update_receipt(
                 413,
                 f"Maximum {settings.MAX_RECEIPT_IMAGES_PER_RECEIPT} receipt images per receipt.",
             )
+        old_image_rows = db.table("receipt_images").select("drive_file_id").eq("receipt_id", receipt_id).execute().data or []
+        new_image_ids = set(payload.receipt_image_drive_ids)
         db.table("receipt_images").delete().eq("receipt_id", receipt_id).execute()
         for drive_id in payload.receipt_image_drive_ids:
             db.table("receipt_images").insert({"receipt_id": receipt_id, "drive_file_id": drive_id}).execute()
+        for row in old_image_rows:
+            old_file_id = row.get("drive_file_id")
+            if old_file_id and old_file_id not in new_image_ids:
+                try:
+                    r2.delete_file(old_file_id)
+                except Exception as exc:
+                    logger.warning("Failed to delete removed receipt image %s: %s", old_file_id, exc)
 
     # Handle bank transaction changes
     if payload.clear_bank_transaction:

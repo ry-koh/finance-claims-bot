@@ -5,8 +5,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useClaim, rejectReview, updateClaim, CLAIM_KEYS } from '../api/claims'
 import { useIsFinanceTeam } from '../context/AuthContext'
 import { CATEGORIES, GST_CODES, DR_CR_OPTIONS } from '../constants/claimConstants'
-import { updateReceipt, uploadReceiptImageById, deleteReceiptImage } from '../api/receipts'
-import { uploadBankTransactionImage, deleteBankTransactionImage, updateBtRefundFile } from '../api/bankTransactions'
+import { updateReceipt, replaceReceiptImage } from '../api/receipts'
+import { replaceBankTransactionImage, replaceBtRefundFile } from '../api/bankTransactions'
 import { sendEmail } from '../api/email'
 import ImageCropModal from '../components/ImageCropModal'
 import CroppableThumb from '../components/CroppableThumb'
@@ -30,6 +30,15 @@ function getFxImageIds(receipt) {
     : []
   const legacyId = receipt?.exchange_rate_screenshot_drive_id
   if (legacyId && !ids.includes(legacyId)) return [legacyId, ...ids]
+  return ids
+}
+
+function refundFileIds(refund) {
+  const ids = []
+  if (refund?.drive_file_id) ids.push(refund.drive_file_id)
+  for (const fileId of refund?.extra_drive_file_ids ?? []) {
+    if (fileId && !ids.includes(fileId)) ids.push(fileId)
+  }
   return ids
 }
 
@@ -850,25 +859,33 @@ function BankEvidencePanel({ bt, allReceipts, onReplaceBtImage, onReplaceRefundI
       {(bt.refunds ?? []).length > 0 && (
         <div className="mt-3 space-y-2">
           <p className="text-xs font-semibold text-gray-600">Refund proof</p>
-          {bt.refunds.map((refund, index) => (
-            <div key={refund.id ?? index} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 p-2">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-gray-900">Refund {index + 1}</p>
-                <p className="text-xs text-gray-500">{formatAmount(refund.amount)}</p>
+          {bt.refunds.map((refund, index) => {
+            const fileIds = refundFileIds(refund)
+            return (
+              <div key={refund.id ?? index} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 p-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-900">Refund {index + 1}</p>
+                  <p className="text-xs text-gray-500">{formatAmount(refund.amount)}</p>
+                </div>
+                {fileIds.length > 0 ? (
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {fileIds.map((fileId, fileIdx) => (
+                      <CroppableThumb
+                        key={fileId}
+                        src={imageUrl(fileId)}
+                        label={`Refund ${index + 1} file ${fileIdx + 1}`}
+                        reuploading={replacingImages?.[`${refund.id}:${fileId}`]}
+                        onCropped={(file) => onReplaceRefundImage?.(refund, bt.id, fileId, file)}
+                        thumbSize="w-16 h-16"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <ReviewPill tone="bad">Missing file</ReviewPill>
+                )}
               </div>
-              {refund.drive_file_id ? (
-                <CroppableThumb
-                  src={imageUrl(refund.drive_file_id)}
-                  label={`Refund ${index + 1}`}
-                  reuploading={replacingImages?.[refund.id]}
-                  onCropped={(file) => onReplaceRefundImage?.(refund, bt.id, file)}
-                  thumbSize="w-16 h-16"
-                />
-              ) : (
-                <ReviewPill tone="bad">Missing file</ReviewPill>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </SectionBlock>
@@ -1423,8 +1440,8 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
                             <CroppableThumb
                               src={imageUrl(ref.drive_file_id)}
                               label="Refund screenshot"
-                              reuploading={replacingImages?.[ref.id]}
-                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, file)}
+                              reuploading={replacingImages?.[`${ref.id}:${ref.drive_file_id}`]}
+                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, ref.drive_file_id, file)}
                               thumbSize="w-16 h-16"
                             />
                           )}
@@ -1433,6 +1450,8 @@ function ReceiptStep({ receipt, selection, allSelections, bankTransactions, step
                               key={fid}
                               src={imageUrl(fid)}
                               label="Refund screenshot"
+                              reuploading={replacingImages?.[`${ref.id}:${fid}`]}
+                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, fid, file)}
                               thumbSize="w-16 h-16"
                             />
                           ))}
@@ -1686,8 +1705,8 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
                             <CroppableThumb
                               src={imageUrl(ref.drive_file_id)}
                               label="Refund screenshot"
-                              reuploading={replacingImages?.[ref.id]}
-                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, file)}
+                              reuploading={replacingImages?.[`${ref.id}:${ref.drive_file_id}`]}
+                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, ref.drive_file_id, file)}
                               thumbSize="w-16 h-16"
                             />
                           )}
@@ -1696,6 +1715,8 @@ function SummaryScreen({ receipts, bankTransactions, selections, onApprove, onBa
                               key={fid}
                               src={imageUrl(fid)}
                               label="Refund screenshot"
+                              reuploading={replacingImages?.[`${ref.id}:${fid}`]}
+                              onCropped={(file) => onReplaceRefundImage?.(ref, bt.id, fid, file)}
                               thumbSize="w-16 h-16"
                             />
                           ))}
@@ -1812,8 +1833,7 @@ export default function ApprovalWizardPage() {
   async function handleReplaceReceiptImage(img, receiptId, file) {
     setReplacingImages((prev) => ({ ...prev, [img.id]: true }))
     try {
-      await deleteReceiptImage({ receiptId, imageId: img.id })
-      await uploadReceiptImageById({ receiptId, file })
+      await replaceReceiptImage({ receiptId, imageId: img.id, file })
       queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
     } catch {
       alert('Failed to update image. Please try again.')
@@ -1825,8 +1845,7 @@ export default function ApprovalWizardPage() {
   async function handleReplaceBtImage(img, btId, file) {
     setReplacingImages((prev) => ({ ...prev, [img.id]: true }))
     try {
-      await deleteBankTransactionImage({ btId, imageId: img.id })
-      await uploadBankTransactionImage({ btId, file })
+      await replaceBankTransactionImage({ btId, imageId: img.id, file })
       queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
     } catch {
       alert('Failed to update image. Please try again.')
@@ -1835,15 +1854,16 @@ export default function ApprovalWizardPage() {
     }
   }
 
-  async function handleReplaceRefundImage(ref, btId, file) {
-    setReplacingImages((prev) => ({ ...prev, [ref.id]: true }))
+  async function handleReplaceRefundImage(ref, btId, oldFileId, file) {
+    const replacementKey = `${ref.id}:${oldFileId}`
+    setReplacingImages((prev) => ({ ...prev, [replacementKey]: true }))
     try {
-      await updateBtRefundFile({ btId, refundId: ref.id, file })
+      await replaceBtRefundFile({ btId, refundId: ref.id, oldFileId, file })
       queryClient.invalidateQueries({ queryKey: CLAIM_KEYS.detail(id) })
     } catch {
       alert('Failed to update image. Please try again.')
     } finally {
-      setReplacingImages((prev) => ({ ...prev, [ref.id]: false }))
+      setReplacingImages((prev) => ({ ...prev, [replacementKey]: false }))
     }
   }
 

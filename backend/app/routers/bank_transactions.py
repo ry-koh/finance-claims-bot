@@ -1,7 +1,7 @@
 import logging
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from supabase import Client
 from datetime import datetime
 
@@ -9,6 +9,7 @@ from app.auth import get_claim_for_member, require_auth
 from app.config import settings
 from app.database import get_supabase
 from app.services import r2, image
+from app.services.evidence_files import normalise_file_ids, remove_file_id, replace_file_id
 from app.services.storage import insert_file_row
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,41 @@ async def delete_bank_transaction_image(
     return {"deleted": True}
 
 
+@router.patch("/{bt_id}/images/{image_id}")
+async def replace_bank_transaction_image(
+    bt_id: str,
+    image_id: str,
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Replace a bank transaction image record and remove the old file."""
+    resp = db.table("bank_transaction_images").select("id, drive_file_id").eq("id", image_id).eq("bank_transaction_id", bt_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Image not found")
+    old_file_id = resp.data[0].get("drive_file_id")
+
+    _bt, new_file_id, file_size = await _get_bt_and_upload_file(bt_id, file, db, "bank", _auth)
+    try:
+        update_resp = db.table("bank_transaction_images").update({
+            "drive_file_id": new_file_id,
+            "file_size_bytes": file_size,
+        }).eq("id", image_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No bank transaction image row returned")
+    except Exception as exc:
+        r2.delete_file(new_file_id)
+        logger.exception("Failed to replace bank transaction image %s: %s", image_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to replace bank transaction image")
+
+    if old_file_id:
+        try:
+            r2.delete_file(old_file_id)
+        except Exception as exc:
+            logger.warning("Failed to delete old bank transaction image %s: %s", old_file_id, exc)
+    return update_resp.data[0]
+
+
 @router.post("/{bt_id}/refunds", status_code=201)
 async def create_bt_refund(
     bt_id: str,
@@ -183,7 +219,7 @@ async def update_bt_refund_file(
     """Replace the file attached to a refund."""
     bt = _get_bt_or_404(bt_id, db)
     get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
-    resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
+    resp = db.table("bank_transaction_refunds").select("id, drive_file_id, extra_drive_file_ids").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Refund not found")
     old_file_id = resp.data[0].get("drive_file_id")
@@ -214,6 +250,95 @@ async def update_bt_refund_file(
     return {"drive_file_id": new_drive_file_id}
 
 
+@router.patch("/{bt_id}/refunds/{refund_id}/files")
+async def replace_bt_refund_file(
+    bt_id: str,
+    refund_id: str,
+    old_file_id: str = Form(...),
+    file: UploadFile = File(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Replace one refund evidence file, including extra files."""
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
+    resp = db.table("bank_transaction_refunds").select("id, drive_file_id, extra_drive_file_ids").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    row = resp.data[0]
+    existing_ids = normalise_file_ids(row.get("extra_drive_file_ids"), row.get("drive_file_id"))
+    try:
+        next_ids = replace_file_id(existing_ids, old_file_id, "__pending__")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Refund file not found")
+
+    _bt, new_file_id, file_size = await _get_bt_and_upload_file(bt_id, file, db, "refund", _auth)
+    next_ids = [new_file_id if file_id == "__pending__" else file_id for file_id in next_ids]
+    try:
+        update_resp = db.table("bank_transaction_refunds").update({
+            "drive_file_id": next_ids[0],
+            "extra_drive_file_ids": next_ids[1:],
+            "file_size_bytes": file_size,
+        }).eq("id", refund_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No refund row returned")
+    except Exception as exc:
+        r2.delete_file(new_file_id)
+        logger.exception("Failed to replace refund file %s: %s", refund_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to replace refund file")
+
+    try:
+        r2.delete_file(old_file_id)
+    except Exception as exc:
+        logger.warning("Failed to delete old refund file %s: %s", old_file_id, exc)
+    return {
+        "drive_file_id": next_ids[0],
+        "extra_drive_file_ids": next_ids[1:],
+        "replaced_drive_file_id": new_file_id,
+    }
+
+
+@router.delete("/{bt_id}/refunds/{refund_id}/files")
+async def delete_bt_refund_file(
+    bt_id: str,
+    refund_id: str,
+    file_id: str = Query(...),
+    _auth: dict = Depends(require_auth),
+    db: Client = Depends(get_supabase),
+):
+    """Delete one refund evidence file while keeping at least one file on the refund."""
+    bt = _get_bt_or_404(bt_id, db)
+    get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
+    resp = db.table("bank_transaction_refunds").select("id, drive_file_id, extra_drive_file_ids").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    row = resp.data[0]
+    existing_ids = normalise_file_ids(row.get("extra_drive_file_ids"), row.get("drive_file_id"))
+    if len(existing_ids) <= 1:
+        raise HTTPException(status_code=422, detail="Delete the refund to remove its only file")
+    try:
+        next_ids, _next_legacy_id = remove_file_id(existing_ids, file_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Refund file not found")
+
+    update_resp = db.table("bank_transaction_refunds").update({
+        "drive_file_id": next_ids[0],
+        "extra_drive_file_ids": next_ids[1:],
+    }).eq("id", refund_id).execute()
+    if not update_resp.data:
+        raise HTTPException(status_code=500, detail="Failed to delete refund file")
+
+    try:
+        r2.delete_file(file_id)
+    except Exception as exc:
+        logger.warning("Failed to delete refund file %s: %s", file_id, exc)
+    return {
+        "deleted": True,
+        "drive_file_id": next_ids[0],
+        "extra_drive_file_ids": next_ids[1:],
+    }
+
+
 @router.delete("/{bt_id}/refunds/{refund_id}")
 async def delete_bt_refund(
     bt_id: str,
@@ -224,12 +349,12 @@ async def delete_bt_refund(
     """Delete a bank transaction refund record and remove the file from GCS."""
     bt = _get_bt_or_404(bt_id, db)
     get_claim_for_member(db, bt["claim_id"], _auth, require_treasurer_draft=True)
-    resp = db.table("bank_transaction_refunds").select("id, drive_file_id").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
+    resp = db.table("bank_transaction_refunds").select("id, drive_file_id, extra_drive_file_ids").eq("id", refund_id).eq("bank_transaction_id", bt_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Refund not found")
     row = resp.data[0]
-    file_id = row.get("drive_file_id")
-    if file_id:
+    file_ids = [row.get("drive_file_id"), *(row.get("extra_drive_file_ids") or [])]
+    for file_id in [fid for fid in file_ids if fid]:
         r2.delete_file(file_id)
     db.table("bank_transaction_refunds").delete().eq("id", refund_id).execute()
     return {"deleted": True}

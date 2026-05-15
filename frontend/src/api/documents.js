@@ -82,6 +82,16 @@ export const uploadMfApproval = ({ claimId, file }) => {
   return api.post(`/documents/mf-approval/${claimId}`, form).then((r) => r.data)
 }
 
+export const replaceMfApproval = ({ claimId, oldFileId, file }) => {
+  const form = new FormData()
+  form.append('old_file_id', oldFileId)
+  form.append('file', file)
+  return api.patch(`/documents/mf-approval/${claimId}`, form).then((r) => r.data)
+}
+
+export const deleteMfApproval = ({ claimId, fileId }) =>
+  api.delete(`/documents/mf-approval/${claimId}`, { params: { file_id: fileId } }).then((r) => r.data)
+
 export function useUploadMfApproval(options = {}) {
   return useMutation({
     mutationFn: uploadMfApproval,

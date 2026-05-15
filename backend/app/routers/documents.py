@@ -1,7 +1,7 @@
 import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -10,6 +10,7 @@ from app.auth import get_claim_for_member, require_auth, require_finance_team
 from app.services import r2 as r2_service
 from app.services.app_settings import get_document_finance_director
 from app.services.events import log_claim_event
+from app.services.evidence_files import normalise_file_ids, remove_file_id, replace_file_id
 from app.services.pdf import DriveAuthError
 from app.services.storage import insert_file_row
 from app.config import settings
@@ -650,22 +651,10 @@ async def upload_mf_approval(
 ):
     """Upload Master's Fund approval screenshot for a claim."""
     claim = get_claim_for_member(db, claim_id, _auth, require_treasurer_draft=True)
-    from app.services import image as image_service
-    raw_bytes = await file.read()
-    try:
-        processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
-
-    from datetime import datetime as _dt
-    timestamp = _dt.now().strftime("%Y%m%d_%H%M%S_%f")
-    object_name = f"mf_approval/{claim_id}_{timestamp}.jpg"
-    drive_file_id = r2_service.upload_file(processed, object_name, "image/jpeg")
+    drive_file_id, _file_size = await _upload_mf_approval_file(claim_id, file)
 
     # Append to the array column; also keep legacy single-ID column as first entry
-    existing = claim.get("mf_approval_drive_ids") or []
+    existing = normalise_file_ids(claim.get("mf_approval_drive_ids"), claim.get("mf_approval_drive_id"))
     new_ids = existing + [drive_file_id]
     try:
         update_resp = db.table("claims").update({
@@ -680,6 +669,90 @@ async def upload_mf_approval(
         raise HTTPException(status_code=500, detail="Failed to save MF approval file")
     log_claim_event(db, claim_id, _auth.get("id"), "mf_approval_uploaded", "Master Fund approval uploaded")
     return {"success": True, "drive_file_id": drive_file_id}
+
+
+async def _upload_mf_approval_file(claim_id: str, file: UploadFile) -> tuple[str, int]:
+    from app.services import image as image_service
+    raw_bytes = await file.read()
+    try:
+        processed = image_service.process_receipt_image(raw_bytes, file.content_type, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
+
+    from datetime import datetime as _dt
+    timestamp = _dt.now().strftime("%Y%m%d_%H%M%S_%f")
+    object_name = f"mf_approval/{claim_id}_{timestamp}.jpg"
+    return r2_service.upload_file(processed, object_name, "image/jpeg"), len(processed)
+
+
+@router.patch("/mf-approval/{claim_id}")
+async def replace_mf_approval(
+    claim_id: str,
+    old_file_id: str = Form(...),
+    file: UploadFile = File(...),
+    db=Depends(get_supabase),
+    _auth=Depends(require_auth),
+):
+    """Replace one Master's Fund approval screenshot for a claim."""
+    claim = get_claim_for_member(db, claim_id, _auth, require_treasurer_draft=True)
+    existing = normalise_file_ids(claim.get("mf_approval_drive_ids"), claim.get("mf_approval_drive_id"))
+    try:
+        next_ids = replace_file_id(existing, old_file_id, "__pending__")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="MF approval file not found")
+
+    new_file_id, _file_size = await _upload_mf_approval_file(claim_id, file)
+    next_ids = [new_file_id if file_id == "__pending__" else file_id for file_id in next_ids]
+    try:
+        update_resp = db.table("claims").update({
+            "mf_approval_drive_id": next_ids[0] if next_ids else None,
+            "mf_approval_drive_ids": next_ids,
+        }).eq("id", claim_id).execute()
+        if not update_resp.data:
+            raise RuntimeError("No claim row returned")
+    except Exception as exc:
+        r2_service.delete_file(new_file_id)
+        logger.exception("Failed to replace MF approval file for claim %s: %s", claim_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to replace MF approval file")
+
+    try:
+        r2_service.delete_file(old_file_id)
+    except Exception as exc:
+        logger.warning("Failed to delete old MF approval file %s: %s", old_file_id, exc)
+    log_claim_event(db, claim_id, _auth.get("id"), "mf_approval_uploaded", "Master Fund approval replaced")
+    return {"success": True, "drive_file_id": new_file_id, "mf_approval_drive_ids": next_ids}
+
+
+@router.delete("/mf-approval/{claim_id}")
+async def delete_mf_approval(
+    claim_id: str,
+    file_id: str = Query(...),
+    db=Depends(get_supabase),
+    _auth=Depends(require_auth),
+):
+    """Delete one Master's Fund approval screenshot from a claim."""
+    claim = get_claim_for_member(db, claim_id, _auth, require_treasurer_draft=True)
+    existing = normalise_file_ids(claim.get("mf_approval_drive_ids"), claim.get("mf_approval_drive_id"))
+    try:
+        next_ids, next_legacy_id = remove_file_id(existing, file_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="MF approval file not found")
+
+    update_resp = db.table("claims").update({
+        "mf_approval_drive_id": next_legacy_id,
+        "mf_approval_drive_ids": next_ids,
+    }).eq("id", claim_id).execute()
+    if not update_resp.data:
+        raise HTTPException(status_code=500, detail="Failed to delete MF approval file")
+
+    try:
+        r2_service.delete_file(file_id)
+    except Exception as exc:
+        logger.warning("Failed to delete MF approval file %s: %s", file_id, exc)
+    log_claim_event(db, claim_id, _auth.get("id"), "mf_approval_deleted", "Master Fund approval deleted")
+    return {"deleted": True, "mf_approval_drive_ids": next_ids}
 
 
 @router.post("/send-telegram")

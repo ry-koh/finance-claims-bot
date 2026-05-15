@@ -150,6 +150,22 @@ export const uploadReceiptFxImageById = ({ receiptId, file }) => {
 export const deleteReceiptImage = ({ receiptId, imageId }) =>
   api.delete(`/receipts/${receiptId}/images/${imageId}`).then((r) => r.data)
 
+export const replaceReceiptImage = ({ receiptId, imageId, file }) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.patch(`/receipts/${receiptId}/images/${imageId}`, form).then((r) => r.data)
+}
+
+export const replaceReceiptFxImage = ({ receiptId, oldFileId, file }) => {
+  const form = new FormData()
+  form.append('old_file_id', oldFileId)
+  form.append('file', file)
+  return api.patch(`/receipts/${receiptId}/fx-images`, form).then((r) => r.data)
+}
+
+export const deleteReceiptFxImage = ({ receiptId, fileId }) =>
+  api.delete(`/receipts/${receiptId}/fx-images`, { params: { file_id: fileId } }).then((r) => r.data)
+
 export function useUploadReceiptImageById(claimId) {
   const queryClient = useQueryClient()
   return useMutation({

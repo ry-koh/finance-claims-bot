@@ -18,6 +18,12 @@ export const uploadBankTransactionImage = ({ btId, file }) => {
 export const deleteBankTransactionImage = ({ btId, imageId }) =>
   api.delete(`/bank-transactions/${btId}/images/${imageId}`).then((r) => r.data)
 
+export const replaceBankTransactionImage = ({ btId, imageId, file }) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.patch(`/bank-transactions/${btId}/images/${imageId}`, form).then((r) => r.data)
+}
+
 export const deleteBankTransaction = (btId) =>
   api.delete(`/bank-transactions/${btId}`).then((r) => r.data)
 
@@ -43,6 +49,16 @@ export const updateBtRefundFile = ({ btId, refundId, file }) => {
   form.append('file', file)
   return api.patch(`/bank-transactions/${btId}/refunds/${refundId}`, form).then((r) => r.data)
 }
+
+export const replaceBtRefundFile = ({ btId, refundId, oldFileId, file }) => {
+  const form = new FormData()
+  form.append('old_file_id', oldFileId)
+  form.append('file', file)
+  return api.patch(`/bank-transactions/${btId}/refunds/${refundId}/files`, form).then((r) => r.data)
+}
+
+export const deleteBtRefundFile = ({ btId, refundId, fileId }) =>
+  api.delete(`/bank-transactions/${btId}/refunds/${refundId}/files`, { params: { file_id: fileId } }).then((r) => r.data)
 
 export function useCreateBankTransaction(claimId) {
   const queryClient = useQueryClient()
