@@ -70,7 +70,15 @@ async def _get_member(db, telegram_id: int) -> dict | None:
 # ---------------------------------------------------------------------------
 
 async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> None:
-    member = await _get_member(db, telegram_id)
+    try:
+        member = await _get_member(db, telegram_id)
+    except Exception as exc:
+        logger.warning(
+            "Could not look up finance_team member for telegram_id=%s during /start: %s",
+            telegram_id,
+            exc,
+        )
+        member = None
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Open Claims App", web_app=WebAppInfo(url=_mini_app_url()))]]
     )
@@ -78,7 +86,9 @@ async def _handle_start(bot, db, chat_id: int, telegram_id: int, name: str) -> N
         await _send_message(
             bot,
             chat_id,
-            "Welcome! Tap below to open the Claims App and complete your registration.\n\n💡 Tip: Pin this message so you can easily open the app anytime.",
+            "Welcome! Tap below to open the Claims App and complete your registration.\n\n"
+            f"Your Telegram ID: {telegram_id}\n\n"
+            "💡 Tip: Pin this message so you can easily open the app anytime.",
             reply_markup=keyboard,
         )
         return
