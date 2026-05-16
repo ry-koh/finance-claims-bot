@@ -310,7 +310,7 @@ function ReviewPill({ tone = 'neutral', children }) {
   }[tone]
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${toneClass}`}>
+    <span className={`approval-pill approval-pill-${tone} inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${toneClass}`}>
       {children}
     </span>
   )
@@ -325,7 +325,7 @@ function MobileStat({ label, value, tone = 'neutral' }) {
   }[tone]
 
   return (
-    <div className={`min-w-0 rounded-xl border p-3 ${toneClass}`}>
+    <div className={`approval-stat approval-stat-${tone} min-w-0 rounded-xl border p-3 ${toneClass}`}>
       <p className="text-[11px] font-medium opacity-70">{label}</p>
       <p className="mt-1 text-base font-bold tabular-nums">{value}</p>
     </div>
@@ -339,9 +339,9 @@ function SectionBlock({ title, subtitle, children, defaultOpen = true }) {
     <details
       open={isOpen}
       onToggle={(e) => setIsOpen(e.currentTarget.open)}
-      className="rounded-xl border border-gray-200 bg-white"
+      className="approval-section-block rounded-xl border border-gray-200 bg-white"
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-gray-900">
+      <summary className="approval-section-summary flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-gray-900">
         <span>{title}</span>
         {subtitle && <span className="text-[11px] font-medium text-gray-500">{subtitle}</span>}
       </summary>
@@ -423,7 +423,7 @@ function ClaimDetailsPanel({ claim, claimTotal, claimerName, ccaName, portfolioN
   }
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section className="approval-card approval-claim-card rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Claim details</p>
@@ -1111,7 +1111,7 @@ function ApprovalWorkspace({
 
   return (
     <div
-      className={`mobile-page min-h-screen bg-gray-50 ${showActionBar ? 'pb-28' : 'pb-4'}`}
+      className={`approval-workspace mobile-page min-h-screen bg-gray-50 ${showActionBar ? 'pb-28' : 'pb-4'}`}
       onFocusCapture={(event) => {
         if (isTextEntryTarget(event.target)) setFieldFocused(true)
       }}
@@ -1122,16 +1122,16 @@ function ApprovalWorkspace({
         }
       }}
     >
-      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
+      <div className="approval-topbar sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-lg items-center gap-2">
-          <button type="button" onClick={onBack} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 active:bg-gray-100">
+          <button type="button" onClick={onBack} className="approval-back-button rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 active:bg-gray-100">
             Back
           </button>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-gray-900">{claim.reference_code ?? `Claim #${claim.id}`}</p>
             <p className="truncate text-xs text-gray-500">Finance approval</p>
           </div>
-          <button type="button" onClick={onReject} className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 active:bg-red-100">
+          <button type="button" onClick={onReject} className="approval-reject-button rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 active:bg-red-100">
             Reject
           </button>
         </div>
@@ -1148,7 +1148,7 @@ function ApprovalWorkspace({
           saving={savingClaimDetails}
         />
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <section className="approval-card approval-review-card rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Review checks</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <MobileStat label="Claim total" value={formatAmount(claimTotal)} />
@@ -1176,7 +1176,7 @@ function ApprovalWorkspace({
           </div>
 
           {(readiness.blockers.length > 0 || readiness.warnings.length > 0) && (
-            <div className="mt-3 space-y-1.5 rounded-xl border border-gray-100 bg-gray-50 p-3">
+            <div className="approval-note mt-3 space-y-1.5 rounded-xl border border-gray-100 bg-gray-50 p-3">
               {readiness.blockers.map((issue) => (
                 <p key={issue.id} className="text-xs font-semibold text-red-700">{issue.issue}</p>
               ))}
@@ -1187,7 +1187,7 @@ function ApprovalWorkspace({
           )}
 
           {(claim.remarks || claim.treasurer_notes) && (
-            <div className="mt-3 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
+            <div className="approval-note mt-3 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
               {claim.remarks && (
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Remarks</p>
@@ -1205,7 +1205,7 @@ function ApprovalWorkspace({
         </section>
 
         {receipts.length > 0 && (
-          <nav className="sticky top-[65px] z-20 -mx-4 border-y border-gray-200 bg-gray-50/95 px-4 py-2 backdrop-blur">
+          <nav className="approval-receipt-nav sticky top-[65px] z-20 -mx-4 border-y border-gray-200 bg-gray-50/95 px-4 py-2 backdrop-blur">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {receipts.map((receipt, index) => {
                 const missingCategory = !selections[receipt.id]?.category

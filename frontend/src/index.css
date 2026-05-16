@@ -999,3 +999,196 @@ textarea:focus-visible {
 .shadow-xl {
   box-shadow: var(--shadow-float) !important;
 }
+
+.approval-workspace {
+  --approval-border: color-mix(in srgb, var(--color-border) 82%, var(--color-accent));
+  --approval-card: var(--color-surface);
+  --approval-card-muted: var(--color-surface-muted);
+  --approval-strong-text: var(--color-text);
+  --approval-soft-text: var(--color-text-soft);
+  --approval-muted-text: var(--color-muted);
+  background:
+    radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 18rem),
+    var(--color-bg) !important;
+}
+
+.approval-topbar {
+  background: color-mix(in srgb, var(--color-bg-elevated) 94%, transparent) !important;
+  border-color: var(--approval-border) !important;
+}
+
+.approval-card,
+.approval-section-block {
+  background: var(--approval-card) !important;
+  border-color: var(--approval-border) !important;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-text) 5%, transparent) !important;
+}
+
+.approval-note {
+  background: var(--approval-card-muted) !important;
+  border-color: color-mix(in srgb, var(--approval-border) 72%, transparent) !important;
+}
+
+.approval-section-summary {
+  color: var(--approval-strong-text) !important;
+}
+
+.approval-stat {
+  background: var(--approval-card-muted) !important;
+  border-color: var(--approval-border) !important;
+  color: var(--approval-strong-text) !important;
+}
+
+.approval-stat p:first-child {
+  color: var(--approval-muted-text) !important;
+  opacity: 1 !important;
+}
+
+.approval-stat-good {
+  background: color-mix(in srgb, var(--color-success) 11%, var(--approval-card)) !important;
+  border-color: color-mix(in srgb, var(--color-success) 42%, var(--approval-border)) !important;
+  color: var(--color-success) !important;
+}
+
+.approval-stat-warn {
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--approval-card)) !important;
+  border-color: color-mix(in srgb, var(--color-warning) 44%, var(--approval-border)) !important;
+  color: var(--color-warning) !important;
+}
+
+.approval-stat-bad {
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--approval-card)) !important;
+  border-color: color-mix(in srgb, var(--color-danger) 44%, var(--approval-border)) !important;
+  color: var(--color-danger) !important;
+}
+
+.approval-pill {
+  background: var(--approval-card-muted) !important;
+  border-color: var(--approval-border) !important;
+  color: var(--approval-soft-text) !important;
+}
+
+.approval-pill-good {
+  background: color-mix(in srgb, var(--color-success) 13%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-success) 58%, transparent) !important;
+  color: var(--color-success) !important;
+}
+
+.approval-pill-warn {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-warning) 56%, transparent) !important;
+  color: var(--color-warning) !important;
+}
+
+.approval-pill-bad {
+  background: color-mix(in srgb, var(--color-danger) 13%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-danger) 56%, transparent) !important;
+  color: var(--color-danger) !important;
+}
+
+.approval-pill-blue {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 52%, transparent) !important;
+  color: var(--color-accent) !important;
+}
+
+.approval-receipt-nav {
+  background: color-mix(in srgb, var(--color-bg) 93%, transparent) !important;
+  border-color: var(--approval-border) !important;
+}
+
+.approval-back-button {
+  background: var(--approval-card) !important;
+  border-color: var(--approval-border) !important;
+  color: var(--approval-soft-text) !important;
+}
+
+.approval-reject-button {
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--approval-card)) !important;
+  color: var(--color-danger) !important;
+}
+
+[data-theme='dark'] .approval-workspace {
+  --approval-border: #324158;
+  --approval-card: #121b2b;
+  --approval-card-muted: #0d1524;
+  --approval-strong-text: #f4f7fb;
+  --approval-soft-text: #c7d2e1;
+  --approval-muted-text: #91a0b6;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(96, 165, 250, 0.16), transparent 15rem),
+    radial-gradient(circle at 100% 12%, rgba(52, 211, 153, 0.08), transparent 13rem),
+    linear-gradient(180deg, #111827 0%, #0b1120 100%) !important;
+}
+
+[data-theme='dark'] .approval-topbar,
+[data-theme='dark'] .approval-receipt-nav {
+  background: rgba(11, 17, 32, 0.94) !important;
+  border-color: #25324a !important;
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08) !important;
+}
+
+[data-theme='dark'] .approval-card,
+[data-theme='dark'] .approval-section-block {
+  background: #121b2b !important;
+  border-color: #324158 !important;
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08) !important;
+}
+
+[data-theme='dark'] .approval-note {
+  background: #0d1524 !important;
+  border-color: #263449 !important;
+}
+
+[data-theme='dark'] .approval-stat {
+  background: #162235 !important;
+  border-color: #34445c !important;
+  color: #f4f7fb !important;
+}
+
+[data-theme='dark'] .approval-stat-good {
+  background: #102a2a !important;
+  border-color: #147f65 !important;
+  color: #34d399 !important;
+}
+
+[data-theme='dark'] .approval-stat-warn {
+  background: #2d2514 !important;
+  border-color: #a76a12 !important;
+  color: #fbbf24 !important;
+}
+
+[data-theme='dark'] .approval-stat-bad {
+  background: #2d1820 !important;
+  border-color: #b4535f !important;
+  color: #fda4af !important;
+}
+
+[data-theme='dark'] .approval-pill-good {
+  background: rgba(52, 211, 153, 0.13) !important;
+  border-color: rgba(52, 211, 153, 0.56) !important;
+  color: #5ee4b3 !important;
+}
+
+[data-theme='dark'] .approval-pill-warn {
+  background: rgba(251, 191, 36, 0.13) !important;
+  border-color: rgba(251, 191, 36, 0.54) !important;
+  color: #facc15 !important;
+}
+
+[data-theme='dark'] .approval-pill-bad {
+  background: rgba(253, 164, 175, 0.14) !important;
+  border-color: rgba(253, 164, 175, 0.56) !important;
+  color: #fda4af !important;
+}
+
+[data-theme='dark'] .approval-back-button {
+  background: #172235 !important;
+  border-color: #3b4b63 !important;
+  color: #d9e2f1 !important;
+}
+
+[data-theme='dark'] .approval-reject-button {
+  background: rgba(253, 164, 175, 0.16) !important;
+  color: #fecdd3 !important;
+}
