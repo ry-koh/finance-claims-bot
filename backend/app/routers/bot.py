@@ -133,7 +133,7 @@ async def _handle_register_director(
         ).execute()
     except Exception as exc:
         logger.error("Failed to register director: %s", exc)
-        await _send_message(bot, chat_id, f"Failed to register: {exc}")
+        await _send_message(bot, chat_id, "Registration failed due to a server error. Please try again later.")
         return
 
     keyboard = InlineKeyboardMarkup(
@@ -230,7 +230,7 @@ async def _handle_confirm_member(
         ).execute()
     except Exception as exc:
         logger.error("DB insert failed for telegram_id=%s: %s", new_telegram_id, exc)
-        await _send_message(bot, chat_id, f"Failed to add member: {exc}")
+        await _send_message(bot, chat_id, "Failed to add member due to a server error. Please try again later.")
         return
 
     await _send_message(
@@ -252,7 +252,7 @@ async def _handle_listmembers(bot, db, chat_id: int, sender_id: int) -> None:
         resp = db.table("finance_team").select("*").order("name").execute()
     except Exception as exc:
         logger.error("DB select failed: %s", exc)
-        await _send_message(bot, chat_id, f"Failed to fetch members: {exc}")
+        await _send_message(bot, chat_id, "Failed to fetch members due to a server error. Please try again later.")
         return
 
     if not resp.data:
@@ -302,7 +302,7 @@ async def _handle_removemember(
         db.table("finance_team").delete().eq("telegram_id", target_id).execute()
     except Exception as exc:
         logger.error("DB delete failed for telegram_id=%s: %s", target_id, exc)
-        await _send_message(bot, chat_id, f"Failed to remove member: {exc}")
+        await _send_message(bot, chat_id, "Failed to remove member due to a server error. Please try again later.")
         return
 
     await _send_message(
@@ -431,7 +431,7 @@ async def set_webhook(director: dict = Depends(require_director)):
         )
     except Exception as exc:
         logger.error("Failed to set webhook: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Failed to set webhook: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to set webhook due to a server error.")
     finally:
         await bot.close()
 
