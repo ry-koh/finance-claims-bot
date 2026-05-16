@@ -5,6 +5,12 @@ import { useSendToTelegram } from '../api/documents'
 import { useIsDirector } from '../context/AuthContext'
 import { getClaimReadiness } from '../utils/claimReadiness'
 import { EMAIL_REMINDER_STATUS_VALUES, buildEmailReminderTargets, countSelectedReminderClaims } from '../utils/emailReminderTargets'
+import {
+  buildSentSubmissionBatch,
+  readSentSubmissionBatch,
+  removeClaimIdsFromBatch,
+  writeSentSubmissionBatch,
+} from '../utils/sentSubmissionBatch'
 import { IconPencil } from '../components/Icons'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 
@@ -63,6 +69,18 @@ function formatDate(dateStr) {
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatBatchTime(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d)) return ''
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function apiErrorMessage(err, fallback = 'Please try again.') {
@@ -209,9 +227,10 @@ export default function HomePage() {
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [isExporting, setIsExporting] = useState(false)
-  const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | null
+  const [confirmAction, setConfirmAction] = useState(null) // 'send' | 'submit' | 'submitSentBatch' | null
   const [actionResult, setActionResult] = useState(null)
   const [actionResultTone, setActionResultTone] = useState('success')
+  const [pendingSentBatch, setPendingSentBatch] = useState(() => readSentSubmissionBatch())
   const [reminderPickerOpen, setReminderPickerOpen] = useState(false)
   const [selectedReminderTreasurerIds, setSelectedReminderTreasurerIds] = useState(new Set())
 
@@ -255,6 +274,7 @@ export default function HomePage() {
   const canSendSelected = selectedIds.size > 0
   const canSubmitSelected = selectedClaims.some((c) => c.status === 'compiled')
   const canReimburseSelected = selectedClaims.some((c) => c.status === 'submitted')
+  const pendingSentBatchCount = pendingSentBatch?.claimIds?.length ?? 0
   const showSelectionActionBar = selectMode && !confirmAction && !sendMutation.isPending
   const openReimbursementProcess = () => {
     const ids = [...selectedIds]
@@ -264,14 +284,27 @@ export default function HomePage() {
 
   const handleConfirm = async () => {
     const action = confirmAction  // capture before clearing
-    const ids = [...selectedIds]
+    const ids = action === 'submitSentBatch' ? [...(pendingSentBatch?.claimIds ?? [])] : [...selectedIds]
     setConfirmAction(null)
     let shouldExitSelectMode = true
     try {
+      if (ids.length === 0) {
+        setActionResultTone('warning')
+        setActionResult('No claims selected for this action.')
+        return
+      }
       if (action === 'send') {
         const result = await sendMutation.mutateAsync({ claim_ids: ids })
         const sent = Number(result.sent || 0)
         const skipped = Number(result.skipped || 0)
+        const nextBatch = buildSentSubmissionBatch({
+          existingBatch: pendingSentBatch,
+          selectedClaimIds: ids,
+          skippedClaimIds: result.skipped_ids ?? [],
+        })
+        if (sent > 0) {
+          setPendingSentBatch(writeSentSubmissionBatch(nextBatch))
+        }
         if (sent === 0) {
           setActionResultTone('error')
           setActionResult(
@@ -282,24 +315,37 @@ export default function HomePage() {
           shouldExitSelectMode = false
         } else if (skipped > 0) {
           setActionResultTone('warning')
-          setActionResult(`Sent ${sent} PDF${sent !== 1 ? 's' : ''}. ${skipped} failed or had no compiled PDF.`)
+          setActionResult(`Sent ${sent} PDF${sent !== 1 ? 's' : ''} and saved them for submitted marking. ${skipped} failed or had no compiled PDF.`)
         } else {
           setActionResultTone('success')
-          setActionResult(`Sent ${sent} PDF${sent !== 1 ? 's' : ''}`)
+          setActionResult(`Sent ${sent} PDF${sent !== 1 ? 's' : ''}. Saved this batch for submitted marking.`)
         }
       } else if (action === 'submit') {
         const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
+        const nextBatch = removeClaimIdsFromBatch(pendingSentBatch, ids)
+        setPendingSentBatch(writeSentSubmissionBatch(nextBatch))
         setActionResultTone('success')
         setActionResult(`Marked ${result.updated} claim${result.updated !== 1 ? 's' : ''} as submitted${result.skipped ? ` - ${result.skipped} skipped` : ''}`)
+      } else if (action === 'submitSentBatch') {
+        const result = await bulkStatusMutation.mutateAsync({ claim_ids: ids, status: 'submitted' })
+        setPendingSentBatch(writeSentSubmissionBatch(null))
+        setActionResultTone(result.skipped ? 'warning' : 'success')
+        setActionResult(`Marked sent batch as submitted: ${result.updated} updated${result.skipped ? `, ${result.skipped} skipped` : ''}`)
       }
     } catch (err) {
       setActionResultTone('error')
       setActionResult(`${action === 'send' ? 'Failed to send' : 'Action failed'}: ${apiErrorMessage(err)}`)
       shouldExitSelectMode = false
     }
-    if (shouldExitSelectMode) {
+    if (shouldExitSelectMode && action !== 'submitSentBatch') {
       exitSelectMode()
     }
+  }
+
+  function clearPendingSentBatch() {
+    setPendingSentBatch(writeSentSubmissionBatch(null))
+    setActionResultTone('success')
+    setActionResult('Cleared the sent batch.')
   }
 
   useEffect(() => {
@@ -537,6 +583,34 @@ export default function HomePage() {
                 )}
               </div>
             )}
+            {pendingSentBatchCount > 0 && (
+              <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-green-900">Sent batch waiting for office submission</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-green-700">
+                      {pendingSentBatchCount} claim{pendingSentBatchCount !== 1 ? 's' : ''} sent to you
+                      {pendingSentBatch.updatedAt ? ` on ${formatBatchTime(pendingSentBatch.updatedAt)}` : ''}.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearPendingSentBatch}
+                    className="shrink-0 text-[11px] font-bold text-green-700"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  disabled={bulkStatusMutation.isPending}
+                  onClick={() => setConfirmAction('submitSentBatch')}
+                  className="mt-3 w-full rounded-xl bg-green-600 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {bulkStatusMutation.isPending ? 'Updating...' : `Mark sent batch submitted (${pendingSentBatchCount})`}
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -709,11 +783,17 @@ export default function HomePage() {
         <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-[80]">
           <div className="bg-white rounded-lg w-full max-w-sm p-5 shadow-xl mb-4 mx-4">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
-              {confirmAction === 'send' ? 'Send to Telegram?' : 'Mark as Submitted?'}
+              {confirmAction === 'send'
+                ? 'Send to Telegram?'
+                : confirmAction === 'submitSentBatch'
+                  ? 'Mark sent batch as Submitted?'
+                  : 'Mark as Submitted?'}
             </h3>
             <p className="text-sm text-gray-500 mb-5">
               {confirmAction === 'send'
                 ? `Send ${selectedIds.size} compiled PDF${selectedIds.size !== 1 ? 's' : ''} to yourself on Telegram. Claims without a compiled PDF will be skipped.`
+                : confirmAction === 'submitSentBatch'
+                  ? `Mark the ${pendingSentBatchCount} claim${pendingSentBatchCount !== 1 ? 's' : ''} from your saved sent batch as submitted. Claims no longer in compiled status will be skipped.`
                 : `Mark ${selectedIds.size} claim${selectedIds.size !== 1 ? 's' : ''} as submitted.`}
             </p>
             <div className="flex gap-3">
